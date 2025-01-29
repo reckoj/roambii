@@ -16,7 +16,7 @@ export default function AppLayout() {
   }
 
   if (!isLogged) {
-    return <Redirect href="/login" />;
+    return <Redirect href="/pre-login" />;
   }
 
   return <Slot />;

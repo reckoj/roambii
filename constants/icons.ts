@@ -32,6 +32,8 @@ import swim from "@/assets/icons/swim.png";
 import wifi from "@/assets/icons/wifi.png";
 import location from "@/assets/icons/location.png";
 import edit from "@/assets/icons/edit.png";
+import email from "@/assets/icons/email.png";
+import email1 from "@/assets/icons/email.png";
 
 export default {
   google,
@@ -68,4 +70,6 @@ export default {
   location,
   edit,
   apple,
+  email,
+  email1,
 };

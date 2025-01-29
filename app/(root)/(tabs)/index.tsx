@@ -1,5 +1,6 @@
 import {
   ActivityIndicator,
+  Button,
   FlatList,
   Image,
   Text,
@@ -7,7 +8,12 @@ import {
   View,
 } from "react-native";
 import { useEffect } from "react";
-import { router, useLocalSearchParams } from "expo-router";
+import {
+  ExternalPathString,
+  RelativePathString,
+  router,
+  useLocalSearchParams,
+} from "expo-router";
 import { SafeAreaView } from "react-native-safe-area-context";
 
 import icons from "@/constants/icons";
@@ -20,6 +26,7 @@ import { Card, FeaturedCard } from "@/components/Cards";
 import { useAppwrite } from "@/lib/useAppwrite";
 import { useGlobalContext } from "@/lib/global-provider";
 import { getLatestProperties, getProperties } from "@/lib/appwrite";
+import seed from "@/lib/seed";
 
 const getGreeting = () => {
   const currentHour = new Date().getHours();
@@ -65,10 +72,12 @@ const Home = () => {
     });
   }, [params.filter, params.query]);
 
-  const handleCardPress = (id: string) => router.push(`/profile`);
+  const handleCardPress = (id: string) => router.push(`/properties/${id}`);
+  // const handleCardPress = (id: string) => router.push(`/profile`);
 
   return (
     <SafeAreaView className="h-full bg-white">
+      {/* <Button title="seed" onPress={seed} /> */}
       <FlatList
         data={properties}
         numColumns={2}
@@ -136,6 +145,7 @@ const Home = () => {
                   )}
                   keyExtractor={(item) => item.$id}
                   horizontal
+                  bounces={false}
                   showsHorizontalScrollIndicator={false}
                   contentContainerClassName="flex gap-5 mt-5"
                 />
