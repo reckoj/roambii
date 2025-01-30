@@ -18,6 +18,7 @@ import { facilities } from "@/constants/data";
 import { useAppwrite } from "@/lib/useAppwrite";
 import { getPropertyById } from "@/lib/appwrite";
 import FlightInfo from "@/components/FlightInfo";
+import { useState } from "react";
 
 const Property = () => {
   const { id } = useLocalSearchParams<{ id?: string }>();
@@ -30,6 +31,9 @@ const Property = () => {
       id: id!,
     },
   });
+  const [expanded, setExpanded] = useState(false);
+  const description =
+    "Enjoy an unforgettable all-inclusive getaway to Viva Fortuna Beach by Wyndham in Freeport, Bahamas! Nestled on a stunning white-sand beach, this tropical resort offers unlimited dining & drinks, thrilling water sports, daily entertainment, and a vibrant island atmosphere. Relax by the pool, explore crystal-clear waters, or dance the night away—your perfect Bahamian escape awaits! Book now for the ultimate beachfront adventure!";
 
   return (
     <View>
@@ -43,10 +47,10 @@ const Property = () => {
             className="size-full"
             resizeMode="cover"
           />
-          {/* <Image
+          <Image
             source={images.whiteGradient}
             className="absolute top-0 w-full z-40"
-          /> */}
+          />
 
           <View
             className="z-50 absolute inset-x-7"
@@ -120,7 +124,7 @@ const Property = () => {
                 <Image source={icons.bed} className="size-4" />
               </View>
               <Text className="text-black-300 text-lg font-rubik-medium ml-2">
-                {/* {property?.area} */}1 King Bed
+                1 King Bed
               </Text>
             </View>
             <View className="flex flex-row items-center">
@@ -128,7 +132,6 @@ const Property = () => {
                 <Image source={icons.area} className="size-4" />
               </View>
               <Text className="text-black-300 text-lg font-rubik-medium ml-2">
-                {/* {property?.area} */}
                 Junior Sweet
               </Text>
             </View>
@@ -193,9 +196,9 @@ const Property = () => {
           )}
           <FlightInfo />
           <View className="w-full border-t border-accent-100 pt-7 mt-5">
-            <Text className="text-black-300 text-xl font-rubik-bold">
+            {/* <Text className="text-black-300 text-xl font-rubik-bold">
               Agent
-            </Text>
+            </Text> */}
 
             <View className="flex flex-row items-center justify-between mt-4">
               <View className="flex flex-row items-center">
@@ -224,9 +227,24 @@ const Property = () => {
             <Text className="text-black-300 text-xl font-rubik-bold">
               Overview
             </Text>
-            <Text className="text-black-200 text-base font-rubik mt-2">
+            {/* <Text className="text-black-200 text-base font-rubik mt-2">
               {property?.description}
+              
+          
+            </Text> */}
+            <Text
+              numberOfLines={expanded ? undefined : 2}
+              className="font-rubik-light text-text"
+            >
+              {description}
             </Text>
+
+            {/* Toggle Button (Always Visible) */}
+            <TouchableOpacity onPress={() => setExpanded(!expanded)}>
+              <Text className="font-rubik-light text-primary-200">
+                {expanded ? "See Less" : "Read More"}
+              </Text>
+            </TouchableOpacity>
           </View>
           {/* 
           <View className="mt-7">

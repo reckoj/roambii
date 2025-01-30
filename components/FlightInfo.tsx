@@ -117,11 +117,7 @@ const FlightInfoCard: React.FC = () => {
 
         <View style={styles.flightPathContainer}>
           <View style={styles.flightPath} />
-          <Plane
-            style={styles.planeIcon}
-            className="text-primary-300"
-            size={24}
-          />
+          <Plane style={styles.planeIcon} color="#2563eb" size={24} />
         </View>
 
         <View style={styles.timeBlock}>
@@ -129,7 +125,7 @@ const FlightInfoCard: React.FC = () => {
           <Text style={styles.code}>{flight.arrival.code}</Text>
           <View style={styles.arrivalTimeContainer}>
             <Text style={styles.time}>{flight.arrival.time}</Text>
-            <Text style={styles.nextDay}>(next day)</Text>
+            <Text style={styles.nextDay}>{" (next day)"}</Text>
           </View>
         </View>
       </View>
@@ -138,7 +134,7 @@ const FlightInfoCard: React.FC = () => {
 
   return (
     <View style={styles.container}>
-      <Text style={styles.title}>Flight Info</Text>
+      <Text className="text-2xl font-rubik-extraBold">Flight Info</Text>
 
       <View style={styles.badge}>
         <Text style={styles.badgeText}>{flightDetails.outbound.type}</Text>
