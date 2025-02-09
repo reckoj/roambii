@@ -3,6 +3,7 @@ import {
   Button,
   FlatList,
   Image,
+  StatusBar,
   Text,
   TouchableOpacity,
   View,
@@ -44,6 +45,7 @@ const Home = () => {
   const greeting = getGreeting();
 
   const params = useLocalSearchParams<{ query?: string; filter?: string }>();
+  <StatusBar backgroundColor="#FF5733" barStyle="light-content" />
 
   const { data: latestProperties, loading: latestPropertiesLoading } =
     useAppwrite({
@@ -77,7 +79,7 @@ const Home = () => {
 
   return (
     <SafeAreaView className="h-full bg-white">
-      {/* <Button title="seed" onPress={seed} /> */}
+       {/* <Button title="seed" onPress={seed} />  */}
       <FlatList
         data={properties}
         numColumns={2}

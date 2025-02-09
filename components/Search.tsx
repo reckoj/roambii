@@ -1,14 +1,24 @@
 import React, { useState } from "react";
-import { View, TouchableOpacity, Image, TextInput } from "react-native";
+import { View, TouchableOpacity, Image, TextInput, Text, Modal, FlatList, Pressable } from "react-native";
 import { useDebouncedCallback } from "use-debounce";
-
 import icons from "@/constants/icons";
 import { useLocalSearchParams, router, usePathname } from "expo-router";
+import { ChevronDown, SearchIcon } from "lucide-react-native";
+
+const CONTINENTS = [
+  "North America",
+  "South America",
+  "Asia",
+  "Caribbean",
+  "Africa"
+];
 
 const Search = () => {
   const path = usePathname();
   const params = useLocalSearchParams<{ query?: string }>();
   const [search, setSearch] = useState(params.query);
+  const [selectedContinent, setSelectedContinent] = useState<string>("Region");
+  const [isDropdownVisible, setIsDropdownVisible] = useState(false);
 
   const debouncedSearch = useDebouncedCallback((text: string) => {
     router.setParams({ query: text });
@@ -19,22 +29,64 @@ const Search = () => {
     debouncedSearch(text);
   };
 
+  const handleSelectContinent = (continent: string) => {
+    setSelectedContinent(continent);
+    setIsDropdownVisible(false);
+  };
+
   return (
-    <View className="flex flex-row items-center justify-between w-full px-4 rounded-lg  border border-primary-100 mt-5 py-2">
-      <View className="flex-1 flex flex-row items-center justify-start z-50">
-        <Image source={icons.search} className="size-5" />
-        <TextInput
-          value={search}
-          onChangeText={handleSearch}
-          placeholder="Search "
-          className="text-sm font-rubik text-black-300 ml-2 flex-1"
-        />
+    <>
+      <View className="flex-row items-center gap-8 mt-5">
+        <View className="flex-1 flex-row items-center border border-primary-100 rounded-lg py-2 px-4">
+          
+          <SearchIcon color="#1ABC9C"  size={18}/>
+          <TextInput
+            value={search}
+            onChangeText={handleSearch}
+            placeholder="Search "
+            className=" font-rubik text-accent-100 ml-2 flex-1"
+            
+            
+          />
+        </View>
+
+        <TouchableOpacity 
+          onPress={() => setIsDropdownVisible(true)}
+          className="border border-primary-100 rounded-lg py-2 px-3 flex-row items-center"
+        >
+          <Text className="text-accent-100 font-rubik mr-2">{selectedContinent}</Text>
+          {/* <Image source={icons.filter} className="size-4" /> */}
+          <ChevronDown size={16 }  color="#1ABC9C"/>
+        </TouchableOpacity>
       </View>
 
-      <TouchableOpacity>
-        <Image source={icons.filter} className="size-5" />
-      </TouchableOpacity>
-    </View>
+      <Modal
+        visible={isDropdownVisible}
+        transparent={true}
+        animationType="fade"
+        onRequestClose={() => setIsDropdownVisible(false)}
+      >
+        <Pressable 
+          className="flex-1 bg-black/30"
+          onPress={() => setIsDropdownVisible(false)}
+        >
+          <View className="bg-white mt-32 mx-4 rounded-lg overflow-hidden">
+            <FlatList
+              data={CONTINENTS}
+              keyExtractor={(item) => item}
+              renderItem={({ item }) => (
+                <TouchableOpacity
+                  onPress={() => handleSelectContinent(item)}
+                  className="px-4 py-3 border-b border-gray-100"
+                >
+                  <Text className="text-sm font-rubik text-black-300">{item}</Text>
+                </TouchableOpacity>
+              )}
+            />
+          </View>
+        </Pressable>
+      </Modal>
+    </>
   );
 };
 

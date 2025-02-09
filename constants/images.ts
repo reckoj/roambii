@@ -10,6 +10,7 @@ import map from "@/assets/images/map.png";
 import noResult from "@/assets/images/no-result.png";
 import roamiiLogo from "@/assets/images/splash-icon.png";
 import bahamas from "@/assets/images/bahamas.jpg";
+import nomessages from "@/assets/images/no-chat.png";
 
 export default {
   onboarding,
@@ -24,4 +25,5 @@ export default {
   noResult,
   roamiiLogo,
   bahamas,
+  nomessages
 };

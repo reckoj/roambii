@@ -117,7 +117,7 @@ const FlightInfoCard: React.FC = () => {
 
         <View style={styles.flightPathContainer}>
           <View style={styles.flightPath} />
-          <Plane style={styles.planeIcon} color="#2563eb" size={24} />
+          <Plane style={styles.planeIcon} color="#1ABC9C" size={16} />
         </View>
 
         <View style={styles.timeBlock}>
@@ -289,6 +289,7 @@ const styles = StyleSheet.create({
     fontSize: 24,
     fontWeight: "bold",
     color: "#1f2937",
+    
     marginBottom: 12,
   },
   badge: {
@@ -362,7 +363,7 @@ const styles = StyleSheet.create({
   },
   planeIcon: {
     position: "absolute",
-    top: -11,
+    top: -7,
     left: "45%",
     color: "#1ABC9C",
   },

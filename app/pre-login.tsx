@@ -39,6 +39,7 @@ const PreAuth = () => {
       <ScrollView
         contentContainerStyle={{
           height: "100%",
+          paddingBottom: 45
         }}
       >
         <Image

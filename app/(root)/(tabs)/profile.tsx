@@ -15,6 +15,7 @@ import { logout } from "@/lib/appwrite";
 import icons from "@/constants/icons";
 import { settings } from "@/constants/data";
 import { useGlobalContext } from "@/lib/global-provider";
+import { ChevronDown, ChevronUp, ArrowRightFromLineIcon } from "lucide-react-native";
 
 interface SettingsItemProp {
   icon: ImageSourcePropType;
@@ -95,8 +96,8 @@ const Profile = () => {
         <View className="flex flex-col border-t mt-5 pt-5 border-primary-200">
           <SettingsItem
             icon={icons.logout}
-            title="Logout"
-            textStyle="text-danger"
+            title="Sign Out"
+            textStyle="text-danger font-bold"
             showArrow={false}
             onPress={handleLogout}
           />
