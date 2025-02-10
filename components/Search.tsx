@@ -44,7 +44,8 @@ const Search = () => {
             value={search}
             onChangeText={handleSearch}
             placeholder="Search "
-            className=" font-rubik text-accent-100 ml-2 flex-1"
+            className=" font-rubik text-red-200 ml-2 flex-1"
+            placeholderTextColor="#D9D9D9"
             
             
           />
@@ -54,7 +55,7 @@ const Search = () => {
           onPress={() => setIsDropdownVisible(true)}
           className="border border-primary-100 rounded-lg py-2 px-3 flex-row items-center"
         >
-          <Text className="text-accent-100 font-rubik mr-2">{selectedContinent}</Text>
+          <Text className="text-text font-rubik-bold mr-2">{selectedContinent}</Text>
           {/* <Image source={icons.filter} className="size-4" /> */}
           <ChevronDown size={16 }  color="#1ABC9C"/>
         </TouchableOpacity>

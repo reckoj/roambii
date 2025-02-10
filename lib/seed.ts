@@ -81,22 +81,69 @@ async function seed() {
 
     console.log("Cleared all existing data.");
 
+    // // Seed Agents
+    // const agents = [];
+    // for (let i = 1; i <= 5; i++) {
+    //   const agent = await databases.createDocument(
+    //     config.databaseId!,
+    //     COLLECTIONS.AGENT!,
+    //     ID.unique(),
+    //     {
+    //       name: `Agent ${i}`,
+    //       email: `agent${i}@example.com`,
+    //       avatar: agentImages[Math.floor(Math.random() * agentImages.length)],
+    //     }
+    //   );
+    //   agents.push(agent);
+    // }
+    // console.log(`Seeded ${agents.length} agents.`);
+
+     // Seed Agents
+
+     const agentNames = [
+      "Harry Johnson",
+      "Megan Smith",
+      "Cristiano Ronaldo",
+      "Lionel Messi",
+      "Anita Baker",
+      "Ryan Reynolds",
+      "Kim Lee",
+    ];
+    
     // Seed Agents
-    const agents = [];
-    for (let i = 1; i <= 5; i++) {
-      const agent = await databases.createDocument(
-        config.databaseId!,
-        COLLECTIONS.AGENT!,
-        ID.unique(),
-        {
-          name: `Agent ${i}`,
-          email: `agent${i}@example.com`,
-          avatar: agentImages[Math.floor(Math.random() * agentImages.length)],
-        }
-      );
-      agents.push(agent);
-    }
-    console.log(`Seeded ${agents.length} agents.`);
+    // const agents = [];
+    // for (let i = 0; i < agentNames.length; i++) {
+    //   const agent = await databases.createDocument(
+    //     config.databaseId!,
+    //     COLLECTIONS.AGENT!,
+    //     ID.unique(),
+    //     {
+    //       name: agentNames[i], // ✅ Use actual name instead of number
+    //       email: `${agentNames[i].split(" ")[0].toLowerCase()}@example.com`, // ✅ Generate email from first name
+    //       avatar: agentImages[Math.floor(Math.random() * agentImages.length)], // ✅ Random avatar
+    //     }
+    //   );
+    //   agents.push(agent);
+    // }
+    
+    // console.log(`Seeded ${agents.length} agents.`);
+     const agents = [];
+     for (let i = 0; i < agentNames.length; i++) {
+       const agent = await databases.createDocument(
+         config.databaseId!,
+         COLLECTIONS.AGENT!,
+         ID.unique(),
+         {
+           name: agentNames[i],
+           email: `${agentNames[i].split(" ")[0].toLowerCase()}@example.com`,
+           avatar: agentImages[Math.floor(Math.random() * agentImages.length)],
+          //  description: agentDescriptions[i % agentDescriptions.length],
+          
+         }
+       );
+       agents.push(agent);
+     }
+     console.log(`Seeded ${agents.length} agents.`);
 
     // Seed Reviews
     const reviews = [];

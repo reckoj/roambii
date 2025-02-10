@@ -165,3 +165,33 @@ export async function getPropertyById({ id }: { id: string }) {
     return null;
   }
 }
+
+// Function to get agent by ID
+export async function getAgentById({ id }: { id: string }) {
+  try {
+    const result = await databases.getDocument(
+      config.databaseId!,
+      config.agentsCollectionId!,
+      id
+    );
+    return result;
+  } catch (error) {
+    console.error("Error fetching agent by ID:", error);
+    return null;
+  }
+}
+
+
+// Function to get all agents
+export async function getAgents() {
+  try {
+    const result = await databases.listDocuments(
+      config.databaseId!,
+      config.agentsCollectionId!
+    );
+    return result;
+  } catch (error) {
+    console.error("Error fetching agents:", error);
+    return { documents: [] }; // Return empty array to prevent crashes
+  }
+}

@@ -28,6 +28,7 @@ import { useAppwrite } from "@/lib/useAppwrite";
 import { useGlobalContext } from "@/lib/global-provider";
 import { getLatestProperties, getProperties } from "@/lib/appwrite";
 import seed from "@/lib/seed";
+import RecommendedAgents from "@/components/RecommendedAgents";
 
 const getGreeting = () => {
   const currentHour = new Date().getHours();
@@ -119,10 +120,11 @@ const Home = () => {
             </View>
 
             <Search />
+            
 
             <View className="my-5">
               <View className="flex flex-row items-center justify-between">
-                <Text className="text-xl font-rubik-bold text-black-300">
+                <Text className="text-xl font-rubik-bold text-text">
                   Featured
                 </Text>
                 <TouchableOpacity>
@@ -156,19 +158,29 @@ const Home = () => {
 
             {/* <Button title="seed" onPress={seed} /> */}
 
-            <View className="mt-5">
+            <View className="mt-4">
               <View className="flex flex-row items-center justify-between">
-                <Text className="text-xl font-rubik-bold text-black-300">
-                  Our Recommendation
+                <Text className="text-xl font-rubik-bold text-text">
+                  Recommended Agents
                 </Text>
-                <TouchableOpacity>
+                {/* <TouchableOpacity>
                   <Text className="text-base font-rubik-bold text-primary-300">
                     See all
                   </Text>
-                </TouchableOpacity>
+                </TouchableOpacity> */}
               </View>
 
-              <Filters />
+              {/* <Filters /> */}
+              <RecommendedAgents/>
+              <View  className="mt-5">
+              <View className="flex flex-row items-center justify-between">
+                <Text className="text-xl font-rubik-bold text-text">
+                  All Packages
+                </Text>
+               
+              </View>
+
+              </View >
             </View>
           </View>
         )}
