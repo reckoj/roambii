@@ -16,6 +16,7 @@ import icons from "@/constants/icons";
 import { settings } from "@/constants/data";
 import { useGlobalContext } from "@/lib/global-provider";
 import { ChevronDown, ChevronUp, ArrowRightFromLineIcon } from "lucide-react-native";
+import { router } from "expo-router";
 
 interface SettingsItemProp {
   icon: ImageSourcePropType;
@@ -60,6 +61,10 @@ const Profile = () => {
     }
   };
 
+    const handlePress = () => {
+      router.push("/package-info"); // Navigate to the Login screen
+    };
+
   return (
     <SafeAreaView className="h-full bg-white">
       <ScrollView
@@ -84,7 +89,7 @@ const Profile = () => {
 
         <View className="flex flex-col mt-10">
           <SettingsItem icon={icons.calendar} title="My Bookings" />
-          <SettingsItem icon={icons.wallet} title="Payments" />
+          <SettingsItem onPress={handlePress} icon={icons.wallet} title="Payments" />
         </View>
 
         <View className="flex flex-col mt-5 border-t pt-5 border-primary-200">
