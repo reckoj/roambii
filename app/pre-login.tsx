@@ -9,7 +9,7 @@ import {
   View,
 } from "react-native";
 
-import { login } from "@/lib/appwrite";
+import { loginWGoogle } from "@/lib/appwrite";
 import { Redirect, router } from "expo-router";
 import { useGlobalContext } from "@/lib/global-provider";
 import icons from "@/constants/icons";
@@ -22,7 +22,7 @@ const PreAuth = () => {
   if (!loading && isLogged) return <Redirect href="/" />;
 
   const handleLogin = async () => {
-    const result = await login();
+    const result = await loginWGoogle();
     if (result) {
       refetch();
     } else {

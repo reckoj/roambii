@@ -7,44 +7,53 @@ import {
   TouchableOpacity,
   Image,
   Alert,
+  Switch,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { loginUser, loginWGoogle } from "@/lib/appwrite";
+import {  registerUser } from "@/lib/appwrite";
 import icons from "@/constants/icons";
 import { useGlobalContext } from "@/lib/global-provider";
 import { Redirect, router } from "expo-router";
 import { EyeClosedIcon, EyeIcon } from "lucide-react-native";
 
-const SignIn = () => {
+const Register = () => {
   const [email, setEmail] = useState("");
+  const [fname, setFName] = useState("");
   const [password, setPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
+  const [showCPassword, setShowCPassword] = useState(false);
   const { refetch, loading, isLogged } = useGlobalContext();
-
-
-  const handleLogin = async () => {
-    try {
-      const session = await loginUser(email, password);
-      Alert.alert("Login Successful", "You are now logged in!");
-      console.log(session);
-   
-    } catch (error: any) {
-      Alert.alert("Login Failed", error.message);
-    }
-  };
 
  
 
-  if (!loading && isLogged) return <Redirect href="/" />;
-  const handleLoginGoogle = async () => {
-    const res = await loginWGoogle();
 
-    if (res) {
-      refetch();
-      console.log("login Success");
-    } else {
-      Alert.alert("Error", "Failed to log in");
+  const handleRegister = async () => {
+    const trimmedName = fname.trim()
+
+    if (!trimmedName.includes(" ")) {
+      Alert.alert("Invalid Name", "Please enter your full name (first and last).");
+      return;
     }
+    try {
+      const user = await registerUser(fname, email, password, isAgent);
+      Alert.alert("Registration Successful", "You can now log in!");
+      console.log(user);
+     router.push("/login")
+    } catch (error: any) {
+      Alert.alert("Registration Failed", error.message);
+    }
+  };
+
+
+
+  if (!loading && isLogged) return <Redirect href="/" />;
+
+
+  const [isAgent, setIsAgent] = useState(false);
+
+  const toggleSwitch = () => {
+    setIsAgent((previousState) => !previousState);
   };
 
   return (
@@ -62,6 +71,16 @@ const SignIn = () => {
 
         {/* Input Fields */}
         <View>
+
+        <Text className="text-text font-rubik-medium">Full Name</Text>
+          <TextInput
+            className="h-12 px-4 mb-4 border border-gray-300 rounded-md"
+            
+            value={fname}
+            onChangeText={setFName}
+            keyboardType="default"
+            autoCapitalize="none"
+          />
           
           <Text className="text-text font-rubik-medium">Email</Text>
           <TextInput
@@ -91,27 +110,49 @@ const SignIn = () => {
             
             </TouchableOpacity>
           </View>
+          <View className="relative mb-4">
+            <Text className="text-text font-rubik-medium">Confirm Password</Text>
+            <TextInput
+              className="h-12 px-4 border border-gray-300 rounded-md"
+             
+              value={confirmPassword}
+              onChangeText={setConfirmPassword}
+              secureTextEntry={!showCPassword}
+            />
+            {/* <TouchableOpacity
+              className="absolute right-4 top-8"
+              onPress={() => setShowPassword(!showPassword)}
+            >
+          {  showPassword ? <EyeClosedIcon color="#1ABC9C" size={22}/> : <EyeIcon color="#1ABC9C" size={22}/>}
+               
+            
+            </TouchableOpacity> */}
+          </View>
+
+           <View >
+                  <Text className="mb-2" >
+                    {!isAgent ? "Register as an agent" : <Text className="text-danger">You will be required to verify your agent status</Text>} </Text>
+                  <Switch
+                 value={isAgent} onValueChange={setIsAgent}
+                  />
+                </View>
         </View>
 
-        {/* Forgot Password */}
-        <TouchableOpacity className="items-end ">
-          <Text className="text-text font-rubik-medium">Forgot Password?</Text>
-        </TouchableOpacity>
-
+       
         {/* Login Button */}
         <TouchableOpacity
           className="h-12 mt-6 mb-4 bg-primary-300 rounded-md items-center justify-center"
-          onPress={handleLogin}
+          onPress={handleRegister}
         >
           <Text className="text-lg font-rubik-bold text-white ml-2">
-            Log In
+            Sign up
           </Text>
         </TouchableOpacity>
 
         {/* Social Login */}
-        <View className="mt-6 space-y-4">
+        {/* <View className="mt-6 space-y-4">
           <TouchableOpacity
-            onPress={handleLoginGoogle}
+            onPress={handleRegister}
             className=" border border-gray-300 rounded-md w-full py-4 mt-5"
           >
             <View className="flex flex-row items-center justify-center">
@@ -138,13 +179,13 @@ const SignIn = () => {
               </Text>
             </View>
           </TouchableOpacity>
-        </View>
+        </View> */}
 
         {/* Sign Up Link */}
         <View className="flex-row justify-center mt-6">
-          <Text className="text-gray-600">Don't have an account? </Text>
-          <TouchableOpacity onPress={ () => router.push("/register")}>
-            <Text className="text-emerald-500">Sign Up</Text>
+          <Text className="text-gray-600">Already have an account? </Text>
+          <TouchableOpacity onPress={ () => router.back()}>
+            <Text className="text-emerald-500">Login</Text>
           </TouchableOpacity>
         </View>
       </View>
@@ -152,4 +193,4 @@ const SignIn = () => {
   );
 };
 
-export default SignIn;
+export default Register;

@@ -11,6 +11,15 @@ import {
 import * as Linking from "expo-linking";
 import { openAuthSessionAsync } from "expo-web-browser";
 
+
+import { router } from "expo-router"; // Assuming you're using Expo Router
+
+function redirectUser() {
+  router.replace("/"); // Redirect to your main screen
+ 
+}
+
+
 export const config = {
   platform: "com.bysprk.roamii",
   endpoint: process.env.EXPO_PUBLIC_APPWRITE_ENDPOINT,
@@ -20,6 +29,7 @@ export const config = {
     process.env.EXPO_PUBLIC_APPWRITE_GALLERIES_COLLECTION_ID,
   reviewsCollectionId: process.env.EXPO_PUBLIC_APPWRITE_REVIEWS_COLLECTION_ID,
   agentsCollectionId: process.env.EXPO_PUBLIC_APPWRITE_AGENTS_COLLECTION_ID,
+  usersCollectionId: process.env.EXPO_PUBLIC_APPWRITE_USERS_COLLECTION_ID,
   propertiesCollectionId:
     process.env.EXPO_PUBLIC_APPWRITE_PROPERTIES_COLLECTION_ID,
   bucketId: process.env.EXPO_PUBLIC_APPWRITE_BUCKET_ID,
@@ -36,7 +46,59 @@ export const account = new Account(client);
 export const databases = new Databases(client);
 export const storage = new Storage(client);
 
-export async function login() {
+
+
+// Register User
+export async function registerUser(name: string, email: string, password: string, isAgent: boolean) {
+  try {
+    const trimmedName = name.trim();
+    if (trimmedName.length < 1 || trimmedName.length > 128)
+      throw new Error("Full name must be between 1 and 128 characters.");
+    if (!trimmedName.includes(" "))
+      throw new Error("Please enter your full name (first and last).");
+
+    const user = await account.create(ID.unique(), email, password, trimmedName);
+    if (!user) throw new Error("Failed to create user account");
+
+    if (isAgent) {
+      const agent = await databases.createDocument(
+        config.databaseId!,
+        config.agentsCollectionId!,
+        ID.unique(),
+        {
+          userId: user.$id,
+          name: trimmedName,
+          email,
+          createdAt: new Date().toISOString(),
+        }
+      );
+      if (!agent) throw new Error("Failed to add agent to collection");
+    }
+
+    return true; // Success
+  } catch (error) {
+    console.error(error);
+    return false; // Failure
+  }
+}
+
+// Login User
+export const loginUser = async (email: string, password: string) => {
+  
+  try {
+    const session = await account.createEmailPasswordSession(email, password);
+    if (!session) throw new Error("Failed to create session");
+
+    redirectUser(); // ✅ Redirect user after login
+
+    return true;
+  } catch (error) {
+    console.error(error);
+    return false;
+  }
+};
+
+export async function loginWGoogle() {
   try {
     const redirectUri = Linking.createURL("/");
 
@@ -92,7 +154,7 @@ export async function getCurrentUser() {
 
     return null;
   } catch (error) {
-    console.log(error);
+    console.log("User not authenticated:", error);
     return null;
   }
 }
