@@ -46,7 +46,10 @@ const ChatScreen = () => {
             setChats([{ id: 1, name: "John Doe", lastMessage: "Hello!" }])
           }
         >
+          <Text>
+
           Add Sample Chat
+          </Text>
         </TouchableOpacity>
       </View>
     </View>

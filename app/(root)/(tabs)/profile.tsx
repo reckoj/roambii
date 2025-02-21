@@ -15,11 +15,20 @@ import { logout } from "@/lib/appwrite";
 import icons from "@/constants/icons";
 import { settings } from "@/constants/data";
 import { useGlobalContext } from "@/lib/global-provider";
-import { ChevronDown, ChevronUp, ArrowRightFromLineIcon } from "lucide-react-native";
+import {
+  ChevronDown,
+  ChevronUp,
+  ArrowRightFromLineIcon,
+  Bell,
+  HelpCircle,
+  LucideShare2,
+  Edit2Icon,
+} from "lucide-react-native";
 import { router } from "expo-router";
+import { InviteFriends } from "@/lib/invite-friends";
 
 interface SettingsItemProp {
-  icon: ImageSourcePropType;
+  icon: typeof Bell;
   title: string;
   onPress?: () => void;
   textStyle?: string;
@@ -38,7 +47,6 @@ const SettingsItem = ({
     className="flex flex-row items-center justify-between py-3"
   >
     <View className="flex flex-row items-center gap-3">
-      <Image source={icon} className="size-6" />
       <Text className={`text-lg font-rubik-medium text-black-300 ${textStyle}`}>
         {title}
       </Text>
@@ -61,10 +69,6 @@ const Profile = () => {
     }
   };
 
-    const handlePress = () => {
-      router.push("/package-info"); // Navigate to the Login screen
-    };
-
   return (
     <SafeAreaView className="h-full bg-white">
       <ScrollView
@@ -77,25 +81,47 @@ const Profile = () => {
               source={{ uri: rawUser?.avatar }}
               className="size-44 relative rounded-full"
             />
-            {/* <TouchableOpacity className="absolute bottom-11 right-2">
-              <Image source={icons.edit} className="size-9" />
-            </TouchableOpacity> */}
+            {/* <View className="bg-primary-300 rounded-full absolute bottom-6  right-6 w-20 h-20">
+              <TouchableOpacity className="absolute bottom-6 right-6 z-50">
+                <Edit2Icon size={24} color={"#FFFFFF"} />
+                
+              </TouchableOpacity>
+            </View> */}
+            <TouchableOpacity className="p-2">
+              <Text className="text-blue-600">Change photo</Text>
+            </TouchableOpacity>
 
-            <Text className="text-2xl font-rubik-bold mt-2">
-              {rawUser?.name}
-            </Text>
+            <Text className="text-2xl font-rubik-bold">{rawUser?.name}</Text>
           </View>
         </View>
 
         <View className="flex flex-col mt-10">
-          <SettingsItem icon={icons.calendar} title="My Bookings" />
-          <SettingsItem onPress={handlePress} icon={icons.wallet} title="Payments" />
+          <SettingsItem icon={icons.calendar} title="Bookings" />
+          {/* <SettingsItem
+            onPress={() => router.push("/create-package")}
+            icon={icons.wallet}
+            title="Payments"
+          /> */}
         </View>
 
         <View className="flex flex-col mt-5 border-t pt-5 border-primary-200">
-          {settings.slice(2).map((item, index) => (
-            <SettingsItem key={index} {...item} />
-          ))}
+          {/* <Text className="text-text text-xl font-rubik">Settings</Text> */}
+          {/* <SettingsItem icon={Bell} title="Notification" />
+          <SettingsItem icon={HelpCircle} title="Help Center" /> */}
+          <SettingsItem
+            icon={LucideShare2}
+            title="Invite Friends"
+            onPress={InviteFriends}
+          />
+        </View>
+
+        <View className="flex flex-col mt-5 border-t pt-5 border-primary-200">
+          {/* <Text className="text-text text-xl font-rubik">Settings</Text> */}
+          <SettingsItem
+            onPress={() => router.push("/update-password")}
+            icon={Bell}
+            title="Change Password"
+          />
         </View>
 
         <View className="flex flex-col border-t mt-5 pt-5 border-primary-200">

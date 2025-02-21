@@ -1,9 +1,9 @@
 import { useEffect, useState } from "react";
 import { router, useLocalSearchParams,  } from "expo-router";
 import { getAgentById } from "@/lib/appwrite"; 
-import { Image, SafeAreaView, ScrollView, Text, TouchableOpacity, View,  Dimensions, Platform, StyleSheet, Modal, } from "react-native";
+import { Image, SafeAreaView, ScrollView, Text, TouchableOpacity, View,  Dimensions, Platform, StyleSheet, Modal, ActivityIndicator, } from "react-native";
 import icons from "@/constants/icons";
-import { ChevronDown, ChevronUp, ArrowRightFromLineIcon, Star, X, MessageCircle, ChevronRight  } from "lucide-react-native";
+import { Star, X, MessageCircle, ChevronRight  } from "lucide-react-native";
 
 
 type Package = {
@@ -42,7 +42,7 @@ const AgentProfile = () => {
     fetchAgent();
   }, [id]);
 
-  if (!agent) return <Text>Loading agent details...</Text>;
+  if (!agent) return <View className=" w-full h-full flex justify-center items-center"><ActivityIndicator className="text-primary-300" size="large" /></View>;
 
   // Sample data - in a real app, this would come from props or API
   const tagent = {

@@ -11,15 +11,6 @@ import {
 import * as Linking from "expo-linking";
 import { openAuthSessionAsync } from "expo-web-browser";
 
-
-import { router } from "expo-router"; // Assuming you're using Expo Router
-
-function redirectUser() {
-  router.replace("/"); // Redirect to your main screen
- 
-}
-
-
 export const config = {
   platform: "com.bysprk.roamii",
   endpoint: process.env.EXPO_PUBLIC_APPWRITE_ENDPOINT,
@@ -46,10 +37,36 @@ export const account = new Account(client);
 export const databases = new Databases(client);
 export const storage = new Storage(client);
 
+// ✅ Function to check if email is already registered
+async function checkEmailExists(email: string) {
+  try {
+    const existingUser = await databases.listDocuments(
+      config.databaseId!,
+      config.usersCollectionId!,
+      [Query.equal("email", email)]
+    );
 
+    return existingUser.documents.length > 0;
+  } catch (error) {
+    console.error("Error checking email:", error);
+    return false;
+  }
+}
 
-// Register User
-export async function registerUser(name: string, email: string, password: string, isAgent: boolean) {
+// ✅ Function to hash passwords before storing them
+// async function hashPassword(password: string) {
+//   const salt = await bcrypt.genSalt(10);
+//   return await bcrypt.hash(password, salt);
+// }
+
+// ✅ Register User with Validations
+export async function registerUser(
+  name: string,
+  email: string,
+  password: string,
+  isAgent: boolean,
+  cPassword: string
+) {
   try {
     const trimmedName = name.trim();
     if (trimmedName.length < 1 || trimmedName.length > 128)
@@ -57,46 +74,100 @@ export async function registerUser(name: string, email: string, password: string
     if (!trimmedName.includes(" "))
       throw new Error("Please enter your full name (first and last).");
 
-    const user = await account.create(ID.unique(), email, password, trimmedName);
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(email)) throw new Error("Invalid email format.");
+
+    if (password.length < 8 || password.length > 20)
+      throw new Error("Password must be between 8 and 20 characters.");
+    if (cPassword != password) {
+      throw new Error("Password must match.");
+    }
+
+    // Check if email is already registered
+    if (await checkEmailExists(email))
+      throw new Error("An account with this email already exists.");
+
+    // Create user in Appwrite Authentication
+    const user = await account.create(
+      ID.unique(),
+      email,
+      password,
+      trimmedName
+    );
     if (!user) throw new Error("Failed to create user account");
 
+    // Store user in users collection
+    const newUser = await databases.createDocument(
+      config.databaseId!,
+      config.usersCollectionId!,
+      ID.unique(),
+      {
+        name: trimmedName,
+        email,
+        password,
+        isAgent,
+      }
+    );
+
+    if (!newUser) throw new Error("Failed to add user to collection");
+
+    console.log("User added to users collection:", newUser);
+
     if (isAgent) {
+      // Store agent in agent collection
       const agent = await databases.createDocument(
         config.databaseId!,
         config.agentsCollectionId!,
         ID.unique(),
         {
-          userId: user.$id,
           name: trimmedName,
           email,
-          createdAt: new Date().toISOString(),
+          password,
+          isAgent,
         }
       );
       if (!agent) throw new Error("Failed to add agent to collection");
     }
 
-    return true; // Success
-  } catch (error) {
-    console.error(error);
-    return false; // Failure
+    return { success: true, message: "Registration successful!" };
+  } catch (error: any) {
+    return { success: false, message: error.message };
   }
 }
 
-// Login User
-export const loginUser = async (email: string, password: string) => {
-  
+// ✅ Login User with Error Handling
+export async function loginUser(email: string, password: string) {
   try {
+    // Validate email format
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(email)) throw new Error("Invalid email format.");
+
+    // Fetch user from the database
+    const userQuery = await databases.listDocuments(
+      config.databaseId!,
+      config.usersCollectionId!,
+      [Query.equal("email", email)]
+    );
+
+    if (userQuery.documents.length === 0) {
+      throw new Error("User not found. Please register.");
+    }
+
+    const user = userQuery.documents[0];
+
+    // Create Appwrite session
     const session = await account.createEmailPasswordSession(email, password);
     if (!session) throw new Error("Failed to create session");
 
-    redirectUser(); // ✅ Redirect user after login
+    console.log("User session updated:", user);
 
-    return true;
-  } catch (error) {
-    console.error(error);
-    return false;
+    return { success: true, message: "Login successful!" };
+  } catch (error: any) {
+    // throw new Error("Login error:", error.message);
+
+    return { success: false, message: error.message };
   }
-};
+}
 
 export async function loginWGoogle() {
   try {
@@ -140,14 +211,55 @@ export async function logout() {
   }
 }
 
+export async function updateUserPassword(
+  currentPassword: string,
+  newPassword: string,
+  confirmPassword: string
+) {
+  try {
+    // Validate new password
+    if (newPassword.length < 8 || newPassword.length > 20) {
+      throw new Error("Password must be between 8 and 20 characters.");
+    }
+
+    if (newPassword !== confirmPassword) {
+      throw new Error("Passwords do not match.");
+    }
+
+    // Update password in Appwrite
+    await account.updatePassword(newPassword, currentPassword);
+
+    return { success: true, message: "Password updated successfully!" };
+  } catch (error: any) {
+    console.error("Password update error:", error.message);
+    return { success: false, message: error.message };
+  }
+}
+
+export async function checkIsAgent(userId: string) {
+  try {
+    const result = await databases.listDocuments(
+      config.databaseId!,
+      config.agentsCollectionId!,
+      [Query.equal("email", userId)]
+    );
+    return result.documents.length > 0;
+  } catch (error) {
+    console.error("Error checking agent status:", error);
+    return false;
+  }
+}
+
 export async function getCurrentUser() {
   try {
     const result = await account.get();
     if (result.$id) {
       const userAvatar = avatar.getInitials(result.name);
+      const isAgent = await checkIsAgent(result.email);
 
       return {
         ...result,
+        isAgent,
         avatar: userAvatar.toString(),
       };
     }
@@ -213,7 +325,7 @@ export async function getProperties({
   }
 }
 
-// write function to get property by id
+// get property by id
 export async function getPropertyById({ id }: { id: string }) {
   try {
     const result = await databases.getDocument(
@@ -228,7 +340,7 @@ export async function getPropertyById({ id }: { id: string }) {
   }
 }
 
-// Function to get agent by ID
+// get agent by ID
 export async function getAgentById({ id }: { id: string }) {
   try {
     const result = await databases.getDocument(
@@ -243,8 +355,7 @@ export async function getAgentById({ id }: { id: string }) {
   }
 }
 
-
-// Function to get all agents
+// get all agents
 export async function getAgents() {
   try {
     const result = await databases.listDocuments(

@@ -3,21 +3,20 @@ import {
   Button,
   FlatList,
   Image,
+  ScrollView,
   StatusBar,
   Text,
   TouchableOpacity,
   View,
 } from "react-native";
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import {
-  ExternalPathString,
-  RelativePathString,
+
   router,
   useLocalSearchParams,
 } from "expo-router";
 import { SafeAreaView } from "react-native-safe-area-context";
 
-import icons from "@/constants/icons";
 
 import Search from "@/components/Search";
 import Filters from "@/components/Filters";
@@ -29,6 +28,9 @@ import { useGlobalContext } from "@/lib/global-provider";
 import { getLatestProperties, getProperties } from "@/lib/appwrite";
 import seed from "@/lib/seed";
 import RecommendedAgents from "@/components/RecommendedAgents";
+import TripCard from "@/components/TripCard";
+import TripDetailView from "@/components/TripDetailView";
+import Bookings from "@/app/bookings";
 
 const getGreeting = () => {
   const currentHour = new Date().getHours();
@@ -41,12 +43,16 @@ const getGreeting = () => {
     return "Good Evening";
   }
 };
+
 const Home = () => {
-  const { rawUser } = useGlobalContext();
+  const { rawUser, isLogged, isAgent } = useGlobalContext();
   const greeting = getGreeting();
+ 
+
+  
 
   const params = useLocalSearchParams<{ query?: string; filter?: string }>();
-  <StatusBar backgroundColor="#FF5733" barStyle="light-content" />
+  // <StatusBar backgroundColor="#FF5733" barStyle="light-content" />
 
   const { data: latestProperties, loading: latestPropertiesLoading } =
     useAppwrite({
@@ -76,10 +82,12 @@ const Home = () => {
   }, [params.filter, params.query]);
 
   const handleCardPress = (id: string) => router.push(`/properties/${id}`);
-  // const handleCardPress = (id: string) => router.push(`/profile`);
+  
 
   return (
-    <SafeAreaView className="h-full bg-white">
+    <>
+   { !isAgent ? <SafeAreaView className="h-full bg-white">
+    <StatusBar backgroundColor="#f8f9fa" barStyle="dark-content" />
        {/* <Button title="seed" onPress={seed} />  */}
       <FlatList
         data={properties}
@@ -111,7 +119,7 @@ const Home = () => {
                   <Text className="text-xs font-rubik text-black-100">
                     {greeting}
                   </Text>
-                  <Text className="text-base font-rubik-medium text-black-300">
+                  <Text className="text-sm font-rubik text-text">
                     {rawUser?.name.split(" ")[0]}
                   </Text>
                 </View>
@@ -119,7 +127,7 @@ const Home = () => {
               {/* <Image source={icons.bell} className="size-6" /> */}
             </View>
 
-            <Search />
+            {/* <Search /> */}
             
 
             <View className="my-5">
@@ -185,7 +193,10 @@ const Home = () => {
           </View>
         )}
       />
-    </SafeAreaView>
+    </SafeAreaView> :
+    <Bookings/>
+    }
+    </>
   );
 };
 

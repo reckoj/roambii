@@ -1,5 +1,5 @@
 import images from "@/constants/images";
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import {
   View,
   Text,
@@ -7,6 +7,7 @@ import {
   TouchableOpacity,
   Image,
   Alert,
+  ActivityIndicator,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { loginUser, loginWGoogle } from "@/lib/appwrite";
@@ -16,32 +17,35 @@ import { Redirect, router } from "expo-router";
 import { EyeClosedIcon, EyeIcon } from "lucide-react-native";
 
 const SignIn = () => {
+  const { refetch, loading, isLogged } = useGlobalContext();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
-  const { refetch, loading, isLogged } = useGlobalContext();
 
+  useEffect(() => {
+    if (!loading && isLogged) {
+      router.replace("/");
+    }
+  }, [loading, isLogged, router]);
 
   const handleLogin = async () => {
     try {
-      const session = await loginUser(email, password);
-      Alert.alert("Login Successful", "You are now logged in!");
-      console.log(session);
-   
+      const res = await loginUser(email, password);
+      if (res.success) {
+        await refetch(); // Wait for the refetch to complete
+      } else {
+        Alert.alert("Login Failed", "Invalid credentials");
+      }
     } catch (error: any) {
       Alert.alert("Login Failed", error.message);
     }
   };
 
- 
-
-  if (!loading && isLogged) return <Redirect href="/" />;
   const handleLoginGoogle = async () => {
     const res = await loginWGoogle();
 
     if (res) {
       refetch();
-      console.log("login Success");
     } else {
       Alert.alert("Error", "Failed to log in");
     }
@@ -50,7 +54,6 @@ const SignIn = () => {
   return (
     <SafeAreaView className="flex-1 bg-white">
       <View className="flex-1 px-6 pt-10">
-        
         <View className="items-center mb-10">
           <Image
             source={images.roamiiLogo}
@@ -62,11 +65,9 @@ const SignIn = () => {
 
         {/* Input Fields */}
         <View>
-          
           <Text className="text-text font-rubik-medium">Email</Text>
           <TextInput
             className="h-12 px-4 mb-4 border border-gray-300 rounded-md"
-            
             value={email}
             onChangeText={setEmail}
             keyboardType="email-address"
@@ -77,7 +78,6 @@ const SignIn = () => {
             <Text className="text-text font-rubik-medium">Password</Text>
             <TextInput
               className="h-12 px-4 border border-gray-300 rounded-md"
-             
               value={password}
               onChangeText={setPassword}
               secureTextEntry={!showPassword}
@@ -86,15 +86,20 @@ const SignIn = () => {
               className="absolute right-4 top-8"
               onPress={() => setShowPassword(!showPassword)}
             >
-          {  showPassword ? <EyeClosedIcon color="#1ABC9C" size={22}/> : <EyeIcon color="#1ABC9C" size={22}/>}
-               
-            
+              {showPassword ? (
+                <EyeClosedIcon color="#1ABC9C" size={22} />
+              ) : (
+                <EyeIcon color="#1ABC9C" size={22} />
+              )}
             </TouchableOpacity>
           </View>
         </View>
 
         {/* Forgot Password */}
-        <TouchableOpacity className="items-end ">
+        <TouchableOpacity
+          className="items-end "
+          onPress={() => router.push("/forgot-password")}
+        >
           <Text className="text-text font-rubik-medium">Forgot Password?</Text>
         </TouchableOpacity>
 
@@ -143,7 +148,7 @@ const SignIn = () => {
         {/* Sign Up Link */}
         <View className="flex-row justify-center mt-6">
           <Text className="text-gray-600">Don't have an account? </Text>
-          <TouchableOpacity onPress={ () => router.push("/register")}>
+          <TouchableOpacity onPress={() => router.push("/register")}>
             <Text className="text-emerald-500">Sign Up</Text>
           </TouchableOpacity>
         </View>

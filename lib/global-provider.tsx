@@ -9,7 +9,8 @@ interface GlobalContextType {
   isLogged: boolean;
   rawUser: User | null;
   loading: boolean;
-  refetch: () => void;
+  refetch: (...args: any[]) => Promise<void>;
+  isAgent: boolean;
 }
 
 interface User {
@@ -17,6 +18,7 @@ interface User {
   name: string;
   email: string;
   avatar: string;
+  isAgent: boolean;
 }
 
 const GlobalContext = createContext<GlobalContextType | undefined>(undefined);
@@ -42,6 +44,7 @@ export const GlobalProvider = ({ children }: GlobalProviderProps) => {
       }
     : null;
   const isLogged = !!user;
+  const isAgent = user?.isAgent || false;
 
   return (
     <GlobalContext.Provider
@@ -49,6 +52,7 @@ export const GlobalProvider = ({ children }: GlobalProviderProps) => {
         isLogged,
         rawUser,
         loading,
+        isAgent,
         refetch,
       }}
     >

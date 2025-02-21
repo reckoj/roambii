@@ -1,35 +1,35 @@
 import { Tabs } from "expo-router";
-import { Image, ImageSourcePropType, Text, View } from "react-native";
-import { PlusCircle } from "lucide-react-native";
-import icons from "@/constants/icons";
+import {Text, View } from "react-native";
+import {  CalendarDaysIcon, Home, MessageCircleIcon, PlusCircle, User } from "lucide-react-native";
+import { useGlobalContext } from "@/lib/global-provider";
 
 
 // Regular TabIcon for Image sources
-const TabIcon = ({
-  focused,
-  icon,
-  title,
-}: {
-  focused: boolean;
-  icon: ImageSourcePropType;
-  title: string;
-}) => (
-  <View className="flex-1 mt-3 flex flex-col items-center">
-    <Image
-      source={icon}
-      tintColor={focused ? "#1ABC9C" : "#95A5A6"}
-      resizeMode="contain"
-      className="size-6"
-    />
-    <Text
-      className={`${
-        focused ? "text-primary-300 font-rubik-medium" : "text-grey font-rubik"
-      } text-xs w-full text-center mt-1`}
-    >
-      {title}
-    </Text>
-  </View>
-);
+// const TabIcon = ({
+//   focused,
+//   icon,
+//   title,
+// }: {
+//   focused: boolean;
+//   icon: ImageSourcePropType;
+//   title: string;
+// }) => (
+//   <View className="flex-1 mt-3 flex flex-col items-center">
+//     <Image
+//       source={icon}
+//       tintColor={focused ? "#1ABC9C" : "#95A5A6"}
+//       resizeMode="contain"
+//       className="size-6"
+//     />
+//     <Text
+//       className={`${
+//         focused ? "text-primary-300 font-rubik-medium" : "text-grey font-rubik"
+//       } text-xs w-full text-center mt-1`}
+//     >
+//       {title}
+//     </Text>
+//   </View>
+// );
 
 // New TabIcon for Lucide icons
 const LucideTabIcon = ({
@@ -57,75 +57,79 @@ const LucideTabIcon = ({
 );
 
 const TabsLayout = () => {
-  // const { user } = useAuth(); // Add your auth logic
-  const isAgent = true; // Add your role check logic
+
+  const { isLogged, rawUser, isAgent } = useGlobalContext();
 
   return (
-    <Tabs
-      screenOptions={{
-        tabBarShowLabel: false,
-        tabBarStyle: {
-          backgroundColor: "white",
-          position: "absolute",
-          borderTopColor: "#0061FF1A",
-          borderTopWidth: 1,
-          minHeight: 70,
-        },
+  <Tabs
+    screenOptions={{
+      tabBarShowLabel: false,
+      tabBarStyle: {
+        backgroundColor: "white",
+        position: "absolute",
+        borderTopColor: "#0061FF1A",
+        borderTopWidth: 1,
+        minHeight: 70,
+      },
+    }}
+  >
+    <Tabs.Screen
+      name={"index"}
+      options={{
+        title: "Home",
+        headerShown: false,
+        tabBarIcon: ({ focused }) => (
+          <LucideTabIcon focused={focused} Icon={Home} title="Home" />
+        ),
       }}
-    >
-      <Tabs.Screen
-        name="index"
+    />
+    {/* <Tabs.Screen
+      name="bookings"
+      options={{
+        title: "Bookings",
+        headerShown: false,
+        tabBarIcon: ({ focused }) => (
+          <LucideTabIcon focused={focused} Icon={CalendarDaysIcon} title="Bookings" />
+        ),
+      }}
+    /> */}
+   
+      {/* <Tabs.Screen
+        name="create-package"
         options={{
-          title: "Home",
+          title: "Create Package",
           headerShown: false,
           tabBarIcon: ({ focused }) => (
-            <TabIcon focused={focused} icon={icons.home} title="Home" />
+            <LucideTabIcon focused={focused} Icon={PlusCircle} title="New Package" />
           ),
         }}
-      />
-      <Tabs.Screen
-        name="bookings"
-        options={{
-          title: "Bookings",
-          headerShown: false,
-          tabBarIcon: ({ focused }) => (
-            <TabIcon focused={focused} icon={icons.calendar} title="Bookings" />
-          ),
-        }}
-      />
-      {isAgent  && (
-        <Tabs.Screen
-          name="package-info"
-          options={{
-            title: "Create Package",
-            headerShown: false,
-            tabBarIcon: ({ focused }) => (
-              <LucideTabIcon focused={focused} Icon={PlusCircle} title="Create Package" />
-            ),
-          }}
-        />
-      )}
-      <Tabs.Screen
-        name="chat"
-        options={{
-          title: "Messages",
-          headerShown: false,
-          tabBarIcon: ({ focused }) => (
-            <TabIcon focused={focused} icon={icons.chat} title="Messages" />
-          ),
-        }}
-      />
-      <Tabs.Screen
-        name="profile"
-        options={{
-          title: "Profile",
-          headerShown: false,
-          tabBarIcon: ({ focused }) => (
-            <TabIcon focused={focused} icon={icons.person} title="Profile" />
-          ),
-        }}
-      />
-    </Tabs>
+      /> */}
+   
+    <Tabs.Screen
+      name="chat"
+      options={{
+        title: "Messages",
+        headerShown: false,
+        tabBarIcon: ({ focused }) => (
+          <LucideTabIcon focused={focused} Icon={MessageCircleIcon} title="Messages" />
+        ),
+      }}
+    />
+    <Tabs.Screen
+      name="profile"
+      options={{
+        title: "Profile",
+        headerShown: false,
+        tabBarIcon: ({ focused }) => (
+          <LucideTabIcon focused={focused} Icon={User} title="Profile" />
+        ),
+      }}
+    /> 
+  </Tabs>
+   
+   
+  
+   
   );
 };
 
