@@ -11,7 +11,7 @@ const COLLECTIONS = {
   AGENT: config.agentsCollectionId,
   REVIEWS: config.reviewsCollectionId,
   GALLERY: config.galleriesCollectionId,
-  PROPERTY: config.propertiesCollectionId,
+  PACKAGE: config.propertiesCollectionId,
 };
 
 const propertyTypes = [
@@ -98,9 +98,9 @@ async function seed() {
     // }
     // console.log(`Seeded ${agents.length} agents.`);
 
-     // Seed Agents
+    // Seed Agents
 
-     const agentNames = [
+    const agentNames = [
       "Harry Johnson",
       "Megan Smith",
       "Cristiano Ronaldo",
@@ -109,7 +109,7 @@ async function seed() {
       "Ryan Reynolds",
       "Kim Lee",
     ];
-    
+
     // Seed Agents
     // const agents = [];
     // for (let i = 0; i < agentNames.length; i++) {
@@ -125,25 +125,24 @@ async function seed() {
     //   );
     //   agents.push(agent);
     // }
-    
+
     // console.log(`Seeded ${agents.length} agents.`);
-     const agents = [];
-     for (let i = 0; i < agentNames.length; i++) {
-       const agent = await databases.createDocument(
-         config.databaseId!,
-         COLLECTIONS.AGENT!,
-         ID.unique(),
-         {
-           name: agentNames[i],
-           email: `${agentNames[i].split(" ")[0].toLowerCase()}@example.com`,
-           avatar: agentImages[Math.floor(Math.random() * agentImages.length)],
+    const agents = [];
+    for (let i = 0; i < agentNames.length; i++) {
+      const agent = await databases.createDocument(
+        config.databaseId!,
+        COLLECTIONS.AGENT!,
+        ID.unique(),
+        {
+          name: agentNames[i],
+          email: `${agentNames[i].split(" ")[0].toLowerCase()}@example.com`,
+          avatar: agentImages[Math.floor(Math.random() * agentImages.length)],
           //  description: agentDescriptions[i % agentDescriptions.length],
-          
-         }
-       );
-       agents.push(agent);
-     }
-     console.log(`Seeded ${agents.length} agents.`);
+        }
+      );
+      agents.push(agent);
+    }
+    console.log(`Seeded ${agents.length} agents.`);
 
     // Seed Reviews
     const reviews = [];
@@ -197,7 +196,8 @@ async function seed() {
 
       const property = await databases.createDocument(
         config.databaseId!,
-        COLLECTIONS.PROPERTY!,
+        COLLECTIONS.PACKAGE!,
+        // COLLECTIONS.PACKAGE-INFO!,
         ID.unique(),
         {
           name: ``,

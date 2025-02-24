@@ -11,6 +11,7 @@ import noResult from "@/assets/images/no-result.png";
 import roamiiLogo from "@/assets/images/splash-icon.png";
 import bahamas from "@/assets/images/bahamas.jpg";
 import nomessages from "@/assets/images/no-chat.png";
+import pudgy from "@/assets/jif/pudgy.gif";
 
 export default {
   onboarding,
@@ -25,5 +26,6 @@ export default {
   noResult,
   roamiiLogo,
   bahamas,
-  nomessages
+  nomessages,
+  pudgy,
 };

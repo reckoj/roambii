@@ -10,6 +10,7 @@ import {
 } from "react-native-appwrite";
 import * as Linking from "expo-linking";
 import { openAuthSessionAsync } from "expo-web-browser";
+import { PackageFormData } from "./packageFormData";
 
 export const config = {
   platform: "com.bysprk.roamii",
@@ -24,6 +25,8 @@ export const config = {
   propertiesCollectionId:
     process.env.EXPO_PUBLIC_APPWRITE_PROPERTIES_COLLECTION_ID,
   bucketId: process.env.EXPO_PUBLIC_APPWRITE_BUCKET_ID,
+  chatCollectionId: process.env.EXPO_PUBLIC_APPWRITE_MESSAGE_COLLECTION_ID,
+  packageImagesId: process.env.EXPO_PUBLIC_APPWRITE_PACKAGEIMAGE_BUCKET_ID,
 };
 
 export const client = new Client();
@@ -368,3 +371,134 @@ export async function getAgents() {
     return { documents: [] }; // Return empty array to prevent crashes
   }
 }
+
+/**
+ * Uploads an image to Appwrite storage and returns the file URL.
+ * @param fileUri The local file URI (from ImagePicker).
+ * @param bucketId The Appwrite storage bucket ID.
+ * @returns The URL of the uploaded image.
+ */
+export async function uploadPimage(fileUri: string, bucketId: string) {
+  try {
+    const fileInfo = await fetch(fileUri);
+    const fileBlob = await fileInfo.blob();
+
+    const fileUpload = {
+      name: `image_${Date.now()}.jpg`,
+      type: "image/jpeg",
+      uri: fileUri,
+      size: fileBlob.size,
+    };
+
+    // Upload file to Appwrite Storage
+    const uploadedFile = await storage.createFile(
+      bucketId,
+      ID.unique(),
+      fileUpload
+    );
+
+    // Generate public URL for the file
+    const fileUrl = storage.getFilePreview(bucketId, uploadedFile.$id);
+
+    return fileUrl;
+  } catch (error) {
+    console.error("Upload failed:", error);
+    throw new Error("Failed to upload image.");
+  }
+}
+
+/**
+ * Updates the user profile with an avatar URL in the Appwrite database.
+ * @param userId The Appwrite user ID.
+ * @param avatarUrl The URL of the uploaded avatar.
+ */
+export async function updateUserAvatar(userId: string, avatarUrl: string) {
+  try {
+    await databases.updateDocument(
+      config.databaseId!,
+      config.usersCollectionId!,
+      userId,
+      { avatar: avatarUrl }
+    );
+  } catch (error) {
+    console.error("Failed to update user avatar:", error);
+    throw new Error("Failed to update user profile.");
+  }
+}
+export const uploadPackageImage = async (
+  imageUri: string,
+  bucketId: string
+) => {
+  try {
+    const fileInfo = await fetch(imageUri);
+    const fileBlob = await fileInfo.blob();
+
+    const fileUpload = {
+      name: `image_${Date.now()}.jpg`,
+      type: "image/jpeg",
+      uri: imageUri,
+      size: fileBlob.size,
+    };
+
+    // Upload file to Appwrite Storage
+    const uploadedFile = await storage.createFile(
+      bucketId,
+      ID.unique(),
+      fileUpload
+    );
+
+    // Generate public URL for the file
+    const fileUrl = storage.getFilePreview(bucketId, uploadedFile.$id);
+
+    return fileUrl;
+  } catch (error) {
+    console.error("Upload failed:", error);
+    throw new Error("Failed to upload image.");
+  }
+};
+
+export const createPackageListing = async (formData: PackageFormData) => {
+  try {
+    let imageUrl;
+    if (formData.image) {
+      imageUrl = await uploadPimage(formData.image, config.packageImagesId!);
+    }
+
+    // Create Flight Info entry
+    const flightInfo = await databases.createDocument(
+      config.databaseId!,
+      "flight-info",
+      ID.unique(),
+      {
+        departure_from: formData.departureInfo.from,
+        departure_time: formData.departureInfo.time.toISOString(),
+        arrival_to: formData.arrivalInfo.to,
+        arrival_time: formData.arrivalInfo.time.toISOString(),
+        return_time: formData.returnTime.toISOString(),
+      }
+    );
+
+    // Create Package Info entry
+    const packageData = await databases.createDocument(
+      config.databaseId!,
+      "package-info",
+      ID.unique(),
+      {
+        name: "Custom Package",
+        description: formData.description,
+        price: parseInt(formData.price),
+        type: formData.accommodationType,
+        allinclusive: formData.isAllInclusive,
+        "room-type": formData.roomType,
+        image: imageUrl, // Store public image URL instead of file ID
+        flight_info: flightInfo.$id,
+      }
+    );
+
+    alert("Package listing created successfully!");
+    return packageData;
+  } catch (error) {
+    console.error("Failed to create package listing:", error);
+    alert("Failed to create package listing. Please try again.");
+  }
+};

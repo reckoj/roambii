@@ -42,7 +42,7 @@ interface DatePickerState {
   return: boolean;
 }
 
-const RealEstatePackageForm = () => {
+const PackageForm = () => {
   const [formData, setFormData] = useState<PackageFormData>({
     image: "",
     description: "",
@@ -166,15 +166,6 @@ const RealEstatePackageForm = () => {
         >
           <Image source={icons.backArrow} className="size-8" />
         </TouchableOpacity>
-
-        {/* <View className="flex flex-row items-center gap-3">
-                        <Image
-                          source={icons.heart}
-                          className="size-7"
-                          tintColor={"#191D31"}
-                        />
-                        <Image source={icons.send} className="size-7" />
-                      </View> */}
       </View>
       <ScrollView style={styles.container}>
         <Text style={styles.title}>Create New Package Listing</Text>
@@ -196,7 +187,7 @@ const RealEstatePackageForm = () => {
 
         {/* Description */}
         <View style={styles.section}>
-          <Text style={styles.label}>Description *</Text>
+          <Text style={styles.label}>Property Description *</Text>
           <TextInput
             style={styles.textArea}
             multiline
@@ -211,7 +202,7 @@ const RealEstatePackageForm = () => {
 
         {/* Price */}
         <View style={styles.section}>
-          <Text style={styles.label}>Price *</Text>
+          <Text style={styles.label}>Package Price *</Text>
           <TextInput
             style={styles.input}
             keyboardType="numeric"
@@ -481,4 +472,4 @@ const styles = StyleSheet.create({
   },
 });
 
-export default RealEstatePackageForm;
+export default PackageForm;

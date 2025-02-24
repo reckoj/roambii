@@ -25,7 +25,9 @@ const ChatScreen = () => {
             className="w-60 h-60 mb-4"
             resizeMode="contain"
           />
-            <Text className="text-lg font-semibold text-gray-500">You have no messages</Text>
+          <Text className="text-lg font-semibold text-gray-500">
+            You have no messages
+          </Text>
         </View>
       ) : (
         <FlatList
@@ -46,10 +48,7 @@ const ChatScreen = () => {
             setChats([{ id: 1, name: "John Doe", lastMessage: "Hello!" }])
           }
         >
-          <Text>
-
-          Add Sample Chat
-          </Text>
+          <Text>Add Sample Chat</Text>
         </TouchableOpacity>
       </View>
     </View>

@@ -57,54 +57,49 @@ export const featuredCards = [
 
 export const agents = [
   {
-    
     name: "Harry N",
     email: "harry@example.com",
     avatar: images,
-    description: "An experienced agent specializing in luxury houses and villas."
+    description:
+      "An experienced agent specializing in luxury houses and villas.",
   },
   {
-    
     name: "Megan B",
     email: "megan@example.com",
     avatar: images,
-    description: "Focused on urban condos and stylish apartments."
+    description: "Focused on urban condos and stylish apartments.",
   },
   {
-    
     name: "Ronaldo R",
     email: "ronaldo@example.com",
     avatar: images,
-    description: "Expert in duplexes and family-friendly homes."
+    description: "Expert in duplexes and family-friendly homes.",
   },
   {
-    
     name: "Messi M",
     email: "messi@example.com",
     avatar: images,
-    description: "Dedicated to helping clients find cozy studios and compact homes."
+    description:
+      "Dedicated to helping clients find cozy studios and compact homes.",
   },
   {
-    
     name: "Anita N",
     email: "anita@example.com",
     avatar: images,
-    description: "Specialist in villas and premium real estate."
+    description: "Specialist in villas and premium real estate.",
   },
   {
-    
     name: "Ryan J",
     email: "ryan@example.com",
     avatar: images,
-    description: "Focused on apartments in urban and suburban areas."
+    description: "Focused on apartments in urban and suburban areas.",
   },
   {
-   
     name: "Kim K",
     email: "kim@example.com",
     avatar: images,
-    description: "A trusted name in townhomes and multi-family properties."
-  }
+    description: "A trusted name in townhomes and multi-family properties.",
+  },
 ];
 
 export const categories = [
@@ -118,8 +113,6 @@ export const categories = [
   { title: "Kim", category: "Townhomes" },
   { title: "See All", category: "Others" },
 ];
-
-
 
 export const settings = [
   {
@@ -162,6 +155,9 @@ export const facilities = [
     icon: icons.laundry,
   },
   {
+    title: "Wet Bar",
+  },
+  {
     title: "Car Parking",
     icon: icons.carPark,
   },
@@ -169,10 +165,7 @@ export const facilities = [
     title: "Sports Center",
     icon: icons.run,
   },
-  {
-    title: "Cutlery",
-    icon: icons.cutlery,
-  },
+
   {
     title: "Gym",
     icon: icons.dumbell,

@@ -10,13 +10,8 @@ import {
   View,
 } from "react-native";
 import { useEffect, useState } from "react";
-import {
-
-  router,
-  useLocalSearchParams,
-} from "expo-router";
+import { router, useLocalSearchParams } from "expo-router";
 import { SafeAreaView } from "react-native-safe-area-context";
-
 
 import Search from "@/components/Search";
 import Filters from "@/components/Filters";
@@ -47,9 +42,6 @@ const getGreeting = () => {
 const Home = () => {
   const { rawUser, isLogged, isAgent } = useGlobalContext();
   const greeting = getGreeting();
- 
-
-  
 
   const params = useLocalSearchParams<{ query?: string; filter?: string }>();
   // <StatusBar backgroundColor="#FF5733" barStyle="light-content" />
@@ -82,120 +74,124 @@ const Home = () => {
   }, [params.filter, params.query]);
 
   const handleCardPress = (id: string) => router.push(`/properties/${id}`);
-  
 
   return (
     <>
-   { !isAgent ? <SafeAreaView className="h-full bg-white">
-    <StatusBar backgroundColor="#f8f9fa" barStyle="dark-content" />
-       {/* <Button title="seed" onPress={seed} />  */}
-      <FlatList
-        data={properties}
-        numColumns={2}
-        renderItem={({ item }) => (
-          <Card item={item} onPress={() => handleCardPress(item.$id)} />
-        )}
-        keyExtractor={(item) => item.$id}
-        contentContainerClassName="pb-32"
-        columnWrapperClassName="flex gap-5 px-5"
-        showsVerticalScrollIndicator={false}
-        ListEmptyComponent={
-          loading ? (
-            <ActivityIndicator size="large" className="text-primary-300 mt-5" />
-          ) : (
-            <NoResults />
-          )
-        }
-        ListHeaderComponent={() => (
-          <View className="px-5">
-            <View className="flex flex-row items-center justify-between mt-5">
-              <View className="flex flex-row">
-                <Image
-                  source={{ uri: rawUser?.avatar }}
-                  className="size-12 rounded-full"
+      {!isAgent ? (
+        <SafeAreaView className="h-full bg-white">
+          <StatusBar backgroundColor="#f8f9fa" barStyle="dark-content" />
+          {/* <Button title="seed" onPress={seed} />  */}
+          <FlatList
+            data={properties}
+            numColumns={2}
+            renderItem={({ item }) => (
+              <Card item={item} onPress={() => handleCardPress(item.$id)} />
+            )}
+            keyExtractor={(item) => item.$id}
+            contentContainerClassName="pb-32"
+            columnWrapperClassName="flex gap-5 px-5"
+            showsVerticalScrollIndicator={false}
+            ListEmptyComponent={
+              loading ? (
+                <ActivityIndicator
+                  size="large"
+                  className="text-primary-300 mt-5"
                 />
-
-                <View className="flex flex-col items-start ml-2 justify-center">
-                  <Text className="text-xs font-rubik text-black-100">
-                    {greeting}
-                  </Text>
-                  <Text className="text-sm font-rubik text-text">
-                    {rawUser?.name.split(" ")[0]}
-                  </Text>
-                </View>
-              </View>
-              {/* <Image source={icons.bell} className="size-6" /> */}
-            </View>
-
-            {/* <Search /> */}
-            
-
-            <View className="my-5">
-              <View className="flex flex-row items-center justify-between">
-                <Text className="text-xl font-rubik-bold text-text">
-                  Featured
-                </Text>
-                <TouchableOpacity>
-                  <Text className="text-base font-rubik-bold text-primary-300">
-                    See all
-                  </Text>
-                </TouchableOpacity>
-              </View>
-
-              {latestPropertiesLoading ? (
-                <ActivityIndicator size="large" className="text-primary-300" />
-              ) : !latestProperties || latestProperties.length === 0 ? (
-                <NoResults />
               ) : (
-                <FlatList
-                  data={latestProperties}
-                  renderItem={({ item }) => (
-                    <FeaturedCard
-                      item={item}
-                      onPress={() => handleCardPress(item.$id)}
+                <NoResults />
+              )
+            }
+            ListHeaderComponent={() => (
+              <View className="px-5">
+                <View className="flex flex-row items-center justify-between mt-5">
+                  <View className="flex flex-row">
+                    <Image
+                      source={{ uri: rawUser?.avatar }}
+                      className="size-12 rounded-full"
+                    />
+
+                    <View className="flex flex-col items-start ml-2 justify-center">
+                      <Text className="text-xs font-rubik text-black-100">
+                        {greeting}
+                      </Text>
+                      <Text className="text-sm font-rubik text-text">
+                        {rawUser?.name.split(" ")[0]}
+                      </Text>
+                    </View>
+                  </View>
+                  {/* <Image source={icons.bell} className="size-6" /> */}
+                </View>
+
+                {/* <Search /> */}
+
+                <View className="my-5">
+                  <View className="flex flex-row items-center justify-between">
+                    <Text className="text-xl font-rubik-bold text-text">
+                      Featured
+                    </Text>
+                    <TouchableOpacity onPress={() => router.push("/featured")}>
+                      <Text className="text-base font-rubik-bold text-primary-300">
+                        See all
+                      </Text>
+                    </TouchableOpacity>
+                  </View>
+
+                  {latestPropertiesLoading ? (
+                    <ActivityIndicator
+                      size="large"
+                      className="text-primary-300"
+                    />
+                  ) : !latestProperties || latestProperties.length === 0 ? (
+                    <NoResults />
+                  ) : (
+                    <FlatList
+                      data={latestProperties}
+                      renderItem={({ item }) => (
+                        <FeaturedCard
+                          item={item}
+                          onPress={() => handleCardPress(item.$id)}
+                        />
+                      )}
+                      keyExtractor={(item) => item.$id}
+                      horizontal
+                      bounces={false}
+                      showsHorizontalScrollIndicator={false}
+                      contentContainerClassName="flex gap-5 mt-5"
                     />
                   )}
-                  keyExtractor={(item) => item.$id}
-                  horizontal
-                  bounces={false}
-                  showsHorizontalScrollIndicator={false}
-                  contentContainerClassName="flex gap-5 mt-5"
-                />
-              )}
-            </View>
+                </View>
 
-            {/* <Button title="seed" onPress={seed} /> */}
+                {/* <Button title="seed" onPress={seed} /> */}
 
-            <View className="mt-4">
-              <View className="flex flex-row items-center justify-between">
-                <Text className="text-xl font-rubik-bold text-text">
-                  Recommended Agents
-                </Text>
-                {/* <TouchableOpacity>
+                <View className="mt-4">
+                  <View className="flex flex-row items-center justify-between">
+                    <Text className="text-xl font-rubik-bold text-text">
+                      Recommended Agents
+                    </Text>
+                    {/* <TouchableOpacity>
                   <Text className="text-base font-rubik-bold text-primary-300">
                     See all
                   </Text>
                 </TouchableOpacity> */}
-              </View>
+                  </View>
 
-              {/* <Filters /> */}
-              <RecommendedAgents/>
-              <View  className="mt-5">
-              <View className="flex flex-row items-center justify-between">
-                <Text className="text-xl font-rubik-bold text-text">
-                  All Packages
-                </Text>
-               
+                  {/* <Filters /> */}
+                  <RecommendedAgents />
+                  <View className="mt-5">
+                    <View className="flex flex-row items-center justify-between">
+                      <Text className="text-xl font-rubik-bold text-text">
+                        All Packages
+                      </Text>
+                    </View>
+                  </View>
+                </View>
               </View>
-
-              </View >
-            </View>
-          </View>
-        )}
-      />
-    </SafeAreaView> :
-    <Bookings/>
-    }
+            )}
+          />
+        </SafeAreaView>
+      ) : (
+        <Bookings />
+      )}
     </>
   );
 };

@@ -9,16 +9,18 @@ import {
   Alert,
   Switch,
   ActivityIndicator,
+  Animated,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { registerUser } from "@/lib/appwrite";
+import { loginUser, registerUser } from "@/lib/appwrite";
 import icons from "@/constants/icons";
 import { useGlobalContext } from "@/lib/global-provider";
 import { Redirect, router } from "expo-router";
 import { EyeClosedIcon, EyeIcon } from "lucide-react-native";
+import LoadingScreen from "./loadinScreen";
 
 const Register = () => {
-  const { isLogged, loading } = useGlobalContext();
+  const { isLogged, loading, refetch } = useGlobalContext();
   const [email, setEmail] = useState("");
   const [name, setName] = useState("");
   const [password, setPassword] = useState("");
@@ -27,17 +29,14 @@ const Register = () => {
   const [showCPassword, setShowCPassword] = useState(false);
   const [loading1, setLoading] = useState(false);
   const [isAgent, setIsAgent] = useState(false);
-
-  useEffect(() => {
-    if (!loading && isLogged) {
-      router.replace("/login");
-    }
-  }, [loading, isLogged, router]);
+  const [showLoadingScreen, setShowLoadingScreen] = useState(false);
+  const fadeAnim = new Animated.Value(0);
 
   const handleRegister = async () => {
     setLoading(true);
     try {
-      const response = await registerUser(
+      // First register the user
+      const registrationResult = await registerUser(
         name,
         email,
         password,
@@ -45,13 +44,23 @@ const Register = () => {
         confirmPassword
       );
 
-      if (!response.success) {
-        Alert.alert("Registration Failed", response.message);
+      if (!registrationResult.success) {
+        Alert.alert("Registration Failed", registrationResult.message);
         return;
       }
 
-      Alert.alert("Registration Successful", "You can now log in!");
-      router.replace("/login");
+      // Then automatically log them in
+      const loginResult = await loginUser(email, password);
+
+      setTimeout(() => {
+        refetch();
+      }, 5000);
+      if (!loginResult.success) {
+        Alert.alert("Login Failed", loginResult.message);
+        return;
+      }
+
+      setShowLoadingScreen(true);
     } catch (error: any) {
       Alert.alert(
         "Registration Failed",
@@ -61,6 +70,17 @@ const Register = () => {
       setLoading(false);
     }
   };
+
+  if (showLoadingScreen) {
+    return (
+      <LoadingScreen
+        onComplete={() => {
+          setShowLoadingScreen(false);
+          router.replace("/"); // Or whatever your post-login screen is
+        }}
+      />
+    );
+  }
 
   return (
     <SafeAreaView className="flex-1 bg-white">

@@ -16,9 +16,14 @@ import Comment from "@/components/Comment";
 import { facilities } from "@/constants/data";
 
 import { useAppwrite } from "@/lib/useAppwrite";
-import { getPropertyById } from "@/lib/appwrite";
+import { getAgentById, getCurrentUser, getPropertyById } from "@/lib/appwrite";
 import FlightInfo from "@/components/FlightInfo";
-import { useState } from "react";
+import { useEffect, useState } from "react";
+
+interface AgentProps {
+  id: string; // Agent ID
+  userId: string; // Current logged-in user ID
+}
 
 const Property = () => {
   const { id } = useLocalSearchParams<{ id?: string }>();
@@ -34,7 +39,32 @@ const Property = () => {
   const [expanded, setExpanded] = useState(false);
   const description =
     "Enjoy an unforgettable all-inclusive getaway to Viva Fortuna Beach by Wyndham in Freeport, Bahamas! Nestled on a stunning white-sand beach, this tropical resort offers unlimited dining & drinks, thrilling water sports, daily entertainment, and a vibrant island atmosphere. Relax by the pool, explore crystal-clear waters, or dance the night away—your perfect Bahamian escape awaits! Book now for the ultimate beachfront adventure!";
+  const [cagent, setcAgent] = useState<any>(null);
+  const [user, setUser] = useState<any>(null);
 
+  useEffect(() => {
+    const fetchAgent = async () => {
+      if (id) {
+        try {
+          const data = await getAgentById({ id: String(id) }); // Fetch agent details
+          const res = await getCurrentUser(); // Fetch agent details
+          const userC = res?.$id;
+          setcAgent(id);
+          setUser(userC);
+        } catch (error) {
+          console.error("Error fetching agent by ID:", error);
+        }
+      }
+    };
+
+    fetchAgent();
+  }, [id]);
+
+  const handleContact = () => {
+    if (!cagent) return;
+    const roomId = `${user}_${cagent.$id}`; // Create unique room ID
+    router.push("/(root)/(tabs)/chat");
+  };
   return (
     <View>
       <ScrollView
@@ -81,18 +111,26 @@ const Property = () => {
         <View className="px-5 mt-7 flex gap-2">
           <Text className="text-2xl font-rubik-extrabold">Package Info</Text>
           {/* <Text className="text-xl font-rubik-extrabold">{property?.name}</Text> */}
-          <Text className="text-sm font-rubik-extrabold text-black-100">Viva Fortuna Beach By Wyndham</Text>
+          <Text className="text-sm font-rubik-extrabold text-black-100">
+            Viva Fortuna Beach By Wyndham
+          </Text>
           <View className="flex flex-row items-center justify-between gap-3 ">
             <View className="flex flex-row items-center px-4 py-2 bg-primary-100 rounded-full">
-              <Text className="text-xs font-rubik-bold text-primary-300">{property?.type}</Text>
+              <Text className="text-xs font-rubik-bold text-primary-300">
+                {property?.type}
+              </Text>
             </View>
 
             <View className="flex flex-row items-center gap-2">
               <Image source={icons.star} className="size-5" />
-              <Text className="text-black-200 text-sm mt-1 font-rubik-medium">{property?.rating} ({property?.reviews.length} reviews)</Text>
+              <Text className="text-black-200 text-sm mt-1 font-rubik-medium">
+                {property?.rating} ({property?.reviews.length} reviews)
+              </Text>
             </View>
             <View className="flex flex-row items-center px-4 py-2 bg-primary-100 rounded-full">
-              <Text className="text-xs font-rubik-bold text-primary-300">{/* {property?.type} */}All Inclusive</Text>
+              <Text className="text-xs font-rubik-bold text-primary-300">
+                {/* {property?.type} */}All Inclusive
+              </Text>
             </View>
           </View>
           <View className="flex flex-row justify-between mt-5 ">
@@ -114,17 +152,23 @@ const Property = () => {
               <View className="flex flex-row items-center justify-center bg-primary-100 rounded-full size-10 ">
                 <Image source={icons.bed} className="size-4" />
               </View>
-              <Text className="text-black-300 text-lg font-rubik-medium ml-2">1 King Bed</Text>
+              <Text className="text-black-300 text-lg font-rubik-medium ml-2">
+                1 King Bed
+              </Text>
             </View>
             <View className="flex flex-row items-center">
               <View className="flex flex-row items-center justify-center bg-primary-100 rounded-full size-10 ">
                 <Image source={icons.area} className="size-4" />
               </View>
-              <Text className="text-black-300 text-lg font-rubik-medium ml-2">Junior Sweet</Text>
+              <Text className="text-black-300 text-lg font-rubik-medium ml-2">
+                Junior Sweet
+              </Text>
             </View>
-          </View>{" "}
+          </View>
           <View className="mt-7">
-            <Text className="text-black-300 text-xl font-rubik-bold">Facilities</Text>
+            <Text className="text-black-300 text-xl font-rubik-bold">
+              Facilities
+            </Text>
 
             {property?.facilities.length > 0 && (
               <View className="flex flex-row flex-wrap items-start justify-start mt-2 gap-5">
@@ -253,9 +297,9 @@ const Property = () => {
               <View className="flex flex-row items-center justify-between">
                 <View className="flex flex-row items-center">
                   <Image source={icons.star} className="size-6" />
-                    <Text className="text-black-300 text-xl font-rubik-bold ml-2">
-                      {property?.rating} ({property?.reviews.length} reviews)
-                    </Text>
+                  <Text className="text-black-300 text-xl font-rubik-bold ml-2">
+                    {property?.rating} ({property?.reviews.length} reviews)
+                  </Text>
                 </View>
 
                 <TouchableOpacity>
