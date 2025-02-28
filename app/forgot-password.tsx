@@ -34,7 +34,7 @@ const ForgotPasswordScreen: React.FC = () => {
         [
           {
             text: "OK",
-            onPress: () => router.push("/login"),
+            onPress: () => router.back(),
           },
         ]
       );
@@ -52,13 +52,13 @@ const ForgotPasswordScreen: React.FC = () => {
     <View className="flex-1 bg-white p-6">
       <View className="items-center mb-8">
         <Image
-          source={images.noResult} // Add your image path
-          className="w-64 h-64"
+          source={images.forgot} // Add your image path
+          className="w-96 h-96"
           resizeMode="contain"
         />
       </View>
 
-      <View className="mb-8">
+      <View className="">
         <Text className="text-2xl font-bold text-gray-800 mb-2">
           Forgot Password?
         </Text>
@@ -70,15 +70,6 @@ const ForgotPasswordScreen: React.FC = () => {
 
       <View className="mb-6">
         <CustomInput onChangeText={setEmail} value={email} />
-        {/* <TextInput
-          className="w-full bg-gray-100 rounded-lg px-4 py-3 text-gray-700"
-          placeholder="Enter your email"
-          value={email}
-          onChangeText={setEmail}
-          keyboardType="email-address"
-          autoCapitalize="none"
-          autoComplete="email"
-        /> */}
       </View>
 
       {/* <TouchableOpacity

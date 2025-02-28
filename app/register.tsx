@@ -54,7 +54,7 @@ const Register = () => {
 
       setTimeout(() => {
         refetch();
-      }, 5000);
+      }, 3000);
       if (!loginResult.success) {
         Alert.alert("Login Failed", loginResult.message);
         return;

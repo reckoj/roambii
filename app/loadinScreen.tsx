@@ -36,7 +36,7 @@ const LoadingScreen: React.FC<LoadingScreenProps> = ({ onComplete }) => {
         duration: 500,
         useNativeDriver: true,
       }).start(() => onComplete());
-    }, 5000);
+    }, 3000);
 
     return () => clearTimeout(timer);
   }, [onComplete, fadeAnim]);

@@ -180,14 +180,16 @@ export async function loginWGoogle() {
       OAuthProvider.Google,
       redirectUri
     );
-    if (!response) throw new Error("Create OAuth2 token failed");
+    // if (!response) throw new Error("Create OAuth2 token failed");
+    if (!response) return;
 
     const browserResult = await openAuthSessionAsync(
       response.toString(),
       redirectUri
     );
     if (browserResult.type !== "success")
-      throw new Error("Create OAuth2 token failed");
+      // throw new Error("Create OAuth2 token failed");
+      return;
 
     const url = new URL(browserResult.url);
     const secret = url.searchParams.get("secret")?.toString();
