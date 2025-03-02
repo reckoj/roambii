@@ -39,18 +39,15 @@ const Property = () => {
   const [expanded, setExpanded] = useState(false);
   const description =
     "Enjoy an unforgettable all-inclusive getaway to Viva Fortuna Beach by Wyndham in Freeport, Bahamas! Nestled on a stunning white-sand beach, this tropical resort offers unlimited dining & drinks, thrilling water sports, daily entertainment, and a vibrant island atmosphere. Relax by the pool, explore crystal-clear waters, or dance the night away—your perfect Bahamian escape awaits! Book now for the ultimate beachfront adventure!";
-  const [cagent, setcAgent] = useState<any>(null);
+  const [agent, setAgent] = useState<any>(null);
   const [user, setUser] = useState<any>(null);
 
   useEffect(() => {
     const fetchAgent = async () => {
       if (id) {
         try {
-          const data = await getAgentById({ id: String(id) }); // Fetch agent details
-          const res = await getCurrentUser(); // Fetch agent details
-          const userC = res?.$id;
-          setcAgent(id);
-          setUser(userC);
+          const data = await getAgentById({ id: String(id) }); // ✅ Convert id to string
+          setAgent(data);
         } catch (error) {
           console.error("Error fetching agent by ID:", error);
         }
@@ -60,11 +57,11 @@ const Property = () => {
     fetchAgent();
   }, [id]);
 
-  const handleContact = () => {
-    if (!cagent) return;
-    const roomId = `${user}_${cagent.$id}`; // Create unique room ID
-    router.push("/(root)/(tabs)/chat");
-  };
+  // const handleContact = () => {
+  //   if (!cagent) return;
+  //   const roomId = `${user}_${cagent.$id}`; // Create unique room ID
+  //   router.push("/(root)/(tabs)/chat");
+  // };
   return (
     <View>
       <ScrollView

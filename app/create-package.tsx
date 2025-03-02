@@ -1,11 +1,28 @@
 import React, { useState } from "react";
-import { View, Text, TextInput, Button, ScrollView, Alert } from "react-native";
+import {
+  View,
+  Text,
+  TextInput,
+  Button,
+  ScrollView,
+  Alert,
+  SafeAreaView,
+  Switch,
+} from "react-native";
 import { Picker } from "@react-native-picker/picker";
 
-import { config, databases, storage, uploadPimage } from "../lib/appwrite";
-import { ID } from "react-native-appwrite";
+import {
+  account,
+  config,
+  databases,
+  storage,
+  uploadPimage,
+} from "../lib/appwrite";
+import { ID, Query } from "react-native-appwrite";
+import { useGlobalContext } from "@/lib/global-provider";
 
 const CreatePackageScreen = () => {
+  const { rawUser, isLogged, isAgent } = useGlobalContext();
   const [formData, setFormData] = useState({
     departingFrom: "",
     arrivingTo: "",
@@ -25,7 +42,7 @@ const CreatePackageScreen = () => {
     bathrooms: "",
     rating: "",
     facilities: [],
-    image: "",
+    // image: "",
     geolocation: "",
     agent: "",
     gallery: "",
@@ -34,95 +51,257 @@ const CreatePackageScreen = () => {
     roomType: "standard", // Default enum
   });
 
-  const handleChange = (name: string, value: string) => {
-    setFormData((prev) => ({ ...prev, [name]: value }));
+  const handleChange = (key: string, value: any) => {
+    setFormData((prev) => ({ ...prev, [key]: value }));
   };
 
+  // const handleImageUpload = async () => {
+  //   try {
+  //     const imageUrl = await uploadPimage(
+  //       formData.image,
+  //       config.packageImagesId!
+  //     );
+  //     handleChange("image", imageUrl);
+  //   } catch (error) {
+  //     console.error("Image upload failed:", error);
+  //   }
+  // };
+
   const handleSubmit = async () => {
+    console.log("Submitting form");
     try {
-      let imageUrl;
-      if (formData.image) {
-        imageUrl = await uploadPimage(formData.image, config.packageImagesId!);
+      const userId = (await account.get()).$id;
+      if (!isAgent || !rawUser || !rawUser.$id) {
+        alert("You must be logged in to create a package");
+        console.log("Exit: User is not an agent or not logged in"); // passes
+        return;
       }
 
-      const packageData = {
-        ...formData,
-        price: parseInt(formData.price),
-        bedrooms: parseInt(formData.bedrooms),
-        bathrooms: parseInt(formData.bathrooms),
-        rating: parseFloat(formData.rating),
-        image: imageUrl,
-      };
+      // Fetch the agent's document ID (if they exist in the "agents" collection)
+      console.log("Fetching agent data..."); //passes
 
-      await databases.createDocument(
-        "your_database_id",
-        "packages",
-        ID.unique(),
-        packageData
+      const agentData = await databases.listDocuments(
+        config.databaseId!,
+        config.agentsCollectionId!,
+        [Query.equal("userId", userId)] // Assuming "userId" links agents to users
       );
-      Alert.alert("Success", "Package created successfully!");
+      const agentId = agentData.documents[0].$id; // ✅ Get agent document ID
+
+      if (agentData.total === 0) {
+        alert("Only agents can create packages.");
+        console.log("Exit: No agent found");
+        return;
+      }
+
+      console.log("Using agent ID:", rawUser.$id);
+      if (!formData.name || !formData.price || !formData.departingFrom) {
+        alert("Please fill in required fields");
+        return;
+      }
+
+      if (!isAgent || !rawUser || !rawUser.$id) {
+        alert("You must be logged in to create a package");
+        return;
+      }
+
+      const flightInfo = await databases.createDocument(
+        config.databaseId!,
+        config.flightInfoCollectionId!,
+        ID.unique(),
+        {
+          departingFrom: formData.departingFrom,
+          arrivingTo: formData.arrivingTo,
+          returningFrom: formData.returningFrom,
+          returningTo: formData.returningTo,
+          departingTime: formData.departingTime,
+          arrivingToTime: formData.arrivingToTime,
+          returningFromTime: formData.returningFromTime,
+          returningToTime: formData.returningToTime,
+          departureDate: formData.departureDate,
+          returnDate: formData.returnDate,
+        }
+      );
+
+      // Step 2: Create Package Info document with flightInfo ID
+      const packageData = await databases.createDocument(
+        config.databaseId!,
+        config.propertiesCollectionId!,
+        ID.unique(),
+        {
+          name: formData.name,
+          type: formData.type,
+          description: formData.description,
+          price: parseInt(formData.price),
+          bedrooms: parseInt(formData.bedrooms),
+          bathrooms: parseInt(formData.bathrooms),
+          rating: parseFloat(formData.rating),
+          facilities: formData.facilities,
+          // image: formData.image,
+          // geolocation: formData.geolocation,
+          agent: agentId, // ✅ Single document ID, no array
+          gallery: formData.gallery || null, // ✅ Single document ID or null
+          reviews: formData.reviews || null, // ✅ Single document ID or null
+          allinclusive: formData.allinclusive,
+          roomType: formData.roomType,
+          flightInfo: flightInfo.$id, // ✅ Make this an array
+        }
+      );
+
+      alert("Package created successfully!");
     } catch (error) {
-      console.error("Failed to create package:", error);
-      Alert.alert("Error", "Failed to create package. Please try again.");
+      alert(`Failed to create package: ${error}`);
     }
   };
 
   return (
-    <ScrollView style={{ padding: 20 }}>
-      <Text>Package Name</Text>
-      <TextInput
-        value={formData.name}
-        onChangeText={(text) => handleChange("name", text)}
-        style={styles.input}
-      />
+    <SafeAreaView>
+      <ScrollView style={{ padding: 20 }}>
+        <Text>Package Name</Text>
+        <TextInput
+          value={formData.name}
+          onChangeText={(text) => handleChange("name", text)}
+          style={styles.input}
+        />
 
-      <Text>Departure From</Text>
-      <TextInput
-        value={formData.departingFrom}
-        onChangeText={(text) => handleChange("departingFrom", text)}
-        style={styles.input}
-      />
+        <Text>Departure From</Text>
+        <TextInput
+          value={formData.departingFrom}
+          onChangeText={(text) => handleChange("departingFrom", text)}
+          style={styles.input}
+        />
 
-      <Text>Arrival To</Text>
-      <TextInput
-        value={formData.arrivingTo}
-        onChangeText={(text) => handleChange("arrivingTo", text)}
-        style={styles.input}
-      />
+        <Text>Arrival To</Text>
+        <TextInput
+          value={formData.arrivingTo}
+          onChangeText={(text) => handleChange("arrivingTo", text)}
+          style={styles.input}
+        />
 
-      <Text>Return From</Text>
-      <TextInput
-        value={formData.returningFrom}
-        onChangeText={(text) => handleChange("returningFrom", text)}
-        style={styles.input}
-      />
+        <Text>Return From</Text>
+        <TextInput
+          value={formData.returningFrom}
+          onChangeText={(text) => handleChange("returningFrom", text)}
+          style={styles.input}
+        />
 
-      <Text>Return To</Text>
-      <TextInput
-        value={formData.returningTo}
-        onChangeText={(text) => handleChange("returningTo", text)}
-        style={styles.input}
-      />
+        <Text>Return To</Text>
+        <TextInput
+          value={formData.returningTo}
+          onChangeText={(text) => handleChange("returningTo", text)}
+          style={styles.input}
+        />
 
-      <Text>Type</Text>
-      <Picker
-        selectedValue={formData.type}
-        onValueChange={(value) => handleChange("type", value)}
-      >
-        <Picker.Item label="Villa" value="villa" />
-        <Picker.Item label="Condo" value="condo" />
-      </Picker>
+        <Text>Departure Date</Text>
+        <TextInput
+          value={formData.departureDate}
+          onChangeText={(text) => handleChange("departureDate", text)}
+          style={styles.input}
+        />
 
-      <Text>Price</Text>
-      <TextInput
-        value={formData.price}
-        onChangeText={(text) => handleChange("price", text)}
-        keyboardType="numeric"
-        style={styles.input}
-      />
+        <Text>Return Date</Text>
+        <TextInput
+          value={formData.returnDate}
+          onChangeText={(text) => handleChange("returnDate", text)}
+          style={styles.input}
+        />
 
-      <Button title="Create Package" onPress={handleSubmit} />
-    </ScrollView>
+        <Text>Type</Text>
+        <Picker
+          selectedValue={formData.type}
+          onValueChange={(value) => handleChange("type", value)}
+        >
+          <Picker.Item label="Luxury" value="Luxury" />
+          <Picker.Item label="Budget" value="Budget" />
+          <Picker.Item label="Standard" value="Standard" />
+          <Picker.Item label="House" value="House" />
+          <Picker.Item label="Condo" value="Condo" />
+        </Picker>
+
+        <Text>Description</Text>
+        <TextInput
+          value={formData.description}
+          onChangeText={(text) => handleChange("description", text)}
+          style={styles.input}
+          multiline
+        />
+
+        <Text>Price</Text>
+        <TextInput
+          value={formData.price}
+          onChangeText={(text) => handleChange("price", text)}
+          keyboardType="numeric"
+          style={styles.input}
+        />
+
+        <Text>Bedrooms</Text>
+        <TextInput
+          value={formData.bedrooms}
+          onChangeText={(text) => handleChange("bedrooms", text)}
+          keyboardType="numeric"
+          style={styles.input}
+        />
+
+        <Text>Bathrooms</Text>
+        <TextInput
+          value={formData.bathrooms}
+          onChangeText={(text) => handleChange("bathrooms", text)}
+          keyboardType="numeric"
+          style={styles.input}
+        />
+
+        <Text>Rating</Text>
+        <TextInput
+          value={formData.rating}
+          onChangeText={(text) => handleChange("rating", text)}
+          keyboardType="numeric"
+          style={styles.input}
+        />
+
+        <Text>Facilities</Text>
+        <TextInput
+          value={formData.facilities.join(", ")}
+          onChangeText={(text) => handleChange("facilities", text.split(", "))}
+          style={styles.input}
+        />
+
+        {/* <Text>Image URL</Text>
+        <TextInput
+          value={formData.image}
+          onChangeText={(text) => handleChange("image", text)}
+          style={styles.input}
+        />
+        <Button title="Upload Image" onPress={handleImageUpload} /> */}
+
+        {/* <Text>Geolocation</Text>
+        <TextInput
+          value={formData.geolocation}
+          onChangeText={(text) => handleChange("geolocation", text)}
+          style={styles.input}
+        /> */}
+
+        <Text>All-Inclusive</Text>
+        <Switch
+          value={formData.allinclusive}
+          onValueChange={(value) => handleChange("allinclusive", value)}
+        />
+
+        <Text>Room Type</Text>
+        <Picker
+          selectedValue={formData.roomType}
+          onValueChange={(value) => handleChange("roomType", value)}
+        >
+          <Picker.Item label="Standard" value="Standard Room" />
+          <Picker.Item label="Deluxe" value="Deluxe Room" />
+          <Picker.Item label="Suite" value="Suite" />
+          <Picker.Item label="Superior Room" value="Superior Room" />
+          <Picker.Item label="Double Room" value="Double Room" />
+          <Picker.Item label="Presidential Suite" value="Presidential Suite" />
+          <Picker.Item label="Junior Suite" value="Junior Suite" />
+        </Picker>
+
+        <Button title="Create Package" onPress={handleSubmit} />
+      </ScrollView>
+    </SafeAreaView>
   );
 };
 
@@ -137,7 +316,6 @@ const styles = {
 };
 
 export default CreatePackageScreen;
-
 // import React, { useState } from "react";
 // import {
 //   View,
@@ -613,855 +791,3 @@ export default CreatePackageScreen;
 // });
 
 // export default PackageForm;
-
-// import React, { useState, useEffect } from 'react';
-// import {
-//   View,
-//   Text,
-//   ScrollView,
-//   TextInput,
-//   TouchableOpacity,
-//   StyleSheet,
-//   Platform,
-//   Image,
-//   Alert,
-//   KeyboardAvoidingView
-// } from 'react-native';
-// import DateTimePicker from '@react-native-community/datetimepicker';
-// import { Picker } from '@react-native-picker/picker';
-// import * as ImagePicker from 'expo-image-picker';
-// import { useNavigation } from '@react-navigation/native';
-// import { ID, Query } from 'appwrite';
-// import { config, databases, storage } from '../lib/appwrite';
-// import { CheckBox } from 'react-native-elements';
-// import { Ionicons } from '@expo/vector-icons';
-
-// // Define enum types
-// const PACKAGE_TYPES = ['Hotel', 'Resort', 'Villa', 'Apartment'];
-// const FACILITIES = ['WiFi', 'Parking', 'Pool', 'Gym', 'Restaurant', 'Beach Access', 'Spa', 'Room Service'];
-// const ROOM_TYPES = ['Single', 'Double', 'Suite', 'Family', 'Presidential'];
-
-// const CreatePackageScreen = () => {
-//   const navigation = useNavigation();
-
-//   // Form state
-//   const [packageData, setPackageData] = useState({
-//     name: '',
-//     type: PACKAGE_TYPES[0],
-//     description: '',
-//     price: '',
-//     bedrooms: '',
-//     bathrooms: '',
-//     rating: '5.0',
-//     facilities: [],
-//     image: '',
-//     geolocation: '',
-//     allInclusive: false,
-//     roomType: ROOM_TYPES[0],
-//     departingFrom: '',
-//     arrivingTo: '',
-//     returningFrom: '',
-//     returningTo: '',
-//     departingTime: '',
-//     arrivingToTime: '',
-//     returningFromTime: '',
-//     returningToTime: '',
-//   });
-
-//   // Date state
-//   const [departureDate, setDepartureDate] = useState(new Date());
-//   const [returnDate, setReturnDate] = useState(new Date(Date.now() + 7 * 24 * 60 * 60 * 1000)); // Default 1 week later
-//   const [showDeparturePicker, setShowDeparturePicker] = useState(false);
-//   const [showReturnPicker, setShowReturnPicker] = useState(false);
-
-//   // Image upload state
-//   const [uploading, setUploading] = useState(false);
-//   const [imagePreview, setImagePreview] = useState(null);
-
-//   // Loading state
-//   const [loading, setLoading] = useState(false);
-
-//   // Agents state
-//   const [agents, setAgents] = useState([]);
-//   const [selectedAgentId, setSelectedAgentId] = useState('');
-
-//   // Get agents for the dropdown
-//   useEffect(() => {
-//     fetchAgents();
-//   }, []);
-
-//   const fetchAgents = async () => {
-//     try {
-//       const response = await databases.listDocuments(
-//         config.databaseId!,
-//         config.agentsCollectionId!
-//       );
-//       setAgents(response.documents);
-//       if (response.documents.length > 0) {
-//         setSelectedAgentId(response.documents[0].$id);
-//       }
-//     } catch (error) {
-//       console.error('Error fetching agents:', error);
-//       Alert.alert('Error', 'Failed to load agents');
-//     }
-//   };
-
-//   // Handle field changes
-//   const handleChange = (name: string, value: string | boolean) => {
-//     setPackageData({ ...packageData, [name]: value });
-//   };
-
-//   // Toggle facility selection
-//   const toggleFacility = (facility: string) => {
-//     if (packageData.facilities.includes(facility)) {
-//       setPackageData({
-//         ...packageData,
-//         facilities: packageData.facilities.filter(f => f !== facility)
-//       });
-//     } else {
-//       setPackageData({
-//         ...packageData,
-//         facilities: [...packageData.facilities, facility]
-//       });
-//     }
-//   };
-
-//   // Date picker handlers
-//   const onDepartureDateChange = (event: any, selectedDate: Date) => {
-//     const currentDate = selectedDate || departureDate;
-//     setShowDeparturePicker(Platform.OS === 'ios');
-//     setDepartureDate(currentDate);
-//   };
-
-//   const onReturnDateChange = (event: any, selectedDate: Date) => {
-//     const currentDate = selectedDate || returnDate;
-//     setShowReturnPicker(Platform.OS === 'ios');
-//     setReturnDate(currentDate);
-//   };
-
-//   // Image picker
-//   const pickImage = async () => {
-//     try {
-//       const result = await ImagePicker.launchImageLibraryAsync({
-//         mediaTypes: ImagePicker.MediaTypeOptions.Images,
-//         allowsEditing: true,
-//         aspect: [16, 9],
-//         quality: 0.8,
-//       });
-
-//       if (!result.canceled) {
-//         setImagePreview(result.assets[0].uri);
-//       }
-//     } catch (error) {
-//       console.error('Error picking image:', error);
-//       Alert.alert('Error', 'Failed to select image');
-//     }
-//   };
-
-//   // Upload image to Appwrite storage
-//   const uploadImage = async () => {
-//     if (!imagePreview) return null;
-
-//     try {
-//       setUploading(true);
-
-//       // For Expo, we need to first get the blob from the URI
-//       const response = await fetch(imagePreview);
-//       const blob = await response.blob();
-
-//       // Create a File object from the blob
-//       const file = new File([blob], `package_${Date.now()}.jpg`, { type: 'image/jpeg' });
-
-//       // Upload to Appwrite Storage
-//       const uploadResult = await storage.createFile(
-//         config.storageId,
-//         ID.unique(),
-//         file
-//       );
-
-//       // Get file preview URL
-//       const fileUrl = storage.getFileView(
-//         config.storageId,
-//         uploadResult.$id
-//       );
-
-//       setUploading(false);
-//       return fileUrl;
-//     } catch (error) {
-//       setUploading(false);
-//       console.error('Error uploading image:', error);
-//       Alert.alert('Error', 'Failed to upload image');
-//       return null;
-//     }
-//   };
-
-//   // Create package in database
-//   const createPackage = async () => {
-//     // Validate form
-//     const requiredFields = ['name', 'type', 'description', 'price', 'bedrooms', 'bathrooms', 'rating', 'geolocation'];
-//     for (const field of requiredFields) {
-//       if (!packageData[field]) {
-//         Alert.alert('Error', `${field} is required`);
-//         return;
-//       }
-//     }
-
-//     if (!imagePreview) {
-//       Alert.alert('Error', 'Please select an image');
-//       return;
-//     }
-
-//     if (!selectedAgentId) {
-//       Alert.alert('Error', 'Please select an agent');
-//       return;
-//     }
-
-//     setLoading(true);
-
-//     try {
-//       // Upload image
-//       const imageUrl = await uploadImage();
-//       if (!imageUrl) {
-//         setLoading(false);
-//         return;
-//       }
-
-//       // Create package document
-//       const packageId = ID.unique();
-//       await database.createDocument(
-//         config.databaseId,
-//         config.packageCollectionId,
-//         packageId,
-//         {
-//           name: packageData.name,
-//           type: packageData.type,
-//           description: packageData.description,
-//           price: parseInt(packageData.price),
-//           bedrooms: parseInt(packageData.bedrooms),
-//           bathrooms: parseInt(packageData.bathrooms),
-//           rating: parseFloat(packageData.rating),
-//           facilities: packageData.facilities,
-//           image: imageUrl,
-//           geolocation: packageData.geolocation,
-//           agent: selectedAgentId,
-//           allinclusive: packageData.allInclusive,
-//           'room-type': packageData.roomType,
-//           departureDate: departureDate.toISOString(),
-//           returnDate: returnDate.toISOString(),
-//           'departing-from': packageData.departingFrom,
-//           'arriving-to': packageData.arrivingTo,
-//           'returning-from': packageData.returningFrom,
-//           'returning-to': packageData.returningTo,
-//           'departing-time': packageData.departingTime,
-//           'arriving-to-time': packageData.arrivingToTime,
-//           'returning-from-time': packageData.returningFromTime,
-//           'returning-to-time': packageData.returningToTime,
-//         }
-//       );
-
-//       setLoading(false);
-//       Alert.alert('Success', 'Package created successfully', [
-//         { text: 'OK', onPress: () => navigation.goBack() }
-//       ]);
-//     } catch (error) {
-//       setLoading(false);
-//       console.error('Error creating package:', error);
-//       Alert.alert('Error', 'Failed to create package');
-//     }
-//   };
-
-//   const updatePackage = async (packageId: any) => {
-//     setLoading(true);
-
-//     try {
-//       let imageUrl = packageData.image;
-
-//       // Upload new image if selected
-//       if (imagePreview && !imagePreview.startsWith('http')) {
-//         imageUrl = await uploadImage();
-//         if (!imageUrl) {
-//           setLoading(false);
-//           return;
-//         }
-//       }
-
-//       // Update package document
-//       await databases.updateDocument(
-//         config.databaseId!,
-//         config.packageImagesId!,
-//         packageId,
-//         {
-//           name: packageData.name,
-//           type: packageData.type,
-//           description: packageData.description,
-//           price: parseInt(packageData.price),
-//           bedrooms: parseInt(packageData.bedrooms),
-//           bathrooms: parseInt(packageData.bathrooms),
-//           rating: parseFloat(packageData.rating),
-//           facilities: packageData.facilities,
-//           image: imageUrl,
-//           geolocation: packageData.geolocation,
-//           agent: selectedAgentId,
-//           allinclusive: packageData.allInclusive,
-//           'room-type': packageData.roomType,
-//           departureDate: departureDate.toISOString(),
-//           returnDate: returnDate.toISOString(),
-//           'departing-from': packageData.departingFrom,
-//           'arriving-to': packageData.arrivingTo,
-//           'returning-from': packageData.returningFrom,
-//           'returning-to': packageData.returningTo,
-//           'departing-time': packageData.departingTime,
-//           'arriving-to-time': packageData.arrivingToTime,
-//           'returning-from-time': packageData.returningFromTime,
-//           'returning-to-time': packageData.returningToTime,
-//         }
-//       );
-
-//       setLoading(false);
-//       Alert.alert('Success', 'Package updated successfully', [
-//         { text: 'OK', onPress: () => navigation.goBack() }
-//       ]);
-//     } catch (error) {
-//       setLoading(false);
-//       console.error('Error updating package:', error);
-//       Alert.alert('Error', 'Failed to update package');
-//     }
-//   };
-
-//   // Fetch package data for editing
-//   const fetchPackage = async (packageId: any) => {
-//     try {
-//       const response = await databases.getDocument(
-//         config.databaseId!,
-//         config.packageImagesId!,
-//         packageId
-//       );
-
-//       // Set form data from response
-//       setPackageData({
-//         name: response.name,
-//         type: response.type,
-//         description: response.description,
-//         price: response.price.toString(),
-//         bedrooms: response.bedrooms.toString(),
-//         bathrooms: response.bathrooms.toString(),
-//         rating: response.rating.toString(),
-//         facilities: response.facilities || [],
-//         image: response.image,
-//         geolocation: response.geolocation,
-//         allInclusive: response.allinclusive || false,
-//         roomType: response['room-type'] || ROOM_TYPES[0],
-//         departingFrom: response['departing-from'] || '',
-//         arrivingTo: response['arriving-to'] || '',
-//         returningFrom: response['returning-from'] || '',
-//         returningTo: response['returning-to'] || '',
-//         departingTime: response['departing-time'] || '',
-//         arrivingToTime: response['arriving-to-time'] || '',
-//         returningFromTime: response['returning-from-time'] || '',
-//         returningToTime: response['returning-to-time'] || '',
-//       });
-
-//       setSelectedAgentId(response.agent);
-//       setImagePreview(response.image);
-
-//       if (response.departureDate) {
-//         setDepartureDate(new Date(response.departureDate));
-//       }
-
-//       if (response.returnDate) {
-//         setReturnDate(new Date(response.returnDate));
-//       }
-//     } catch (error) {
-//       console.error('Error fetching package:', error);
-//       Alert.alert('Error', 'Failed to load package data');
-//     }
-//   };
-
-//   return (
-//     <KeyboardAvoidingView
-//       behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-//       style={styles.container}
-//     >
-//       <ScrollView style={styles.scrollView}>
-//         <View style={styles.header}>
-//           <Text style={styles.headerText}>Create New Package</Text>
-//         </View>
-
-//         {/* Basic Info Section */}
-//         <View style={styles.section}>
-//           <Text style={styles.sectionTitle}>Basic Information</Text>
-
-//           <View style={styles.inputGroup}>
-//             <Text style={styles.label}>Package Name*</Text>
-//             <TextInput
-//               style={styles.input}
-//               value={packageData.name}
-//               onChangeText={(text) => handleChange('name', text)}
-//               placeholder="Enter package name"
-//             />
-//           </View>
-
-//           <View style={styles.inputGroup}>
-//             <Text style={styles.label}>Package Type*</Text>
-//             <View style={styles.pickerContainer}>
-//               <Picker
-//                 selectedValue={packageData.type}
-//                 onValueChange={(value) => handleChange('type', value)}
-//                 style={styles.picker}
-//               >
-//                 {PACKAGE_TYPES.map((type) => (
-//                   <Picker.Item key={type} label={type} value={type} />
-//                 ))}
-//               </Picker>
-//             </View>
-//           </View>
-
-//           <View style={styles.inputGroup}>
-//             <Text style={styles.label}>Description*</Text>
-//             <TextInput
-//               style={[styles.input, styles.textArea]}
-//               value={packageData.description}
-//               onChangeText={(text) => handleChange('description', text)}
-//               placeholder="Enter package description"
-//               multiline
-//               numberOfLines={4}
-//             />
-//           </View>
-
-//           <View style={styles.rowContainer}>
-//             <View style={[styles.inputGroup, { flex: 1, marginRight: 10 }]}>
-//               <Text style={styles.label}>Price*</Text>
-//               <TextInput
-//                 style={styles.input}
-//                 value={packageData.price}
-//                 onChangeText={(text) => handleChange('price', text.replace(/[^0-9]/g, ''))}
-//                 placeholder="Price"
-//                 keyboardType="numeric"
-//               />
-//             </View>
-
-//             <View style={[styles.inputGroup, { flex: 1 }]}>
-//               <Text style={styles.label}>Rating*</Text>
-//               <TextInput
-//                 style={styles.input}
-//                 value={packageData.rating}
-//                 onChangeText={(text) => {
-//                   const value = parseFloat(text);
-//                   if (!isNaN(value) && value >= 0 && value <= 5) {
-//                     handleChange('rating', text);
-//                   }
-//                 }}
-//                 placeholder="Rating (0-5)"
-//                 keyboardType="numeric"
-//               />
-//             </View>
-//           </View>
-
-//           <View style={styles.rowContainer}>
-//             <View style={[styles.inputGroup, { flex: 1, marginRight: 10 }]}>
-//               <Text style={styles.label}>Bedrooms*</Text>
-//               <TextInput
-//                 style={styles.input}
-//                 value={packageData.bedrooms}
-//                 onChangeText={(text) => handleChange('bedrooms', text.replace(/[^0-9]/g, ''))}
-//                 placeholder="Bedrooms"
-//                 keyboardType="numeric"
-//               />
-//             </View>
-
-//             <View style={[styles.inputGroup, { flex: 1 }]}>
-//               <Text style={styles.label}>Bathrooms*</Text>
-//               <TextInput
-//                 style={styles.input}
-//                 value={packageData.bathrooms}
-//                 onChangeText={(text) => handleChange('bathrooms', text.replace(/[^0-9]/g, ''))}
-//                 placeholder="Bathrooms"
-//                 keyboardType="numeric"
-//               />
-//             </View>
-//           </View>
-
-//           <View style={styles.inputGroup}>
-//             <Text style={styles.label}>Room Type</Text>
-//             <View style={styles.pickerContainer}>
-//               <Picker
-//                 selectedValue={packageData.roomType}
-//                 onValueChange={(value) => handleChange('roomType', value)}
-//                 style={styles.picker}
-//               >
-//                 {ROOM_TYPES.map((type) => (
-//                   <Picker.Item key={type} label={type} value={type} />
-//                 ))}
-//               </Picker>
-//             </View>
-//           </View>
-
-//           <View style={styles.checkboxContainer}>
-//             <CheckBox
-//               title="All Inclusive"
-//               checked={packageData.allInclusive}
-//               onPress={() => handleChange('allInclusive', !packageData.allInclusive)}
-//             />
-//           </View>
-//         </View>
-
-//         {/* Travel Details Section */}
-//         <View style={styles.section}>
-//           <Text style={styles.sectionTitle}>Travel Details</Text>
-
-//           <View style={styles.inputGroup}>
-//             <Text style={styles.label}>Departing From</Text>
-//             <TextInput
-//               style={styles.input}
-//               value={packageData.departingFrom}
-//               onChangeText={(text) => handleChange('departingFrom', text)}
-//               placeholder="Departure location"
-//             />
-//           </View>
-
-//           <View style={styles.inputGroup}>
-//             <Text style={styles.label}>Arriving To</Text>
-//             <TextInput
-//               style={styles.input}
-//               value={packageData.arrivingTo}
-//               onChangeText={(text) => handleChange('arrivingTo', text)}
-//               placeholder="Arrival location"
-//             />
-//           </View>
-
-//           <View style={styles.rowContainer}>
-//             <View style={[styles.inputGroup, { flex: 1, marginRight: 10 }]}>
-//               <Text style={styles.label}>Departing Time</Text>
-//               <TextInput
-//                 style={styles.input}
-//                 value={packageData.departingTime}
-//                 onChangeText={(text) => handleChange('departingTime', text)}
-//                 placeholder="e.g. 09:00 AM"
-//               />
-//             </View>
-
-//             <View style={[styles.inputGroup, { flex: 1 }]}>
-//               <Text style={styles.label}>Arriving Time</Text>
-//               <TextInput
-//                 style={styles.input}
-//                 value={packageData.arrivingToTime}
-//                 onChangeText={(text) => handleChange('arrivingToTime', text)}
-//                 placeholder="e.g. 12:00 PM"
-//               />
-//             </View>
-//           </View>
-
-//           <View style={styles.inputGroup}>
-//             <Text style={styles.label}>Returning From</Text>
-//             <TextInput
-//               style={styles.input}
-//               value={packageData.returningFrom}
-//               onChangeText={(text) => handleChange('returningFrom', text)}
-//               placeholder="Return departure location"
-//             />
-//           </View>
-
-//           <View style={styles.inputGroup}>
-//             <Text style={styles.label}>Returning To</Text>
-//             <TextInput
-//               style={styles.input}
-//               value={packageData.returningTo}
-//               onChangeText={(text) => handleChange('returningTo', text)}
-//               placeholder="Return arrival location"
-//             />
-//           </View>
-
-//           <View style={styles.rowContainer}>
-//             <View style={[styles.inputGroup, { flex: 1, marginRight: 10 }]}>
-//               <Text style={styles.label}>Return Departure Time</Text>
-//               <TextInput
-//                 style={styles.input}
-//                 value={packageData.returningFromTime}
-//                 onChangeText={(text) => handleChange('returningFromTime', text)}
-//                 placeholder="e.g. 10:00 AM"
-//               />
-//             </View>
-
-//             <View style={[styles.inputGroup, { flex: 1 }]}>
-//               <Text style={styles.label}>Return Arrival Time</Text>
-//               <TextInput
-//                 style={styles.input}
-//                 value={packageData.returningToTime}
-//                 onChangeText={(text) => handleChange('returningToTime', text)}
-//                 placeholder="e.g. 01:00 PM"
-//               />
-//             </View>
-//           </View>
-
-//           <View style={styles.inputGroup}>
-//             <Text style={styles.label}>Departure Date</Text>
-//             <TouchableOpacity
-//               style={styles.dateButton}
-//               onPress={() => setShowDeparturePicker(true)}
-//             >
-//               <Text>{departureDate.toDateString()}</Text>
-//               <Ionicons name="calendar-outline" size={24} color="gray" />
-//             </TouchableOpacity>
-//             {showDeparturePicker && (
-//               <DateTimePicker
-//                 value={departureDate}
-//                 mode="date"
-//                 display="default"
-//                 onChange={onDepartureDateChange}
-//                 minimumDate={new Date()}
-//               />
-//             )}
-//           </View>
-
-//           <View style={styles.inputGroup}>
-//             <Text style={styles.label}>Return Date</Text>
-//             <TouchableOpacity
-//               style={styles.dateButton}
-//               onPress={() => setShowReturnPicker(true)}
-//             >
-//               <Text>{returnDate.toDateString()}</Text>
-//               <Ionicons name="calendar-outline" size={24} color="gray" />
-//             </TouchableOpacity>
-//             {showReturnPicker && (
-//               <DateTimePicker
-//                 value={returnDate}
-//                 mode="date"
-//                 display="default"
-//                 onChange={onReturnDateChange}
-//                 minimumDate={departureDate}
-//               />
-//             )}
-//           </View>
-//         </View>
-
-//         {/* Facilities Section */}
-//         <View style={styles.section}>
-//           <Text style={styles.sectionTitle}>Facilities</Text>
-//           <View style={styles.facilitiesContainer}>
-//             {FACILITIES.map((facility) => (
-//               <TouchableOpacity
-//                 key={facility}
-//                 style={[
-//                   styles.facilityChip,
-//                   packageData.facilities.includes(facility) && styles.facilityChipSelected
-//                 ]}
-//                 onPress={() => toggleFacility(facility)}
-//               >
-//                 <Text
-//                   style={[
-//                     styles.facilityChipText,
-//                     packageData.facilities.includes(facility) && styles.facilityChipTextSelected
-//                   ]}
-//                 >
-//                   {facility}
-//                 </Text>
-//               </TouchableOpacity>
-//             ))}
-//           </View>
-//         </View>
-
-//         {/* Location and Image Section */}
-//         <View style={styles.section}>
-//           <Text style={styles.sectionTitle}>Location and Image</Text>
-
-//           <View style={styles.inputGroup}>
-//             <Text style={styles.label}>Geolocation*</Text>
-//             <TextInput
-//               style={styles.input}
-//               value={packageData.geolocation}
-//               onChangeText={(text) => handleChange('geolocation', text)}
-//               placeholder="Enter geolocation (e.g. latitude,longitude)"
-//             />
-//           </View>
-
-//           <View style={styles.inputGroup}>
-//             <Text style={styles.label}>Main Image*</Text>
-//             <TouchableOpacity
-//               style={styles.imagePickerButton}
-//               onPress={pickImage}
-//               disabled={uploading}
-//             >
-//               <Text style={styles.imagePickerText}>
-//                 {imagePreview ? 'Change Image' : 'Choose Image'}
-//               </Text>
-//               <Ionicons name="image-outline" size={24} color="white" />
-//             </TouchableOpacity>
-//             {imagePreview && (
-//               <Image
-//                 source={{ uri: imagePreview }}
-//                 style={styles.imagePreview}
-//               />
-//             )}
-//           </View>
-//         </View>
-
-//         {/* Assign Agent Section */}
-//         <View style={styles.section}>
-//           <Text style={styles.sectionTitle}>Assign Agent</Text>
-//           <View style={styles.pickerContainer}>
-//             <Picker
-//               selectedValue={selectedAgentId}
-//               onValueChange={(value) => setSelectedAgentId(value)}
-//               style={styles.picker}
-//             >
-//               {agents.map((agent) => (
-//                 <Picker.Item key={agent.$id} label={agent.name} value={agent.$id} />
-//               ))}
-//             </Picker>
-//           </View>
-//         </View>
-
-//         {/* Submit Button */}
-//         <TouchableOpacity
-//           style={[styles.submitButton, (loading || uploading) && styles.disabledButton]}
-//           onPress={createPackage}
-//           disabled={loading || uploading}
-//         >
-//           <Text style={styles.submitButtonText}>
-//             {loading || uploading ? 'Processing...' : 'Create Package'}
-//           </Text>
-//         </TouchableOpacity>
-//       </ScrollView>
-//     </KeyboardAvoidingView>
-//   );
-// };
-
-// const styles = StyleSheet.create({
-//   container: {
-//     flex: 1,
-//     backgroundColor: '#f5f5f5',
-//   },
-//   scrollView: {
-//     padding: 16,
-//   },
-//   header: {
-//     marginBottom: 20,
-//   },
-//   headerText: {
-//     fontSize: 24,
-//     fontWeight: 'bold',
-//     color: '#333',
-//   },
-//   section: {
-//     backgroundColor: 'white',
-//     borderRadius: 8,
-//     padding: 16,
-//     marginBottom: 16,
-//     shadowColor: '#000',
-//     shadowOffset: { width: 0, height: 1 },
-//     shadowOpacity: 0.2,
-//     shadowRadius: 1.41,
-//     elevation: 2,
-//   },
-//   sectionTitle: {
-//     fontSize: 18,
-//     fontWeight: 'bold',
-//     marginBottom: 16,
-//     color: '#333',
-//   },
-//   inputGroup: {
-//     marginBottom: 16,
-//   },
-//   label: {
-//     fontSize: 14,
-//     marginBottom: 8,
-//     color: '#555',
-//   },
-//   input: {
-//     borderWidth: 1,
-//     borderColor: '#ddd',
-//     borderRadius: 4,
-//     padding: 10,
-//     fontSize: 16,
-//   },
-//   textArea: {
-//     height: 100,
-//     textAlignVertical: 'top',
-//   },
-//   pickerContainer: {
-//     borderWidth: 1,
-//     borderColor: '#ddd',
-//     borderRadius: 4,
-//     overflow: 'hidden',
-//   },
-//   picker: {
-//     height: 50,
-//   },
-//   rowContainer: {
-//     flexDirection: 'row',
-//     justifyContent: 'space-between',
-//   },
-//   facilitiesContainer: {
-//     flexDirection: 'row',
-//     flexWrap: 'wrap',
-//     marginTop: 8,
-//   },
-//   facilityChip: {
-//     backgroundColor: '#f0f0f0',
-//     borderRadius: 20,
-//     paddingVertical: 8,
-//     paddingHorizontal: 12,
-//     margin: 4,
-//   },
-//   facilityChipSelected: {
-//     backgroundColor: '#007bff',
-//   },
-//   facilityChipText: {
-//     color: '#555',
-//   },
-//   facilityChipTextSelected: {
-//     color: 'white',
-//   },
-//   checkboxContainer: {
-//     backgroundColor: 'transparent',
-//     borderWidth: 0,
-//     padding: 0,
-//     marginLeft: -10,
-//   },
-//   dateButton: {
-//     flexDirection: 'row',
-//     justifyContent: 'space-between',
-//     alignItems: 'center',
-//     borderWidth: 1,
-//     borderColor: '#ddd',
-//     borderRadius: 4,
-//     padding: 10,
-//   },
-//   imagePickerButton: {
-//     backgroundColor: '#007bff',
-//     borderRadius: 4,
-//     flexDirection: 'row',
-//     justifyContent: 'center',
-//     alignItems: 'center',
-//     padding: 12,
-//     marginBottom: 12,
-//   },
-//   imagePickerText: {
-//     color: 'white',
-//     fontWeight: 'bold',
-//     marginRight: 8,
-//   },
-//   imagePreview: {
-//     width: '100%',
-//     height: 200,
-//     borderRadius: 4,
-//     marginBottom: 8,
-//   },
-//   submitButton: {
-//     backgroundColor: '#28a745',
-//     borderRadius: 4,
-//     padding: 16,
-//     alignItems: 'center',
-//     marginVertical: 16,
-//   },
-//   submitButtonText: {
-//     color: 'white',
-//     fontSize: 18,
-//     fontWeight: 'bold',
-//   },
-//   disabledButton: {
-//     backgroundColor: '#93c5a0',
-//   },
-// });
-
-// export default CreatePackageScreen;

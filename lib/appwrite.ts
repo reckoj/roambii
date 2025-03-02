@@ -24,6 +24,8 @@ export const config = {
   usersCollectionId: process.env.EXPO_PUBLIC_APPWRITE_USERS_COLLECTION_ID,
   propertiesCollectionId:
     process.env.EXPO_PUBLIC_APPWRITE_PROPERTIES_COLLECTION_ID,
+  flightInfoCollectionId:
+    process.env.EXPO_PUBLIC_APPWRITE_FlIGHT_INFO_COLLECTION_ID,
   bucketId: process.env.EXPO_PUBLIC_APPWRITE_BUCKET_ID,
   chatCollectionId: process.env.EXPO_PUBLIC_APPWRITE_MESSAGE_COLLECTION_ID,
   packageImagesId: process.env.EXPO_PUBLIC_APPWRITE_PACKAGEIMAGE_BUCKET_ID,
@@ -68,7 +70,8 @@ export async function registerUser(
   email: string,
   password: string,
   isAgent: boolean,
-  cPassword: string
+  cPassword: string,
+  niche: string
 ) {
   try {
     const trimmedName = name.trim();
@@ -98,6 +101,7 @@ export async function registerUser(
       trimmedName
     );
     if (!user) throw new Error("Failed to create user account");
+    console.log("User created:", user.$id); // ✅ Debugging user creation
 
     // Store user in users collection
     const newUser = await databases.createDocument(
@@ -109,6 +113,7 @@ export async function registerUser(
         email,
         password,
         isAgent,
+        userId: user.$id, // ✅ Store the correct user ID
       }
     );
 
@@ -127,6 +132,8 @@ export async function registerUser(
           email,
           password,
           isAgent,
+          userId: user.$id, // ✅ Store the correct user ID
+          niche,
         }
       );
       if (!agent) throw new Error("Failed to add agent to collection");
@@ -469,7 +476,7 @@ export const createPackageListing = async (formData: PackageFormData) => {
     // Create Flight Info entry
     const flightInfo = await databases.createDocument(
       config.databaseId!,
-      "flight-info",
+      config.flightInfoCollectionId!,
       ID.unique(),
       {
         departure_from: formData.departureInfo.from,
@@ -483,7 +490,7 @@ export const createPackageListing = async (formData: PackageFormData) => {
     // Create Package Info entry
     const packageData = await databases.createDocument(
       config.databaseId!,
-      "package-info",
+      config.propertiesCollectionId!,
       ID.unique(),
       {
         name: "Custom Package",

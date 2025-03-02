@@ -176,7 +176,7 @@ const AgentProfile = () => {
           <Image source={{ uri: agent.avatar }} style={styles.avatar} />
           <View style={styles.headerInfo}>
             <Text style={styles.name}>{agent.name}</Text>
-            <Text style={styles.title}>{tagent.title}</Text>
+            <Text style={styles.title}>{agent.niche} Travel Specialist</Text>
             <View style={styles.ratingContainer}>
               {renderStars(tagent.rating)}
               <Text style={styles.ratingText}>

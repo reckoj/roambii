@@ -26,6 +26,7 @@ import RecommendedAgents from "@/components/RecommendedAgents";
 import TripCard from "@/components/TripCard";
 import TripDetailView from "@/components/TripDetailView";
 import Bookings from "@/app/bookings";
+import React from "react";
 
 const getGreeting = () => {
   const currentHour = new Date().getHours();
