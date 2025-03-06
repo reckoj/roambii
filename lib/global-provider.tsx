@@ -35,22 +35,15 @@ export const GlobalProvider = ({ children }: GlobalProviderProps) => {
   } = useAppwrite({
     fn: getCurrentUser,
   });
-  const user = rawUser
-    ? {
-        ...rawUser,
-        avatar: `https://cloud.appwrite.io/v1/avatars/initials?background=000000&color=ffffff&name=${encodeURIComponent(
-          rawUser.name
-        )}&size=100`,
-      }
-    : null;
-  const isLogged = !!user;
-  const isAgent = user?.isAgent || false;
+
+  const isLogged = !!rawUser;
+  const isAgent = rawUser?.isAgent || false;
 
   return (
     <GlobalContext.Provider
       value={{
         isLogged,
-        rawUser,
+        rawUser, // ✅ Keep rawUser without modifying avatar
         loading,
         isAgent,
         refetch,

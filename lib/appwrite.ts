@@ -264,19 +264,37 @@ export async function checkIsAgent(userId: string) {
 
 export async function getCurrentUser() {
   try {
-    const result = await account.get();
-    if (result.$id) {
-      const userAvatar = avatar.getInitials(result.name);
-      const isAgent = await checkIsAgent(result.email);
+    // Step 1: Get Authenticated User ID
+    const authUser = await account.get();
+    if (!authUser?.$id) throw new Error("User not authenticated");
 
+    // Step 2: Fetch Full User Data from Database
+    const userData = await databases.listDocuments(
+      config.databaseId!,
+      config.usersCollectionId!,
+      [
+        Query.equal("userId", authUser.$id), // ✅ Query by stored userId
+      ]
+    );
+
+    if (userData.total === 0) {
+      console.warn("User document not found in the database.");
       return {
-        ...result,
-        isAgent,
-        avatar: userAvatar.toString(),
+        ...authUser,
+        isAgent: false,
+        avatar: null, // ✅ Ensure avatar is null if no record exists
       };
     }
 
-    return null;
+    const user = userData.documents[0];
+
+    return {
+      ...authUser,
+      name: user.name || authUser.name, // ✅ Fallback to auth name
+      email: user.email || authUser.email, // ✅ Fallback to auth email
+      isAgent: user.isAgent || false,
+      avatar: user.avatar || null, // ✅ Ensure the avatar is set correctly
+    };
   } catch (error) {
     console.log("User not authenticated:", error);
     return null;
@@ -380,6 +398,31 @@ export async function getAgents() {
     return { documents: [] }; // Return empty array to prevent crashes
   }
 }
+
+// const uploadImageToStorage = async (fileUri: string) => {
+//   try {
+//     // Fetch the image file and convert it to a Blob
+//     const response = await fetch(fileUri);
+//     const blob = await response.blob();
+
+//     // Convert Blob to a File-like object
+//     const file = new File([blob], `image_${Date.now()}.jpg`, {
+//       type: blob.type,
+//     });
+
+//     // Upload file to Appwrite storage
+//     const uploadedFile = await storage.createFile(
+//       "package-images",
+//       "unique()",
+//       file
+//     );
+
+//     return uploadedFile.$id; // Return the file ID
+//   } catch (error) {
+//     console.error("Error uploading image:", error);
+//     return null;
+//   }
+// };
 
 /**
  * Uploads an image to Appwrite storage and returns the file URL.

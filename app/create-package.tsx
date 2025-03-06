@@ -8,8 +8,12 @@ import {
   Alert,
   SafeAreaView,
   Switch,
+  TouchableOpacity,
+  Image,
+  StyleSheet,
 } from "react-native";
 import { Picker } from "@react-native-picker/picker";
+import * as ImagePicker from "expo-image-picker";
 
 import {
   account,
@@ -20,6 +24,10 @@ import {
 } from "../lib/appwrite";
 import { ID, Query } from "react-native-appwrite";
 import { useGlobalContext } from "@/lib/global-provider";
+import icons from "@/constants/icons";
+import { router } from "expo-router";
+import CustomInput from "@/components/CustomInput";
+import AuthButton from "@/components/AuthButton";
 
 const CreatePackageScreen = () => {
   const { rawUser, isLogged, isAgent } = useGlobalContext();
@@ -42,7 +50,7 @@ const CreatePackageScreen = () => {
     bathrooms: "",
     rating: "",
     facilities: [],
-    // image: "",
+    image: "",
     geolocation: "",
     agent: "",
     gallery: "",
@@ -55,20 +63,34 @@ const CreatePackageScreen = () => {
     setFormData((prev) => ({ ...prev, [key]: value }));
   };
 
-  // const handleImageUpload = async () => {
-  //   try {
-  //     const imageUrl = await uploadPimage(
-  //       formData.image,
-  //       config.packageImagesId!
-  //     );
-  //     handleChange("image", imageUrl);
-  //   } catch (error) {
-  //     console.error("Image upload failed:", error);
-  //   }
-  // };
+  const pickImage = async () => {
+    try {
+      const { status } =
+        await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (status !== "granted") {
+        Alert.alert(
+          "Permission Required",
+          "Sorry, we need camera roll permissions to make this work!"
+        );
+        return;
+      }
+
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        allowsEditing: true,
+        aspect: [16, 9],
+        quality: 1,
+      });
+
+      if (!result.canceled) {
+        setFormData((prev) => ({ ...prev, image: result.assets[0].uri }));
+      }
+    } catch (error) {
+      Alert.alert("Error", "Failed to pick image");
+    }
+  };
 
   const handleSubmit = async () => {
-    console.log("Submitting form");
     try {
       const userId = (await account.get()).$id;
       if (!isAgent || !rawUser || !rawUser.$id) {
@@ -76,9 +98,6 @@ const CreatePackageScreen = () => {
         console.log("Exit: User is not an agent or not logged in"); // passes
         return;
       }
-
-      // Fetch the agent's document ID (if they exist in the "agents" collection)
-      console.log("Fetching agent data..."); //passes
 
       const agentData = await databases.listDocuments(
         config.databaseId!,
@@ -89,7 +108,7 @@ const CreatePackageScreen = () => {
 
       if (agentData.total === 0) {
         alert("Only agents can create packages.");
-        console.log("Exit: No agent found");
+
         return;
       }
 
@@ -122,7 +141,28 @@ const CreatePackageScreen = () => {
         }
       );
 
-      // Step 2: Create Package Info document with flightInfo ID
+      // Step  Upload Images to the Gallery collection (if images exist)
+      // let galleryIds = [];
+      // if (formData.image && formData.image.length > 0) {
+      //   console.log("Uploading images...");
+
+      //   for (const image of formData.image) {
+      //     const galleryImage = await databases.createDocument(
+      //       config.databaseId!,
+      //       config.galleriesCollectionId!,
+      //       ID.unique(),
+      //       {
+      //         agent: agentId, // Link the image to the agent
+      //         image: image, // Store the image URL
+      //       }
+      //     );
+      //     galleryIds.push(galleryImage.$id);
+      //   }
+
+      //   console.log("Images uploaded:", galleryIds);
+      // }
+
+      // Step 3: Create Package Info document with flightInfo ID
       const packageData = await databases.createDocument(
         config.databaseId!,
         config.propertiesCollectionId!,
@@ -136,16 +176,44 @@ const CreatePackageScreen = () => {
           bathrooms: parseInt(formData.bathrooms),
           rating: parseFloat(formData.rating),
           facilities: formData.facilities,
-          // image: formData.image,
+          image: formData.image,
           // geolocation: formData.geolocation,
           agent: agentId, // ✅ Single document ID, no array
-          gallery: formData.gallery || null, // ✅ Single document ID or null
+          gallery: [],
           reviews: formData.reviews || null, // ✅ Single document ID or null
           allinclusive: formData.allinclusive,
           roomType: formData.roomType,
           flightInfo: flightInfo.$id, // ✅ Make this an array
         }
       );
+
+      // Step 3: Add Images to Gallery and Link to Package
+      if (formData.gallery && formData.gallery.length > 0) {
+        const galleryIds = [];
+
+        for (const image of formData.gallery) {
+          const galleryItem = await databases.createDocument(
+            config.databaseId!,
+            config.galleriesCollectionId!,
+            ID.unique(),
+            {
+              package: packageData.$id, // ✅ Link image to package
+              imageUrl: image, // ✅ Store image URL
+            }
+          );
+          galleryIds.push(galleryItem.$id);
+        }
+
+        // Step 4: Update Package with Gallery References
+        await databases.updateDocument(
+          config.databaseId!,
+          config.propertiesCollectionId!,
+          packageData.$id,
+          {
+            gallery: galleryIds, // ✅ Now linking images
+          }
+        );
+      }
 
       alert("Package created successfully!");
     } catch (error) {
@@ -154,117 +222,110 @@ const CreatePackageScreen = () => {
   };
 
   return (
-    <SafeAreaView>
-      <ScrollView style={{ padding: 20 }}>
-        <Text>Package Name</Text>
-        <TextInput
-          value={formData.name}
-          onChangeText={(text) => handleChange("name", text)}
-          style={styles.input}
-        />
-
-        <Text>Departure From</Text>
-        <TextInput
-          value={formData.departingFrom}
-          onChangeText={(text) => handleChange("departingFrom", text)}
-          style={styles.input}
-        />
-
-        <Text>Arrival To</Text>
-        <TextInput
-          value={formData.arrivingTo}
-          onChangeText={(text) => handleChange("arrivingTo", text)}
-          style={styles.input}
-        />
-
-        <Text>Return From</Text>
-        <TextInput
-          value={formData.returningFrom}
-          onChangeText={(text) => handleChange("returningFrom", text)}
-          style={styles.input}
-        />
-
-        <Text>Return To</Text>
-        <TextInput
-          value={formData.returningTo}
-          onChangeText={(text) => handleChange("returningTo", text)}
-          style={styles.input}
-        />
-
-        <Text>Departure Date</Text>
-        <TextInput
-          value={formData.departureDate}
-          onChangeText={(text) => handleChange("departureDate", text)}
-          style={styles.input}
-        />
-
-        <Text>Return Date</Text>
-        <TextInput
-          value={formData.returnDate}
-          onChangeText={(text) => handleChange("returnDate", text)}
-          style={styles.input}
-        />
-
-        <Text>Type</Text>
-        <Picker
-          selectedValue={formData.type}
-          onValueChange={(value) => handleChange("type", value)}
+    <SafeAreaView className="flex-1 bg-white">
+      <View className="flex flex-row items-center w-full justify-between">
+        <TouchableOpacity
+          onPress={() => router.back()}
+          className="flex flex-row rounded-full size-11 ml-4 items-center justify-center"
         >
-          <Picker.Item label="Luxury" value="Luxury" />
-          <Picker.Item label="Budget" value="Budget" />
-          <Picker.Item label="Standard" value="Standard" />
-          <Picker.Item label="House" value="House" />
-          <Picker.Item label="Condo" value="Condo" />
-        </Picker>
+          <Image source={icons.backArrow} className="size-8" />
+        </TouchableOpacity>
+        <Text style={styles.title}>Create New Package Listing</Text>
+        <View></View>
+      </View>
+      <ScrollView style={styles.container}>
+        <Text style={styles.sectionTitle}>Property Information</Text>
+        <View style={styles.section}>
+          <Text style={styles.label}>Banner Image</Text>
+          <TouchableOpacity style={styles.imageUpload} onPress={pickImage}>
+            {formData.image ? (
+              <Image
+                source={{ uri: formData.image }}
+                style={styles.previewImage}
+              />
+            ) : (
+              <Text style={styles.imageUploadText}>Tap to upload image</Text>
+            )}
+          </TouchableOpacity>
+        </View>
 
-        <Text>Description</Text>
-        <TextInput
-          value={formData.description}
-          onChangeText={(text) => handleChange("description", text)}
-          style={styles.input}
-          multiline
-        />
+        <View style={styles.section}>
+          <View className="mb-4">
+            {/* Label */}
+            <Text
+              style={styles.label}
+              className="text-lg font-semibold text-[#34495E] mb-2"
+            >
+              Property Type
+            </Text>
 
-        <Text>Price</Text>
-        <TextInput
-          value={formData.price}
-          onChangeText={(text) => handleChange("price", text)}
-          keyboardType="numeric"
-          style={styles.input}
-        />
+            {/* Picker Container */}
+            <View className="border border-gray-100/70 rounded-lg bg-gray-100/20 px-3">
+              <Picker
+                selectedValue={formData.type}
+                onValueChange={(value) => handleChange("type", value)}
+                className="text-[#95A5A6]"
+                itemStyle={{ fontSize: 16 }} // Adjusts item text size
+              >
+                <Picker.Item label="Luxury" value="Luxury" />
+                <Picker.Item label="Budget" value="Budget" />
+                <Picker.Item label="Standard" value="Standard" />
+                <Picker.Item label="House" value="House" />
+                <Picker.Item label="Condo" value="Condo" />
+              </Picker>
+            </View>
+          </View>
 
-        <Text>Bedrooms</Text>
-        <TextInput
-          value={formData.bedrooms}
-          onChangeText={(text) => handleChange("bedrooms", text)}
-          keyboardType="numeric"
-          style={styles.input}
-        />
+          <Text style={styles.label}>Description</Text>
+          <CustomInput
+            value={formData.description}
+            onChangeText={(text) => handleChange("description", text)}
+            // style={styles.input}
+            // multiline
+          />
 
-        <Text>Bathrooms</Text>
-        <TextInput
-          value={formData.bathrooms}
-          onChangeText={(text) => handleChange("bathrooms", text)}
-          keyboardType="numeric"
-          style={styles.input}
-        />
+          <Text style={styles.label}>Price</Text>
+          <CustomInput
+            value={formData.price}
+            onChangeText={(text) => handleChange("price", text)}
+            keyboardType="numeric"
+            // style={styles.input}
+          />
 
-        <Text>Rating</Text>
-        <TextInput
-          value={formData.rating}
-          onChangeText={(text) => handleChange("rating", text)}
-          keyboardType="numeric"
-          style={styles.input}
-        />
+          <Text style={styles.label}>Bedrooms</Text>
+          <CustomInput
+            value={formData.bedrooms}
+            onChangeText={(text) => handleChange("bedrooms", text)}
+            keyboardType="numeric"
+            // style={styles.input}
+          />
 
-        <Text>Facilities</Text>
-        <TextInput
-          value={formData.facilities.join(", ")}
-          onChangeText={(text) => handleChange("facilities", text.split(", "))}
-          style={styles.input}
-        />
+          <Text style={styles.label}>Bathrooms</Text>
+          <CustomInput
+            value={formData.bathrooms}
+            onChangeText={(text) => handleChange("bathrooms", text)}
+            keyboardType="numeric"
+            // style={styles.input}
+          />
 
-        {/* <Text>Image URL</Text>
+          <Text style={styles.label}>Rating</Text>
+          <CustomInput
+            value={formData.rating}
+            onChangeText={(text) => handleChange("rating", text)}
+            keyboardType="numeric"
+            // style={styles.input}
+          />
+
+          <Text style={styles.label}>Facilities</Text>
+          <CustomInput
+            value={formData.facilities.join(", ")}
+            onChangeText={(text) =>
+              handleChange("facilities", text.split(", "))
+            }
+            // style={styles.input}
+          />
+
+          {/* <Text>Image URL</Text>
         <TextInput
           value={formData.image}
           onChangeText={(text) => handleChange("image", text)}
@@ -272,48 +333,211 @@ const CreatePackageScreen = () => {
         />
         <Button title="Upload Image" onPress={handleImageUpload} /> */}
 
-        {/* <Text>Geolocation</Text>
+          {/* <Text>Geolocation</Text>
         <TextInput
           value={formData.geolocation}
           onChangeText={(text) => handleChange("geolocation", text)}
           style={styles.input}
         /> */}
 
-        <Text>All-Inclusive</Text>
-        <Switch
-          value={formData.allinclusive}
-          onValueChange={(value) => handleChange("allinclusive", value)}
-        />
+          <Text style={styles.label}>All-Inclusive</Text>
+          <Switch
+            value={formData.allinclusive}
+            onValueChange={(value) => handleChange("allinclusive", value)}
+          />
 
-        <Text>Room Type</Text>
-        <Picker
-          selectedValue={formData.roomType}
-          onValueChange={(value) => handleChange("roomType", value)}
-        >
-          <Picker.Item label="Standard" value="Standard Room" />
-          <Picker.Item label="Deluxe" value="Deluxe Room" />
-          <Picker.Item label="Suite" value="Suite" />
-          <Picker.Item label="Superior Room" value="Superior Room" />
-          <Picker.Item label="Double Room" value="Double Room" />
-          <Picker.Item label="Presidential Suite" value="Presidential Suite" />
-          <Picker.Item label="Junior Suite" value="Junior Suite" />
-        </Picker>
+          <Text className="mt-10" style={styles.label}>
+            Room Type
+          </Text>
+          <View className="border border-gray-100/70 rounded-lg bg-gray-100/20 px-3">
+            <Picker
+              selectedValue={formData.roomType}
+              onValueChange={(value) => handleChange("roomType", value)}
+            >
+              <Picker.Item label="Standard" value="Standard Room" />
+              <Picker.Item label="Deluxe" value="Deluxe Room" />
+              <Picker.Item label="Suite" value="Suite" />
+              <Picker.Item label="Superior Room" value="Superior Room" />
+              <Picker.Item label="Double Room" value="Double Room" />
+              <Picker.Item
+                label="Presidential Suite"
+                value="Presidential Suite"
+              />
+              <Picker.Item label="Junior Suite" value="Junior Suite" />
+            </Picker>
+          </View>
 
-        <Button title="Create Package" onPress={handleSubmit} />
+          <Text style={styles.label}>Package Name</Text>
+          <CustomInput
+            value={formData.name}
+            onChangeText={(text) => handleChange("name", text)}
+            // style={styles.input}
+          />
+        </View>
+
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Flight Information</Text>
+
+          <Text style={styles.label}>Departure From</Text>
+          <CustomInput
+            value={formData.departingFrom}
+            onChangeText={(text) => handleChange("departingFrom", text)}
+            // style={styles.input}
+          />
+
+          <Text style={styles.label}>Arrival To</Text>
+          <CustomInput
+            value={formData.arrivingTo}
+            onChangeText={(text) => handleChange("arrivingTo", text)}
+            // style={styles.input}
+          />
+
+          <Text style={styles.label}>Return From</Text>
+          <CustomInput
+            value={formData.returningFrom}
+            onChangeText={(text) => handleChange("returningFrom", text)}
+            // style={styles.input}
+          />
+
+          <Text style={styles.label}>Return To</Text>
+          <CustomInput
+            value={formData.returningTo}
+            onChangeText={(text) => handleChange("returningTo", text)}
+            // style={styles.input}
+          />
+
+          <Text style={styles.label}>Departure Date</Text>
+          <CustomInput
+            value={formData.departureDate}
+            onChangeText={(text) => handleChange("departureDate", text)}
+            // style={styles.input}
+          />
+
+          <Text style={styles.label}>Return Date</Text>
+          <CustomInput
+            value={formData.returnDate}
+            onChangeText={(text) => handleChange("returnDate", text)}
+            // style={styles.input}
+          />
+        </View>
+
+        <AuthButton title="Create Package" onPress={handleSubmit} />
       </ScrollView>
     </SafeAreaView>
   );
 };
 
-const styles = {
+const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+    padding: 16,
+    backgroundColor: "#fff",
+  },
+  title: {
+    fontSize: 18,
+    fontWeight: "bold",
+  },
+  section: {
+    marginBottom: 20,
+  },
+  label: {
+    fontSize: 16,
+    fontWeight: "500",
+    marginBottom: 8,
+    color: "#1ABC9C",
+  },
+
   input: {
     borderWidth: 1,
-    borderColor: "#ccc",
-    padding: 10,
-    marginBottom: 10,
-    borderRadius: 5,
+    borderColor: "#ddd",
+    borderRadius: 8,
+    padding: 12,
+    fontSize: 16,
+    backgroundColor: "#fff",
   },
-};
+  textArea: {
+    borderWidth: 1,
+    borderColor: "#ddd",
+    borderRadius: 8,
+    padding: 12,
+    fontSize: 16,
+    height: 100,
+    textAlignVertical: "top",
+    backgroundColor: "#fff",
+  },
+  pickerContainer: {
+    borderWidth: 1,
+    borderColor: "#ddd",
+    borderRadius: 8,
+    overflow: "hidden",
+    backgroundColor: "#fff",
+  },
+  picker: {
+    color: "#1ABC9C",
+  },
+  switchContainer: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    marginBottom: 20,
+    paddingVertical: 8,
+  },
+  imageUpload: {
+    width: "100%",
+    height: 200,
+    borderWidth: 1,
+    borderColor: "#ddd",
+    borderRadius: 8,
+    justifyContent: "center",
+    alignItems: "center",
+    backgroundColor: "#f9f9f9",
+    overflow: "hidden",
+  },
+  imageUploadText: {
+    color: "#666",
+  },
+  previewImage: {
+    width: "100%",
+    height: "100%",
+    borderRadius: 8,
+  },
+  sectionTitle: {
+    fontSize: 20,
+    fontWeight: "bold",
+    marginBottom: 16,
+  },
+  flightSection: {
+    marginBottom: 16,
+  },
+  dateButton: {
+    backgroundColor: "#f0f0f0",
+    padding: 12,
+    borderRadius: 8,
+    marginTop: 8,
+  },
+  dateButtonText: {
+    fontSize: 16,
+    color: "#333",
+  },
+  submitButton: {
+    backgroundColor: "#1ABC9C",
+    padding: 16,
+    borderRadius: 8,
+    alignItems: "center",
+    marginVertical: 20,
+  },
+  submitButtonText: {
+    color: "#fff",
+    fontSize: 18,
+    fontWeight: "600",
+  },
+  requiredText: {
+    color: "#666",
+    fontSize: 14,
+    marginBottom: 20,
+    textAlign: "center",
+  },
+});
 
 export default CreatePackageScreen;
 // import React, { useState } from "react";
