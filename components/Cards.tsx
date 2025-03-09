@@ -1,25 +1,49 @@
 import icons from "@/constants/icons";
-import images from "@/constants/images";
 import { Image, Text, TouchableOpacity, View } from "react-native";
 import { Models } from "react-native-appwrite";
+import { storage, config } from "@/lib/appwrite";
+import images from "@/constants/images";
 
 interface Props {
   item: Models.Document;
   onPress?: () => void;
 }
+const getPublicImageUrl = (fileId: string): string => {
+  if (!fileId) {
+    console.log("======>>>> file id ", fileId);
+  }
+  return storage.getFilePreview(config.imagesBuket!, fileId).toString(); // ✅ Ensure valid URL
+};
+
+const fixImageUrl = (imageUrl: string): string => {
+  if (!imageUrl) return "https://via.placeholder.com/150"; // ✅ Fallback for missing images
+
+  if (imageUrl.includes("/files/https://")) {
+    imageUrl = imageUrl.split("/files/https://")[1]; // ✅ Extract correct URL
+    imageUrl = "https://" + imageUrl; // ✅ Ensure it starts with https://
+  }
+
+  return imageUrl;
+};
 
 export const FeaturedCard = ({ item, onPress }: Props) => {
+  // const imageUrl = getPublicImageUrl(item.image); // ✅ Convert ID to Image URL
+  const imageUrl = fixImageUrl(item.image); // ✅ Ensure correct image URL
+
+  console.log("[Final Image URL Used] ==> ", imageUrl); // ✅ Debugging output
+  console.log("[Stored Package Data] ==> ", item);
+  console.log("[Stored Image ID] ==> ", item.image);
   return (
     <TouchableOpacity
       onPress={onPress}
       className="flex flex-col items-start w-60 h-80 relative"
     >
-      <Image source={{ uri: item.image }} className="size-full rounded-2xl" />
+      <Image source={images.jamaica} className="size-full rounded-2xl" />
 
-      <Image
+      {/* <Image
         source={images.bahamas}
         className="size-full rounded-2xl absolute bottom-0"
-      />
+      /> */}
 
       {/* <View className="flex flex-row items-center bg-white/90 px-3 py-1.5 rounded-full absolute top-5 right-5">
         <Image source={icons.star} className="size-3.5" />
@@ -51,6 +75,9 @@ export const FeaturedCard = ({ item, onPress }: Props) => {
 };
 
 export const Card = ({ item, onPress }: Props) => {
+  const imageUrl = getPublicImageUrl(item.image); // ✅ Convert ID to Image URL
+
+  console.log("[Final Image URL Used] ==> ", imageUrl); // ✅ Debugging output
   return (
     <TouchableOpacity
       className="flex-1 w-full mt-4 px-3 py-4 rounded-lg border border-gray-200 shadow-lg shadow-black-100/70 relative"
@@ -63,7 +90,7 @@ export const Card = ({ item, onPress }: Props) => {
         </Text>
       </View>
 
-      <Image source={{ uri: item.image }} className="w-full h-40 rounded-lg" />
+      <Image source={images.bahamas} className="w-full h-40 rounded-lg" />
 
       <View className="flex flex-col mt-2">
         <Text className="text-base font-rubik-bold text-black-300">

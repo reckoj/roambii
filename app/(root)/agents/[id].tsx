@@ -25,6 +25,7 @@ import { useAppwrite } from "@/lib/useAppwrite";
 import { Card } from "@/components/Cards";
 import NoResults from "@/components/NoResults";
 import ReviewModal from "@/components/ReviewModal";
+import images from "@/constants/images";
 
 type Package = {
   name: string;
@@ -47,6 +48,7 @@ const AgentProfile = () => {
   const windowHeight = Dimensions.get("window").height;
   const [selectedReview, setSelectedReview] = useState<Review | null>(null);
   const [isModalVisible, setIsModalVisible] = useState(false);
+  const [loading1, setLoading1] = useState(true);
 
   const { data: latestProperties, loading: latestPropertiesLoading } =
     useAppwrite({
@@ -79,16 +81,33 @@ const AgentProfile = () => {
     const fetchAgent = async () => {
       if (id) {
         try {
-          const data = await getAgentById({ id: String(id) }); // ✅ Convert id to string
-          setAgent(data);
+          setLoading1(true);
+          const data = await getAgentById({ id: String(id) });
+
+          console.log("[Fetched Agent Data] ==> ", data); // ✅ Debugging output
+
+          if (data) {
+            setAgent({
+              ...data,
+              avatar:
+                data.avatar && data.avatar.startsWith("https")
+                  ? data.avatar
+                  : images.avatar, // ✅ Ensures a valid avatar
+            });
+          } else {
+            console.warn("[No Agent Data Found]");
+          }
         } catch (error) {
           console.error("Error fetching agent by ID:", error);
+        } finally {
+          setLoading1(false);
         }
       }
     };
 
     fetchAgent();
   }, [id]);
+
   const handleCardPress = (id: string) => router.push(`/properties/${id}`);
 
   if (!agent)
@@ -173,7 +192,13 @@ const AgentProfile = () => {
         {/* Header Section */}
 
         <View style={styles.header}>
-          <Image source={{ uri: agent.avatar }} style={styles.avatar} />
+          <Image
+            source={{ uri: agent.avatar }} // ✅ Correct agent image
+            className="w-32 h-32 rounded-full border-4 border-gray-300"
+            onError={(e) =>
+              console.error("Failed to load agent avatar", e.nativeEvent.error)
+            }
+          />
           <View style={styles.headerInfo}>
             <Text style={styles.name}>{agent.name}</Text>
             <Text style={styles.title}>{agent.niche} Travel Specialist</Text>

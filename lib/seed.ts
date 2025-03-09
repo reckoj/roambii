@@ -11,7 +11,7 @@ const COLLECTIONS = {
   AGENT: config.agentsCollectionId,
   REVIEWS: config.reviewsCollectionId,
   GALLERY: config.galleriesCollectionId,
-  PACKAGE: config.propertiesCollectionId,
+  PACKAGE: config.packagesCollectionId,
 };
 
 const propertyTypes = [

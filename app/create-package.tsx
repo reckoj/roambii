@@ -28,9 +28,10 @@ import icons from "@/constants/icons";
 import { router } from "expo-router";
 import CustomInput from "@/components/CustomInput";
 import AuthButton from "@/components/AuthButton";
+import { handlePackageImagePicked } from "@/lib/storage";
 
 const CreatePackageScreen = () => {
-  const { rawUser, isLogged, isAgent } = useGlobalContext();
+  const { rawUser, isLogged, isAgent, refetch } = useGlobalContext();
   const [formData, setFormData] = useState({
     departingFrom: "",
     arrivingTo: "",
@@ -76,14 +77,14 @@ const CreatePackageScreen = () => {
       }
 
       const result = await ImagePicker.launchImageLibraryAsync({
-        mediaTypes: ImagePicker.MediaTypeOptions.Images,
         allowsEditing: true,
-        aspect: [16, 9],
-        quality: 1,
+        aspect: [4, 3],
+        quality: 0.7,
       });
 
       if (!result.canceled) {
         setFormData((prev) => ({ ...prev, image: result.assets[0].uri }));
+        await handlePackageImagePicked(result.assets[0].uri, rawUser!.$id);
       }
     } catch (error) {
       Alert.alert("Error", "Failed to pick image");
@@ -95,7 +96,7 @@ const CreatePackageScreen = () => {
       const userId = (await account.get()).$id;
       if (!isAgent || !rawUser || !rawUser.$id) {
         alert("You must be logged in to create a package");
-        console.log("Exit: User is not an agent or not logged in"); // passes
+        // console.log("Exit: User is not an agent or not logged in"); // passes
         return;
       }
 
@@ -112,7 +113,7 @@ const CreatePackageScreen = () => {
         return;
       }
 
-      console.log("Using agent ID:", rawUser.$id);
+      // console.log("Using agent ID:", rawUser.$id);
       if (!formData.name || !formData.price || !formData.departingFrom) {
         alert("Please fill in required fields");
         return;
@@ -140,32 +141,14 @@ const CreatePackageScreen = () => {
           returnDate: formData.returnDate,
         }
       );
+      const uploadedFileId = await handlePackageImagePicked(
+        formData.image,
+        rawUser.$id
+      );
 
-      // Step  Upload Images to the Gallery collection (if images exist)
-      // let galleryIds = [];
-      // if (formData.image && formData.image.length > 0) {
-      //   console.log("Uploading images...");
-
-      //   for (const image of formData.image) {
-      //     const galleryImage = await databases.createDocument(
-      //       config.databaseId!,
-      //       config.galleriesCollectionId!,
-      //       ID.unique(),
-      //       {
-      //         agent: agentId, // Link the image to the agent
-      //         image: image, // Store the image URL
-      //       }
-      //     );
-      //     galleryIds.push(galleryImage.$id);
-      //   }
-
-      //   console.log("Images uploaded:", galleryIds);
-      // }
-
-      // Step 3: Create Package Info document with flightInfo ID
       const packageData = await databases.createDocument(
         config.databaseId!,
-        config.propertiesCollectionId!,
+        config.packagesCollectionId!,
         ID.unique(),
         {
           name: formData.name,
@@ -176,7 +159,7 @@ const CreatePackageScreen = () => {
           bathrooms: parseInt(formData.bathrooms),
           rating: parseFloat(formData.rating),
           facilities: formData.facilities,
-          image: formData.image,
+          image: uploadedFileId,
           // geolocation: formData.geolocation,
           agent: agentId, // ✅ Single document ID, no array
           gallery: [],
@@ -186,6 +169,8 @@ const CreatePackageScreen = () => {
           flightInfo: flightInfo.$id, // ✅ Make this an array
         }
       );
+
+      console.log("[Image Before Saving] ==> ", formData.image);
 
       // Step 3: Add Images to Gallery and Link to Package
       if (formData.gallery && formData.gallery.length > 0) {
@@ -207,16 +192,19 @@ const CreatePackageScreen = () => {
         // Step 4: Update Package with Gallery References
         await databases.updateDocument(
           config.databaseId!,
-          config.propertiesCollectionId!,
+          config.packagesCollectionId!,
           packageData.$id,
           {
             gallery: galleryIds, // ✅ Now linking images
           }
         );
+        refetch();
       }
 
       alert("Package created successfully!");
+      console.log("[Refetching Data After Submit]..."); // ✅ Debugging
     } catch (error) {
+      console.log(error);
       alert(`Failed to create package: ${error}`);
     }
   };
@@ -260,12 +248,13 @@ const CreatePackageScreen = () => {
             </Text>
 
             {/* Picker Container */}
-            <View className="border border-gray-100/70 rounded-lg bg-gray-100/20 px-3">
+            <View className="border border-gray-300 rounded-lg px-3">
               <Picker
                 selectedValue={formData.type}
                 onValueChange={(value) => handleChange("type", value)}
-                className="text-[#95A5A6]"
-                itemStyle={{ fontSize: 16 }} // Adjusts item text size
+                className="text-[#34495E]"
+                style={{ color: "#34495E", height: 190 }} // ✅ Picker text color
+                itemStyle={{ fontSize: 20, color: "#34495E" }} // ✅ iOS support
               >
                 <Picker.Item label="Luxury" value="Luxury" />
                 <Picker.Item label="Budget" value="Budget" />
@@ -275,57 +264,61 @@ const CreatePackageScreen = () => {
               </Picker>
             </View>
           </View>
+        </View>
+        <Text style={styles.label}>Package Name</Text>
+        <CustomInput
+          value={formData.name}
+          onChangeText={(text) => handleChange("name", text)}
+          // style={styles.input}
+        />
 
-          <Text style={styles.label}>Description</Text>
-          <CustomInput
-            value={formData.description}
-            onChangeText={(text) => handleChange("description", text)}
-            // style={styles.input}
-            // multiline
-          />
+        <Text style={styles.label}>Description</Text>
+        <CustomInput
+          value={formData.description}
+          onChangeText={(text) => handleChange("description", text)}
+          // style={styles.input}
+          // multiline
+        />
 
-          <Text style={styles.label}>Price</Text>
-          <CustomInput
-            value={formData.price}
-            onChangeText={(text) => handleChange("price", text)}
-            keyboardType="numeric"
-            // style={styles.input}
-          />
+        <Text style={styles.label}>Price</Text>
+        <CustomInput
+          value={formData.price}
+          onChangeText={(text) => handleChange("price", text)}
+          keyboardType="numeric"
+          // style={styles.input}
+        />
 
-          <Text style={styles.label}>Bedrooms</Text>
-          <CustomInput
-            value={formData.bedrooms}
-            onChangeText={(text) => handleChange("bedrooms", text)}
-            keyboardType="numeric"
-            // style={styles.input}
-          />
+        <Text style={styles.label}>Bedrooms</Text>
+        <CustomInput
+          value={formData.bedrooms}
+          onChangeText={(text) => handleChange("bedrooms", text)}
+          keyboardType="numeric"
+          // style={styles.input}
+        />
 
-          <Text style={styles.label}>Bathrooms</Text>
-          <CustomInput
-            value={formData.bathrooms}
-            onChangeText={(text) => handleChange("bathrooms", text)}
-            keyboardType="numeric"
-            // style={styles.input}
-          />
+        <Text style={styles.label}>Bathrooms</Text>
+        <CustomInput
+          value={formData.bathrooms}
+          onChangeText={(text) => handleChange("bathrooms", text)}
+          keyboardType="numeric"
+          // style={styles.input}
+        />
 
-          <Text style={styles.label}>Rating</Text>
-          <CustomInput
-            value={formData.rating}
-            onChangeText={(text) => handleChange("rating", text)}
-            keyboardType="numeric"
-            // style={styles.input}
-          />
+        <Text style={styles.label}>Rating</Text>
+        <CustomInput
+          value={formData.rating}
+          onChangeText={(text) => handleChange("rating", text)}
+          keyboardType="numeric"
+          // style={styles.input}
+        />
 
-          <Text style={styles.label}>Facilities</Text>
-          <CustomInput
-            value={formData.facilities.join(", ")}
-            onChangeText={(text) =>
-              handleChange("facilities", text.split(", "))
-            }
-            // style={styles.input}
-          />
+        <Text style={styles.label}>Facilities</Text>
+        <CustomInput
+          value={formData.facilities.join(", ")}
+          onChangeText={(text) => handleChange("facilities", text.split(", "))}
+        />
 
-          {/* <Text>Image URL</Text>
+        {/* <Text>Image URL</Text>
         <TextInput
           value={formData.image}
           onChangeText={(text) => handleChange("image", text)}
@@ -333,49 +326,45 @@ const CreatePackageScreen = () => {
         />
         <Button title="Upload Image" onPress={handleImageUpload} /> */}
 
-          {/* <Text>Geolocation</Text>
+        {/* <Text>Geolocation</Text>
         <TextInput
           value={formData.geolocation}
           onChangeText={(text) => handleChange("geolocation", text)}
           style={styles.input}
         /> */}
 
-          <Text style={styles.label}>All-Inclusive</Text>
-          <Switch
-            value={formData.allinclusive}
-            onValueChange={(value) => handleChange("allinclusive", value)}
-          />
-
-          <Text className="mt-10" style={styles.label}>
-            Room Type
-          </Text>
-          <View className="border border-gray-100/70 rounded-lg bg-gray-100/20 px-3">
-            <Picker
-              selectedValue={formData.roomType}
-              onValueChange={(value) => handleChange("roomType", value)}
-            >
-              <Picker.Item label="Standard" value="Standard Room" />
-              <Picker.Item label="Deluxe" value="Deluxe Room" />
-              <Picker.Item label="Suite" value="Suite" />
-              <Picker.Item label="Superior Room" value="Superior Room" />
-              <Picker.Item label="Double Room" value="Double Room" />
-              <Picker.Item
-                label="Presidential Suite"
-                value="Presidential Suite"
-              />
-              <Picker.Item label="Junior Suite" value="Junior Suite" />
-            </Picker>
-          </View>
-
-          <Text style={styles.label}>Package Name</Text>
-          <CustomInput
-            value={formData.name}
-            onChangeText={(text) => handleChange("name", text)}
-            // style={styles.input}
-          />
+        <Text className="mt-5" style={styles.label}>
+          Room Type
+        </Text>
+        <View className="border border-gray-300 rounded-lg  px-3">
+          <Picker
+            selectedValue={formData.roomType}
+            onValueChange={(value) => handleChange("roomType", value)}
+            style={{ color: "#34495E", height: 190 }} // ✅ Picker text color
+            itemStyle={{ fontSize: 20, color: "#34495E" }} // ✅ iOS support
+          >
+            <Picker.Item label="Standard" value="Standard Room" />
+            <Picker.Item label="Deluxe" value="Deluxe Room" />
+            <Picker.Item label="Suite" value="Suite" />
+            <Picker.Item label="Superior Room" value="Superior Room" />
+            <Picker.Item label="Double Room" value="Double Room" />
+            <Picker.Item
+              label="Presidential Suite"
+              value="Presidential Suite"
+            />
+            <Picker.Item label="Junior Suite" value="Junior Suite" />
+          </Picker>
         </View>
 
-        <View style={styles.section}>
+        <Text style={styles.label} className="mt-4">
+          All-Inclusive
+        </Text>
+        <Switch
+          value={formData.allinclusive}
+          onValueChange={(value) => handleChange("allinclusive", value)}
+        />
+
+        <View style={styles.section} className="mt-6">
           <Text style={styles.sectionTitle}>Flight Information</Text>
 
           <Text style={styles.label}>Departure From</Text>

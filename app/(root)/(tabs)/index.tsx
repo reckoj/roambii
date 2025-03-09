@@ -176,6 +176,7 @@ const Home = () => {
                 </TouchableOpacity> */}
                   </View>
 
+                  {/** This is a list of agent names as filters */}
                   {/* <Filters /> */}
                   <RecommendedAgents />
                   <View className="mt-5">

@@ -12,6 +12,8 @@ import roamiiLogo from "@/assets/images/splash-icon.png";
 import bahamas from "@/assets/images/bahamas.jpg";
 import nomessages from "@/assets/images/no-chat.png";
 import forgot from "@/assets/images/forgot.png";
+import blank from "@/assets/images/blank.png";
+import jamaica from "@/assets/images/jamaica.png";
 import pudgy from "@/assets/jif/pudgy.gif";
 
 export default {
@@ -30,4 +32,6 @@ export default {
   nomessages,
   pudgy,
   forgot,
+  blank,
+  jamaica,
 };

@@ -11,6 +11,7 @@ import {
 import * as Linking from "expo-linking";
 import { openAuthSessionAsync } from "expo-web-browser";
 import { PackageFormData } from "./packageFormData";
+import images from "@/constants/images";
 
 export const config = {
   platform: "com.bysprk.roamii",
@@ -22,13 +23,15 @@ export const config = {
   reviewsCollectionId: process.env.EXPO_PUBLIC_APPWRITE_REVIEWS_COLLECTION_ID,
   agentsCollectionId: process.env.EXPO_PUBLIC_APPWRITE_AGENTS_COLLECTION_ID,
   usersCollectionId: process.env.EXPO_PUBLIC_APPWRITE_USERS_COLLECTION_ID,
-  propertiesCollectionId:
+  packagesCollectionId:
     process.env.EXPO_PUBLIC_APPWRITE_PROPERTIES_COLLECTION_ID,
   flightInfoCollectionId:
     process.env.EXPO_PUBLIC_APPWRITE_FlIGHT_INFO_COLLECTION_ID,
   bucketId: process.env.EXPO_PUBLIC_APPWRITE_BUCKET_ID,
   chatCollectionId: process.env.EXPO_PUBLIC_APPWRITE_MESSAGE_COLLECTION_ID,
   packageImagesId: process.env.EXPO_PUBLIC_APPWRITE_PACKAGEIMAGE_BUCKET_ID,
+  avatarBucket: process.env.EXPO_PUBLIC_APPWRITE_BUCKET_ID,
+  imagesBuket: process.env.EXPO_PUBLIC_APPWRITE_PACKAGEIMAGES_BUCKET_ID,
 };
 
 export const client = new Client();
@@ -53,7 +56,7 @@ async function checkEmailExists(email: string) {
 
     return existingUser.documents.length > 0;
   } catch (error) {
-    console.error("Error checking email:", error);
+    // console.error("Error checking email:", error);
     return false;
   }
 }
@@ -101,7 +104,7 @@ export async function registerUser(
       trimmedName
     );
     if (!user) throw new Error("Failed to create user account");
-    console.log("User created:", user.$id); // ✅ Debugging user creation
+    // console.log("User created:", user.$id); // ✅ Debugging user creation
 
     // Store user in users collection
     const newUser = await databases.createDocument(
@@ -119,7 +122,7 @@ export async function registerUser(
 
     if (!newUser) throw new Error("Failed to add user to collection");
 
-    console.log("User added to users collection:", newUser);
+    // console.log("User added to users collection:", newUser);
 
     if (isAgent) {
       // Store agent in agent collection
@@ -169,7 +172,7 @@ export async function loginUser(email: string, password: string) {
     const session = await account.createEmailPasswordSession(email, password);
     if (!session) throw new Error("Failed to create session");
 
-    console.log("User session updated:", user);
+    // console.log("User session updated:", user);
 
     return { success: true, message: "Login successful!" };
   } catch (error: any) {
@@ -208,7 +211,7 @@ export async function loginWGoogle() {
 
     return true;
   } catch (error) {
-    console.error(error);
+    // console.error(error);
     return false;
   }
 }
@@ -218,7 +221,7 @@ export async function logout() {
     const result = await account.deleteSession("current");
     return result;
   } catch (error) {
-    console.error(error);
+    // console.error(error);
     return false;
   }
 }
@@ -243,7 +246,7 @@ export async function updateUserPassword(
 
     return { success: true, message: "Password updated successfully!" };
   } catch (error: any) {
-    console.error("Password update error:", error.message);
+    // console.error("Password update error:", error.message);
     return { success: false, message: error.message };
   }
 }
@@ -257,7 +260,7 @@ export async function checkIsAgent(userId: string) {
     );
     return result.documents.length > 0;
   } catch (error) {
-    console.error("Error checking agent status:", error);
+    // console.error("Error checking agent status:", error);
     return false;
   }
 }
@@ -305,7 +308,7 @@ export async function getLatestProperties() {
   try {
     const result = await databases.listDocuments(
       config.databaseId!,
-      config.propertiesCollectionId!,
+      config.packagesCollectionId!,
       [Query.orderAsc("$createdAt"), Query.limit(5)]
     );
 
@@ -344,7 +347,7 @@ export async function getProperties({
 
     const result = await databases.listDocuments(
       config.databaseId!,
-      config.propertiesCollectionId!,
+      config.packagesCollectionId!,
       buildQuery
     );
 
@@ -360,7 +363,7 @@ export async function getPropertyById({ id }: { id: string }) {
   try {
     const result = await databases.getDocument(
       config.databaseId!,
-      config.propertiesCollectionId!,
+      config.packagesCollectionId!,
       id
     );
     return result;
@@ -373,14 +376,29 @@ export async function getPropertyById({ id }: { id: string }) {
 // get agent by ID
 export async function getAgentById({ id }: { id: string }) {
   try {
-    const result = await databases.getDocument(
+    const agentData = await databases.getDocument(
       config.databaseId!,
       config.agentsCollectionId!,
       id
     );
-    return result;
+    // console.log("[Raw Fetched Agent Data] ==> ", agentData);
+
+    // ✅ Fix duplicate URLs by extracting the correct part
+    let avatarUrl = agentData.avatar || images.avatar;
+
+    if (avatarUrl.includes("/files/https://")) {
+      avatarUrl = avatarUrl.split("/files/https://")[1]; // ✅ Extract correct URL
+      avatarUrl = "https://" + avatarUrl; // ✅ Ensure it starts with https://
+    }
+
+    // console.log("[Fixed Agent Avatar URL] ==> ", avatarUrl); // ✅ Debugging output
+
+    return {
+      ...agentData,
+      avatar: avatarUrl,
+    };
   } catch (error) {
-    console.error("Error fetching agent by ID:", error);
+    console.error("Error fetching agent:", error);
     return null;
   }
 }
@@ -398,31 +416,6 @@ export async function getAgents() {
     return { documents: [] }; // Return empty array to prevent crashes
   }
 }
-
-// const uploadImageToStorage = async (fileUri: string) => {
-//   try {
-//     // Fetch the image file and convert it to a Blob
-//     const response = await fetch(fileUri);
-//     const blob = await response.blob();
-
-//     // Convert Blob to a File-like object
-//     const file = new File([blob], `image_${Date.now()}.jpg`, {
-//       type: blob.type,
-//     });
-
-//     // Upload file to Appwrite storage
-//     const uploadedFile = await storage.createFile(
-//       "package-images",
-//       "unique()",
-//       file
-//     );
-
-//     return uploadedFile.$id; // Return the file ID
-//   } catch (error) {
-//     console.error("Error uploading image:", error);
-//     return null;
-//   }
-// };
 
 /**
  * Uploads an image to Appwrite storage and returns the file URL.
@@ -533,7 +526,7 @@ export const createPackageListing = async (formData: PackageFormData) => {
     // Create Package Info entry
     const packageData = await databases.createDocument(
       config.databaseId!,
-      config.propertiesCollectionId!,
+      config.packagesCollectionId!,
       ID.unique(),
       {
         name: "Custom Package",
@@ -554,3 +547,77 @@ export const createPackageListing = async (formData: PackageFormData) => {
     alert("Failed to create package listing. Please try again.");
   }
 };
+
+export async function getAgentPackages(agentId: string) {
+  try {
+    console.log("[Fetching All Packages]...");
+
+    const response = await databases.listDocuments(
+      config.databaseId!,
+      config.packagesCollectionId!,
+      [Query.orderDesc("$createdAt")]
+    );
+
+    // ✅ Manually filter packages that belong to this agent
+    const filteredPackages = response.documents.filter(
+      (pkg) => pkg.agent?.userId === agentId
+    );
+
+    // console.log("[Filtered Packages] ==> ", filteredPackages);
+
+    return filteredPackages;
+  } catch (error) {
+    console.error("Error fetching agent packages:", error);
+    return [];
+  }
+}
+
+/** ✅ Delete a package */
+export async function deletePackage(packageId: string) {
+  try {
+    await databases.deleteDocument(
+      config.databaseId!,
+      config.packagesCollectionId!,
+      packageId
+    );
+    return true;
+  } catch (error) {
+    console.error("Error deleting package:", error);
+    return false;
+  }
+}
+
+/** ✅ Update a package */
+export async function updatePackage(packageId: string, updatedData: object) {
+  try {
+    const response = await databases.updateDocument(
+      config.databaseId!,
+      config.packagesCollectionId!,
+      packageId,
+      updatedData
+    );
+    return response;
+  } catch (error) {
+    console.error("Error updating package:", error);
+    return null;
+  }
+}
+
+export async function getPackageById(packageId: string) {
+  try {
+    // console.log("[Fetching Package by ID] ==> ", packageId);
+
+    const response = await databases.getDocument(
+      config.databaseId!,
+      config.packagesCollectionId!,
+      packageId
+    );
+
+    // console.log("[Fetched Package] ==> ", response);
+
+    return response;
+  } catch (error) {
+    console.error("Error fetching package:", error);
+    return null;
+  }
+}
