@@ -613,6 +613,20 @@ export async function getAgentPackages(agentId: string) {
   }
 }
 
+export async function getAgentPackagesProfile(agentId: string) {
+  try {
+    const result = await databases.listDocuments(
+      config.databaseId!,
+      config.packagesCollectionId!,
+      [Query.equal("agent", agentId)]
+    );
+
+    return result.documents;
+  } catch (error) {
+    console.error("Error fetching agent packages:", error);
+    return [];
+  }
+}
 /** ✅ Delete a package */
 export async function deletePackage(packageId: string) {
   try {
@@ -689,45 +703,45 @@ export async function updateUser(userId: string, updates: Partial<User>) {
  * ✅ Soft Delete User Account (Client-Side)
  * - Marks user as deleted instead of fully deleting (because Appwrite doesn't allow self-deletion)
  */
-export const deleteUserAccount = async (userId: string) => {
-  try {
-    if (!userId) {
-      Alert.alert("Error", "User ID not found.");
-      return;
-    }
+// export const deleteUserAccount = async (userId: string) => {
+//   try {
+//     if (!userId) {
+//       Alert.alert("Error", "User ID not found.");
+//       return;
+//     }
 
-    // 🔥 Step 1: Find the user document in the database
-    const userDocs = await databases.listDocuments(
-      config.databaseId!,
-      config.usersCollectionId!,
-      [Query.equal("userId", userId)]
-    );
+//     // 🔥 Find the user document in the database
+//     const userDocs = await databases.listDocuments(
+//       config.databaseId!,
+//       config.usersCollectionId!,
+//       [Query.equal("userId", userId)]
+//     );
 
-    if (userDocs.total === 0) {
-      Alert.alert("Error", "User profile not found.");
-      return;
-    }
+//     if (userDocs.total === 0) {
+//       Alert.alert("Error", "User profile not found.");
+//       return;
+//     }
 
-    const userDocId = userDocs.documents[0].$id;
+//     const userDocId = userDocs.documents[0].$id;
 
-    // 🔥 Step 2: Update the user document to mark as "deleted"
-    await databases.updateDocument(
-      config.databaseId!,
-      config.usersCollectionId!,
-      userDocId,
-      { isDeleted: true } // ✅ Marks the user as deleted
-    );
+//     // 🔥 Update user document: Mark as deleted
+//     await databases.updateDocument(
+//       config.databaseId!,
+//       config.usersCollectionId!,
+//       userDocId,
+//       { isDeleted: true } // ✅ Set `isDeleted` to true
+//     );
 
-    Alert.alert(
-      "Account Deleted",
-      "Your account has been marked for deletion."
-    );
+//     Alert.alert(
+//       "Account Deleted",
+//       "Your account has been marked for deletion."
+//     );
 
-    // 🔥 Step 3: Log out and refresh UI
-    const { refetch } = useGlobalContext();
-    refetch();
-  } catch (error) {
-    console.error("[Error Deleting Account] ==> ", error);
-    Alert.alert("Error", "Failed to delete your account.");
-  }
-};
+//     // 🔥 Log out and refresh UI
+//     const { refetch } = useGlobalContext();
+//     refetch();
+//   } catch (error) {
+//     console.error("[Error Deleting Account] ==> ", error);
+//     Alert.alert("Error", "Failed to delete your account.");
+//   }
+// };

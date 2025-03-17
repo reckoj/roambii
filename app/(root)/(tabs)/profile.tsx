@@ -16,7 +16,7 @@ import {
   config,
   databases,
   updateUser,
-  deleteUserAccount,
+  // deleteUserAccount,
 } from "@/lib/appwrite";
 import * as ImagePicker from "expo-image-picker";
 import { useGlobalContext } from "@/lib/global-provider";
@@ -236,7 +236,7 @@ const Profile: React.FC = () => {
             title="Delete Account"
             textStyle="text-danger font-bold"
             showArrow={false}
-            onPress={() => deleteUserAccount(rawUser?.$id!)}
+            // onPress={() => deleteUserAccount(rawUser?.$id!)}
           />
         </View>
       </ScrollView>

@@ -111,7 +111,7 @@ const Property = () => {
             </View>
             <View className="flex flex-row items-center px-4 py-2 bg-primary-100 rounded-full">
               <Text className="text-xs font-rubik-bold text-primary-300">
-                {property?.type}
+                {property?.allinclusive}
               </Text>
             </View>
           </View>

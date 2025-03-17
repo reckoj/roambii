@@ -5,8 +5,8 @@ import {
   config,
   databases,
   getAgentById,
-  getLatestProperties,
-  getProperties,
+  getAgentPackages,
+  getAgentPackagesProfile,
 } from "@/lib/appwrite";
 import {
   Image,
@@ -48,50 +48,52 @@ type Review = {
 
 const AgentProfile = () => {
   const params = useLocalSearchParams();
-  const params2 = useLocalSearchParams<{ query?: string; filter?: string }>();
-  const id = Array.isArray(params.id) ? params.id[0] : params.id; // ✅ Ensure id is a string
+  const agentId = Array.isArray(params.id) ? params.id[0] : params.id;
   const [agent, setAgent] = useState<any>(null);
-  const windowHeight = Dimensions.get("window").height;
+  const { rawUser } = useGlobalContext();
+  const [loading, setLoading] = useState(true);
+  const [packages, setPackages] = useState<any[]>([]);
+  const [loadingPackages, setLoadingPackages] = useState(true);
   const [selectedReview, setSelectedReview] = useState<Review | null>(null);
   const [isModalVisible, setIsModalVisible] = useState(false);
-  const [loading1, setLoading1] = useState(true);
-  const { rawUser } = useGlobalContext();
 
-  const { data: latestProperties, loading: latestPropertiesLoading } =
-    useAppwrite({
-      fn: getLatestProperties,
-    });
-
-  const {
-    data: properties,
-    refetch,
-    loading,
-  } = useAppwrite({
-    fn: getProperties,
-    params: {
-      filter: params2.filter!,
-      query: params2.query!,
-      limit: 6,
+  const fakeReviews: Review[] = [
+    {
+      id: 1,
+      author: "John Doe",
+      rating: 5,
+      comment:
+        "Absolutely amazing experience! The agent was super helpful and the package was perfect.",
+      avatar: "https://randomuser.me/api/portraits/men/1.jpg",
     },
-    skip: true,
-  });
+    {
+      id: 2,
+      author: "Jane Smith",
+      rating: 4,
+      comment:
+        "Great service and communication! The trip was well-organized and stress-free.",
+      avatar: "https://randomuser.me/api/portraits/women/2.jpg",
+    },
+    {
+      id: 3,
+      author: "Mike Johnson",
+      rating: 5,
+      comment:
+        "Highly recommend! Everything was arranged perfectly and exceeded my expectations.",
+      avatar: "https://randomuser.me/api/portraits/men/3.jpg",
+    },
+  ];
 
-  useEffect(() => {
-    refetch({
-      filter: params2.filter!,
-      query: params2.query!,
-      limit: 6,
-    });
-  }, [params.filter, params.query]);
-
+  // const { data: latestProperties, loading: latestPropertiesLoading } =
+  //   useAppwrite({
+  //     fn: getLatestProperties,
+  //   });
   useEffect(() => {
     const fetchAgent = async () => {
-      if (id) {
+      if (agentId) {
         try {
-          setLoading1(true);
-          const data = await getAgentById({ id: String(id) });
-
-          console.log("[Fetched Agent Data] ==> ", data); // ✅ Debugging output
+          setLoading(true);
+          const data = await getAgentById({ id: String(agentId) });
 
           if (data) {
             setAgent({
@@ -99,7 +101,7 @@ const AgentProfile = () => {
               avatar:
                 data.avatar && data.avatar.startsWith("https")
                   ? data.avatar
-                  : images.avatar, // ✅ Ensures a valid avatar
+                  : images.avatar,
             });
           } else {
             console.warn("[No Agent Data Found]");
@@ -107,17 +109,36 @@ const AgentProfile = () => {
         } catch (error) {
           console.error("Error fetching agent by ID:", error);
         } finally {
-          setLoading1(false);
+          setLoading(false);
         }
       }
     };
 
     fetchAgent();
-  }, [id]);
+  }, [agentId]);
+
+  useEffect(() => {
+    const fetchPackages = async () => {
+      if (agentId) {
+        try {
+          setLoadingPackages(true);
+          const agentPackages = await getAgentPackagesProfile(agentId);
+
+          setPackages(agentPackages);
+        } catch (error) {
+          console.error("Error fetching agent's packages:", error);
+        } finally {
+          setLoadingPackages(false);
+        }
+      }
+    };
+
+    fetchPackages();
+  }, [agentId]);
 
   if (!agent)
     return (
-      <View className=" w-full h-full flex justify-center items-center">
+      <View className="w-full h-full flex justify-center items-center">
         <ActivityIndicator className="text-primary-300" size="large" />
       </View>
     );
@@ -128,44 +149,13 @@ const AgentProfile = () => {
       return;
     }
 
-    const room_id = `${rawUser.$id}_${agent.$id}`; // ✅ Create unique room ID
+    const room_id = `${rawUser.$id}_${agent.$id}`;
 
     try {
-      // ✅ Check if a chat room already exists
-      const existingRoom = await databases.listDocuments(
-        config.databaseId!,
-        config.chatRoomsCollectionId!,
-        [Query.equal("room_id", room_id)]
-      );
-
-      let chatRoomId = room_id; // Default room ID
-
-      if (existingRoom.total === 0) {
-        // ✅ No chat room exists, create a new one
-        const newRoom = await databases.createDocument(
-          config.databaseId!,
-          config.chatRoomsCollectionId!,
-          ID.unique(),
-          {
-            room_id,
-            user_id: rawUser.$id, // User initiating the chat
-            agent_id: agent.$id, // Agent receiving the chat
-            last_message: "",
-            last_updated: new Date().toISOString(),
-          }
-        );
-
-        chatRoomId = newRoom.$id; // Use newly created chat room ID
-      } else {
-        // ✅ Use existing chat room ID
-        chatRoomId = existingRoom.documents[0].$id;
-      }
-
-      // ✅ Navigate to chat screen with room ID
       router.push({
         pathname: "/chatScreen",
         params: {
-          room_id: chatRoomId,
+          room_id,
           user: rawUser.$id,
           agentId: agent.$id,
           avatar: agent.avatar,
@@ -177,52 +167,6 @@ const AgentProfile = () => {
     }
   };
 
-  // Sample data - in a real app, this would come from props or API
-  const tagent = {
-    name: "Sarah Johnson",
-    title: "All Inclusive Travel Specialist",
-    rating: 4.8,
-    reviewCount: 127,
-    avatar: "https://placeholder.com/120x120",
-    packages: [
-      { name: "Basic Tour", price: "$299" },
-      { name: "Premium Package", price: "$499" },
-      { name: "Luxury Experience", price: "$999" },
-    ],
-    reviews: [
-      {
-        id: 1,
-        author: "John D.",
-        rating: 5,
-        comment:
-          "Amazing service! Sarah helped us find our perfect home in record time. Her knowledge of the local market was invaluable.",
-        avatar: "https://placeholder.com/50x50",
-      },
-      {
-        id: 2,
-        author: "Alice M.",
-        rating: 5,
-        comment:
-          "Found my dream home! The virtual tour package was exactly what I needed.",
-        avatar: "https://placeholder.com/50x50",
-      },
-      {
-        id: 3,
-        author: "Robert K.",
-        rating: 4,
-        comment: "Very professional and responsive. Great attention to detail.",
-        avatar: "https://placeholder.com/50x50",
-      },
-      {
-        id: 4,
-        author: "Emma S.",
-        rating: 5,
-        comment:
-          "Best agent ever! Made the whole process smooth and stress-free.",
-        avatar: "https://placeholder.com/50x50",
-      },
-    ],
-  };
   const handleCardPress = (id: string) => router.push(`/properties/${id}`);
 
   const renderStars = (rating: number) => {
@@ -240,115 +184,113 @@ const AgentProfile = () => {
   };
 
   return (
-    <SafeAreaView style={styles.container}>
-      <View className="flex flex-row items-center p-2 justify-between">
-        <TouchableOpacity
-          onPress={() => router.back()}
-          className="flex rounded-full size-10 items-center ml-4 justify-center"
-        >
-          <Image source={icons.backArrow} className="size-8" />
-        </TouchableOpacity>
-      </View>
-      <ScrollView>
-        {/* Header Section */}
-
-        <View style={styles.header}>
-          <Image
-            source={{ uri: agent.avatar }} // ✅ Correct agent image
-            className="w-32 h-32 rounded-full border-4 border-gray-300"
-            onError={(e) =>
-              console.error("Failed to load agent avatar", e.nativeEvent.error)
-            }
-          />
-          <View style={styles.headerInfo}>
-            <Text style={styles.name}>{agent.name}</Text>
-            <Text style={styles.title}>{agent.niche} Travel Specialist</Text>
-            <View style={styles.ratingContainer}>
-              {renderStars(tagent.rating)}
-              <Text style={styles.ratingText}>
-                {tagent.rating} ({tagent.reviewCount} reviews)
-              </Text>
-            </View>
-          </View>
-        </View>
-
-        {/* Contact Button */}
-        <TouchableOpacity
-          className="bg-primary-300"
-          style={styles.contactButton}
-          onPress={() => handleContact()}
-        >
-          <MessageCircle size={20} color="#FFF" />
-          <Text style={styles.contactButtonText}>Contact Me</Text>
-        </TouchableOpacity>
-
-        {/* Packages Section */}
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Available Packages</Text>
-        </View>
-
-        <View className="my-2 pl-2">
-          {latestPropertiesLoading ? (
-            <ActivityIndicator size="large" className="text-primary-300" />
-          ) : !latestProperties || latestProperties.length === 0 ? (
-            <NoResults />
-          ) : (
-            <FlatList
-              horizontal
-              data={latestProperties}
-              renderItem={({ item }) => (
-                <View className="mr-5 w-64">
-                  <Card item={item} onPress={() => handleCardPress(item.$id)} />
-                </View>
-              )}
-              keyExtractor={(item) => item.$id}
-              showsHorizontalScrollIndicator={false}
-              contentContainerClassName="pb-5"
-            />
-          )}
-        </View>
-
-        {/* Reviews Section */}
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Client Reviews</Text>
-          <ScrollView
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            style={styles.reviewsScroll}
+    <>
+      <SafeAreaView style={styles.container}>
+        <View className="flex flex-row items-center p-2 justify-between">
+          <TouchableOpacity
+            onPress={() => router.back()}
+            className="flex rounded-full size-2 items-center ml-4 justify-center"
           >
-            {tagent.reviews.map((review) => (
-              <TouchableOpacity
-                key={review.id}
-                style={styles.reviewCard}
-                onPress={() => {
-                  setSelectedReview(review);
-                  setIsModalVisible(true);
-                }}
-              >
-                <View style={styles.reviewHeader}>
-                  <Image
-                    source={{ uri: review.avatar }}
-                    style={styles.reviewerAvatar}
-                  />
-                  <Text style={styles.reviewerName}>{review.author}</Text>
-                </View>
-                {renderStars(review.rating)}
-                <Text numberOfLines={2} style={styles.reviewPreview}>
-                  {review.comment}
-                </Text>
-              </TouchableOpacity>
-            ))}
-          </ScrollView>
+            <Image source={icons.backArrow} className="size-8" />
+          </TouchableOpacity>
         </View>
-      </ScrollView>
+        <ScrollView>
+          {/* Header Section */}
+          <View className="items-center mt-6">
+            <Image
+              source={{ uri: agent.avatar }}
+              className="w-32 h-32 rounded-full border-4 border-gray-300"
+            />
+            <Text className="text-2xl font-bold mt-2">{agent.name}</Text>
+            <Text className="text-lg text-gray-500">
+              {agent.niche} Specialist
+            </Text>
+          </View>
 
-      <ReviewModal
-        isModalVisible={isModalVisible}
-        setIsModalVisible={setIsModalVisible}
-        selectedReview={selectedReview}
-        renderStars={renderStars}
-      />
-    </SafeAreaView>
+          {/* Contact Button */}
+          <TouchableOpacity
+            className="mx-4 mt-4 bg-primary-300 py-3 rounded-lg flex flex-row items-center justify-center"
+            onPress={handleContact}
+          >
+            <MessageCircle size={20} color="#FFF" />
+            <Text className="ml-2 text-white text-lg font-semibold">
+              Contact Me
+            </Text>
+          </TouchableOpacity>
+
+          {/* Agent's Packages Section */}
+          <View className="px-2 mt-6">
+            <Text className="text-lg font-rubik-bold text-text">
+              Available Packages
+            </Text>
+            {loadingPackages ? (
+              <ActivityIndicator
+                className="text-primary-300 mt-3"
+                size="large"
+              />
+            ) : packages.length === 0 ? (
+              <NoResults />
+            ) : (
+              <FlatList
+                horizontal
+                data={packages}
+                renderItem={({ item }) => (
+                  <View className="mr-5 w-64">
+                    <Card
+                      item={item}
+                      onPress={() => handleCardPress(item.$id)}
+                    />
+                  </View>
+                )}
+                keyExtractor={(item) => item.$id}
+                showsHorizontalScrollIndicator={false}
+                contentContainerClassName="pb-5"
+              />
+            )}
+          </View>
+          <View className="px-2 mt-6">
+            <Text className="text-lg font-rubik-bold text-text">
+              Client Reviews
+            </Text>
+            <FlatList
+              data={fakeReviews}
+              keyExtractor={(item) => item.id.toString()}
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              nestedScrollEnabled // ✅ Fixes nested FlatList inside ScrollView issue
+              renderItem={({ item }) => (
+                <TouchableOpacity
+                  style={styles.reviewCard}
+                  onPress={() => {
+                    setSelectedReview(item);
+                    setIsModalVisible(true);
+                  }}
+                >
+                  <View style={styles.reviewHeader}>
+                    <Image
+                      source={{ uri: item.avatar }}
+                      style={styles.reviewerAvatar}
+                    />
+                    <Text style={styles.reviewerName}>{item.author}</Text>
+                  </View>
+                  {renderStars(item.rating)}
+                  <Text numberOfLines={2} style={styles.reviewPreview}>
+                    {item.comment}
+                  </Text>
+                </TouchableOpacity>
+              )}
+            />
+          </View>
+        </ScrollView>
+
+        <ReviewModal
+          isModalVisible={isModalVisible}
+          setIsModalVisible={setIsModalVisible}
+          selectedReview={selectedReview}
+          renderStars={renderStars}
+        />
+      </SafeAreaView>
+    </>
   );
 };
 
