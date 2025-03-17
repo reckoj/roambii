@@ -29,6 +29,7 @@ import { router } from "expo-router";
 import CustomInput from "@/components/CustomInput";
 import AuthButton from "@/components/AuthButton";
 import { handlePackageImagePicked } from "@/lib/storage";
+import FacilitySelection from "@/components/FacilitySelection";
 
 const CreatePackageScreen = () => {
   const { rawUser, isLogged, isAgent, refetch } = useGlobalContext();
@@ -44,7 +45,7 @@ const CreatePackageScreen = () => {
     departureDate: "",
     returnDate: "",
     name: "",
-    type: "luxury", // Default enum
+    type: "Villa", // Default enum
     description: "",
     price: "",
     bedrooms: "",
@@ -84,7 +85,7 @@ const CreatePackageScreen = () => {
 
       if (!result.canceled) {
         setFormData((prev) => ({ ...prev, image: result.assets[0].uri }));
-        await handlePackageImagePicked(result.assets[0].uri, rawUser!.$id);
+        // await handlePackageImagePicked(result.assets[0].uri, rawUser!.$id);
       }
     } catch (error) {
       Alert.alert("Error", "Failed to pick image");
@@ -198,10 +199,11 @@ const CreatePackageScreen = () => {
             gallery: galleryIds, // ✅ Now linking images
           }
         );
-        refetch();
       }
 
+      refetch();
       alert("Package created successfully!");
+      router.back();
       console.log("[Refetching Data After Submit]..."); // ✅ Debugging
     } catch (error) {
       console.log(error);
@@ -256,67 +258,71 @@ const CreatePackageScreen = () => {
                 style={{ color: "#34495E", height: 190 }} // ✅ Picker text color
                 itemStyle={{ fontSize: 20, color: "#34495E" }} // ✅ iOS support
               >
-                <Picker.Item label="Luxury" value="Luxury" />
-                <Picker.Item label="Budget" value="Budget" />
-                <Picker.Item label="Standard" value="Standard" />
-                <Picker.Item label="House" value="House" />
-                <Picker.Item label="Condo" value="Condo" />
+                <Picker.Item label="Villa" value="Villa" />
+                <Picker.Item label="Resort" value="Resort" />
+                <Picker.Item label="Hotel" value="Hotel" />
+                <Picker.Item label="Motel" value="Motel" />
+                <Picker.Item label="BnB" value="BnB" />
               </Picker>
             </View>
           </View>
         </View>
-        <Text style={styles.label}>Package Name</Text>
-        <CustomInput
-          value={formData.name}
-          onChangeText={(text) => handleChange("name", text)}
-          // style={styles.input}
-        />
+        <View>
+          <Text style={styles.label}>Package Name</Text>
+          <CustomInput
+            value={formData.name}
+            onChangeText={(text) => handleChange("name", text)}
+          />
 
-        <Text style={styles.label}>Description</Text>
-        <CustomInput
-          value={formData.description}
-          onChangeText={(text) => handleChange("description", text)}
-          // style={styles.input}
-          // multiline
-        />
+          <View style={styles.row}>
+            <View style={styles.column}>
+              <Text style={styles.label}>Description</Text>
+              <CustomInput
+                value={formData.description}
+                onChangeText={(text) => handleChange("description", text)}
+              />
+            </View>
 
-        <Text style={styles.label}>Price</Text>
-        <CustomInput
-          value={formData.price}
-          onChangeText={(text) => handleChange("price", text)}
-          keyboardType="numeric"
-          // style={styles.input}
-        />
+            <View style={styles.column}>
+              <Text style={styles.label}>Price</Text>
+              <CustomInput
+                value={formData.price}
+                onChangeText={(text) => handleChange("price", text)}
+                keyboardType="numeric"
+              />
+            </View>
+          </View>
 
-        <Text style={styles.label}>Bedrooms</Text>
-        <CustomInput
-          value={formData.bedrooms}
-          onChangeText={(text) => handleChange("bedrooms", text)}
-          keyboardType="numeric"
-          // style={styles.input}
-        />
+          <View style={styles.row}>
+            <View style={styles.column}>
+              <Text style={styles.label}>Bedrooms</Text>
+              <CustomInput
+                value={formData.bedrooms}
+                onChangeText={(text) => handleChange("bedrooms", text)}
+                keyboardType="numeric"
+              />
+            </View>
 
-        <Text style={styles.label}>Bathrooms</Text>
-        <CustomInput
-          value={formData.bathrooms}
-          onChangeText={(text) => handleChange("bathrooms", text)}
-          keyboardType="numeric"
-          // style={styles.input}
-        />
+            <View style={styles.column}>
+              <Text style={styles.label}>Bathrooms</Text>
+              <CustomInput
+                value={formData.bathrooms}
+                onChangeText={(text) => handleChange("bathrooms", text)}
+                keyboardType="numeric"
+              />
+            </View>
+            <View style={styles.column}>
+              <Text style={styles.label}>Rating</Text>
+              <CustomInput
+                value={formData.rating}
+                onChangeText={(text) => handleChange("rating", text)}
+                keyboardType="numeric"
+              />
+            </View>
+          </View>
+        </View>
 
-        <Text style={styles.label}>Rating</Text>
-        <CustomInput
-          value={formData.rating}
-          onChangeText={(text) => handleChange("rating", text)}
-          keyboardType="numeric"
-          // style={styles.input}
-        />
-
-        <Text style={styles.label}>Facilities</Text>
-        <CustomInput
-          value={formData.facilities.join(", ")}
-          onChangeText={(text) => handleChange("facilities", text.split(", "))}
-        />
+        <FacilitySelection formData={formData} handleChange={handleChange} />
 
         {/* <Text>Image URL</Text>
         <TextInput
@@ -343,8 +349,8 @@ const CreatePackageScreen = () => {
             style={{ color: "#34495E", height: 190 }} // ✅ Picker text color
             itemStyle={{ fontSize: 20, color: "#34495E" }} // ✅ iOS support
           >
-            <Picker.Item label="Standard" value="Standard Room" />
-            <Picker.Item label="Deluxe" value="Deluxe Room" />
+            <Picker.Item label="Standard Room" value="Standard Room" />
+            <Picker.Item label="Deluxe Room" value="Deluxe Room" />
             <Picker.Item label="Suite" value="Suite" />
             <Picker.Item label="Superior Room" value="Superior Room" />
             <Picker.Item label="Double Room" value="Double Room" />
@@ -525,6 +531,19 @@ const styles = StyleSheet.create({
     fontSize: 14,
     marginBottom: 20,
     textAlign: "center",
+  },
+  // label: {
+  //   fontSize: 16,
+  //   fontWeight: "bold",
+  //   marginBottom: 5,
+  // },
+  row: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+  },
+  column: {
+    flex: 1,
+    padding: 2,
   },
 });
 

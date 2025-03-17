@@ -1,9 +1,7 @@
 import {
   ActivityIndicator,
-  Button,
   FlatList,
   Image,
-  ScrollView,
   StatusBar,
   Text,
   TouchableOpacity,
@@ -14,83 +12,106 @@ import { router, useLocalSearchParams } from "expo-router";
 import { SafeAreaView } from "react-native-safe-area-context";
 
 import Search from "@/components/Search";
-import Filters from "@/components/Filters";
 import NoResults from "@/components/NoResults";
 import { Card, FeaturedCard } from "@/components/Cards";
-
 import { useAppwrite } from "@/lib/useAppwrite";
 import { useGlobalContext } from "@/lib/global-provider";
-import { getLatestProperties, getProperties } from "@/lib/appwrite";
-import seed from "@/lib/seed";
+import { featuredPackages, getAllPackages } from "@/lib/appwrite";
 import RecommendedAgents from "@/components/RecommendedAgents";
-import TripCard from "@/components/TripCard";
-import TripDetailView from "@/components/TripDetailView";
 import Bookings from "@/app/bookings";
-import React from "react";
 
 const getGreeting = () => {
   const currentHour = new Date().getHours();
 
-  if (currentHour < 12) {
-    return "Good Morning";
-  } else if (currentHour >= 12 && currentHour < 18) {
-    return "Good Afternoon";
-  } else {
-    return "Good Evening";
-  }
+  if (currentHour < 12) return "Good Morning";
+  else if (currentHour >= 12 && currentHour < 18) return "Good Afternoon";
+  return "Good Evening";
 };
 
 const Home = () => {
-  const { rawUser, isLogged, isAgent } = useGlobalContext();
+  const { rawUser, isAgent } = useGlobalContext();
   const greeting = getGreeting();
 
   const params = useLocalSearchParams<{ query?: string; filter?: string }>();
-  // <StatusBar backgroundColor="#FF5733" barStyle="light-content" />
+  const [packages, setPackages] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [offset, setOffset] = useState(0);
+  const [hasMore, setHasMore] = useState(true);
 
-  const { data: latestProperties, loading: latestPropertiesLoading } =
-    useAppwrite({
-      fn: getLatestProperties,
-    });
-
-  const {
-    data: properties,
-    refetch,
-    loading,
-  } = useAppwrite({
-    fn: getProperties,
-    params: {
-      filter: params.filter!,
-      query: params.query!,
-      limit: 6,
-    },
-    skip: true,
+  const { data: featured, loading: featuredLoading } = useAppwrite({
+    fn: featuredPackages,
   });
 
   useEffect(() => {
-    refetch({
+    fetchPackages(0, true); // ✅ Initial load of packages
+  }, [params.filter, params.query]);
+
+  const fetchPackages = async (newOffset = 0, reset = false) => {
+    if (reset) {
+      setLoading(true);
+      setPackages([]); // ✅ Reset packages when applying filters/search
+    } else {
+      setLoadingMore(true);
+    }
+
+    const newPackages = await getAllPackages({
       filter: params.filter!,
       query: params.query!,
       limit: 6,
+      offset: newOffset,
     });
-  }, [params.filter, params.query]);
+
+    if (newPackages.length < 6) setHasMore(false); // ✅ Stop loading when fewer than 6 packages
+
+    // ✅ Check for duplicates before adding new data
+    setPackages((prev) => {
+      const existingIds = new Set(prev.map((pkg) => pkg.$id)); // ✅ Track existing package IDs
+      const filteredNewPackages = newPackages.filter(
+        (pkg) => !existingIds.has(pkg.$id)
+      ); // ✅ Only add new unique packages
+
+      return reset ? newPackages : [...prev, ...filteredNewPackages]; // ✅ Prevents duplication
+    });
+
+    setOffset(newOffset + 6);
+    setLoading(false);
+    setLoadingMore(false);
+  };
+
+  const handleLoadMore = () => {
+    if (!loadingMore && hasMore) {
+      fetchPackages(offset);
+    }
+  };
 
   const handleCardPress = (id: string) => router.push(`/properties/${id}`);
 
   return (
     <>
       {!isAgent ? (
-        <SafeAreaView className="h-full bg-white">
+        <SafeAreaView className="flex-1 bg-white">
           <StatusBar backgroundColor="#f8f9fa" barStyle="dark-content" />
-          {/* <Button title="seed" onPress={seed} />  */}
+
           <FlatList
-            data={properties}
-            numColumns={2}
+            data={packages}
+            numColumns={2} // ✅ Keeps a two-column layout
             renderItem={({ item }) => (
-              <Card item={item} onPress={() => handleCardPress(item.$id)} />
+              <View
+                className={`${
+                  featuredPackages.length === 1
+                    ? "w-[48%] self-center"
+                    : "w-[48%]"
+                } p-2`}
+              >
+                <Card item={item} onPress={() => handleCardPress(item.$id)} />
+              </View>
             )}
-            keyExtractor={(item) => item.$id}
+            keyExtractor={(item) => item.$id} // ✅ Ensures unique keys
             contentContainerClassName="pb-32"
-            columnWrapperClassName="flex gap-5 px-5"
+            columnWrapperClassName={
+              fetchPackages.length > 1 ? "flex gap-6" : ""
+            }
             showsVerticalScrollIndicator={false}
             ListEmptyComponent={
               loading ? (
@@ -102,6 +123,13 @@ const Home = () => {
                 <NoResults />
               )
             }
+            onEndReached={handleLoadMore} // ✅ Triggers pagination
+            onEndReachedThreshold={0.5}
+            ListFooterComponent={
+              loadingMore ? (
+                <ActivityIndicator size="small" className="mt-5" />
+              ) : null
+            } // ✅ Fix
             ListHeaderComponent={() => (
               <View className="px-5">
                 <View className="flex flex-row items-center justify-between mt-5">
@@ -110,7 +138,6 @@ const Home = () => {
                       source={{ uri: rawUser?.avatar }}
                       className="size-12 rounded-full"
                     />
-
                     <View className="flex flex-col items-start ml-2 justify-center">
                       <Text className="text-xs font-rubik text-black-100">
                         {greeting}
@@ -120,11 +147,9 @@ const Home = () => {
                       </Text>
                     </View>
                   </View>
-                  {/* <Image source={icons.bell} className="size-6" /> */}
                 </View>
 
-                {/* <Search /> */}
-
+                {/* Featured Section */}
                 <View className="my-5">
                   <View className="flex flex-row items-center justify-between">
                     <Text className="text-xl font-rubik-bold text-text">
@@ -137,23 +162,23 @@ const Home = () => {
                     </TouchableOpacity>
                   </View>
 
-                  {latestPropertiesLoading ? (
+                  {featuredLoading ? (
                     <ActivityIndicator
                       size="large"
                       className="text-primary-300"
                     />
-                  ) : !latestProperties || latestProperties.length === 0 ? (
+                  ) : !featured || featured.length === 0 ? (
                     <NoResults />
                   ) : (
                     <FlatList
-                      data={latestProperties}
+                      data={featured}
                       renderItem={({ item }) => (
                         <FeaturedCard
                           item={item}
                           onPress={() => handleCardPress(item.$id)}
                         />
                       )}
-                      keyExtractor={(item) => item.$id}
+                      keyExtractor={(item, index) => `${item.$id}-${index}`} // ✅ Ensures uniqueness
                       horizontal
                       bounces={false}
                       showsHorizontalScrollIndicator={false}
@@ -162,22 +187,13 @@ const Home = () => {
                   )}
                 </View>
 
-                {/* <Button title="seed" onPress={seed} /> */}
-
+                {/* Recommended Agents */}
                 <View className="mt-4">
                   <View className="flex flex-row items-center justify-between">
                     <Text className="text-xl font-rubik-bold text-text">
                       Recommended Agents
                     </Text>
-                    {/* <TouchableOpacity>
-                  <Text className="text-base font-rubik-bold text-primary-300">
-                    See all
-                  </Text>
-                </TouchableOpacity> */}
                   </View>
-
-                  {/** This is a list of agent names as filters */}
-                  {/* <Filters /> */}
                   <RecommendedAgents />
                   <View className="mt-5">
                     <View className="flex flex-row items-center justify-between">

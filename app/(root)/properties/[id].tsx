@@ -42,21 +42,6 @@ const Property = () => {
   const [agent, setAgent] = useState<any>(null);
   const [user, setUser] = useState<any>(null);
 
-  useEffect(() => {
-    const fetchAgent = async () => {
-      if (id) {
-        try {
-          const data = await getAgentById({ id: String(id) }); // ✅ Convert id to string
-          setAgent(data);
-        } catch (error) {
-          console.error("Error fetching agent by ID:", error);
-        }
-      }
-    };
-
-    fetchAgent();
-  }, [id]);
-
   // const handleContact = () => {
   //   if (!cagent) return;
   //   const roomId = `${user}_${cagent.$id}`; // Create unique room ID
@@ -70,7 +55,7 @@ const Property = () => {
       >
         <View className="relative w-full" style={{ height: windowHeight / 2 }}>
           <Image
-            source={images.bahamas}
+            source={{ uri: property?.image }}
             className="size-full"
             resizeMode="cover"
           />
@@ -109,7 +94,7 @@ const Property = () => {
           <Text className="text-2xl font-rubik-extrabold">Package Info</Text>
           {/* <Text className="text-xl font-rubik-extrabold">{property?.name}</Text> */}
           <Text className="text-sm font-rubik-extrabold text-black-100">
-            Viva Fortuna Beach By Wyndham
+            {property?.name}
           </Text>
           <View className="flex flex-row items-center justify-between gap-3 ">
             <View className="flex flex-row items-center px-4 py-2 bg-primary-100 rounded-full">
@@ -126,18 +111,11 @@ const Property = () => {
             </View>
             <View className="flex flex-row items-center px-4 py-2 bg-primary-100 rounded-full">
               <Text className="text-xs font-rubik-bold text-primary-300">
-                {/* {property?.type} */}All Inclusive
+                {property?.type}
               </Text>
             </View>
           </View>
           <View className="flex flex-row justify-between mt-5 ">
-            {/* <View className="flex flex-row items-center justify-center bg-primary-100 rounded-full size-10">
-              <Image source={icons.bed} className="size-4" />
-            </View>
-            <Text className="text-black-300 text-sm font-rubik-medium ml-2">
-              {property?.bedrooms}
-              King Bed
-            </Text> */}
             {/* <View className="flex flex-row items-center justify-center bg-primary-100 rounded-full size-10 ml-7">
               <Image source={icons.bath} className="size-4" />
             </View> */}
@@ -150,15 +128,23 @@ const Property = () => {
                 <Image source={icons.bed} className="size-4" />
               </View>
               <Text className="text-black-300 text-lg font-rubik-medium ml-2">
-                1 King Bed
+                {property?.bedrooms} King Bed
               </Text>
             </View>
+            {/* <View className="flex flex-row items-center">
+              <View className="flex flex-row items-center justify-center bg-primary-100 rounded-full size-10 ">
+                <Image source={icons.bath} className="size-4" />
+              </View>
+              <Text className="text-black-300 text-lg font-rubik-medium ml-2">
+                {property?.bedrooms} King Bed
+              </Text>
+            </View> */}
             <View className="flex flex-row items-center">
               <View className="flex flex-row items-center justify-center bg-primary-100 rounded-full size-10 ">
                 <Image source={icons.area} className="size-4" />
               </View>
               <Text className="text-black-300 text-lg font-rubik-medium ml-2">
-                Junior Sweet
+                {property?.roomType}
               </Text>
             </View>
           </View>
@@ -222,29 +208,25 @@ const Property = () => {
           )}
           <FlightInfo />
           <View className="w-full border-t border-accent-100 pt-7 mt-5">
-            {/* <Text className="text-black-300 text-xl font-rubik-bold">
-              Agent
-            </Text> */}
-
             <View className="flex flex-row items-center justify-between mt-4">
               <View className="flex flex-row items-center">
-                {/* <Image
-                  source={{ uri: agent.avatar }}
+                <Image
+                  source={{ uri: property?.agent.avatar }}
                   className="size-14 rounded-full"
-                /> */}
+                />
 
                 <View className="flex flex-col items-start justify-center ml-3">
                   <Text className="text-lg text-black-300 text-start font-rubik-bold">
-                    {/* {property?.agent.name} */}
+                    {property?.agent.name}
                   </Text>
                   <Text className="text-sm text-black-200 text-start font-rubik-medium">
-                    {/* {property?.agent.email} */}
+                    {property?.agent.email}
                   </Text>
                 </View>
               </View>
 
               <View className="flex flex-row items-center gap-3">
-                <Image source={icons.chat} className="size-7" />
+                {/* <Image source={icons.chat} className="size-7" /> */}
                 {/* <Image source={icons.phone} className="size-7" /> */}
               </View>
             </View>
@@ -262,7 +244,7 @@ const Property = () => {
               numberOfLines={expanded ? undefined : 2}
               className="font-rubik-light text-text"
             >
-              {description}
+              {property?.description}
             </Text>
 
             {/* Toggle Button (Always Visible) */}

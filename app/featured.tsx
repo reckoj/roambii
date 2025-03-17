@@ -9,7 +9,7 @@ import {
 } from "react-native";
 import React, { useEffect } from "react";
 import { useAppwrite } from "@/lib/useAppwrite";
-import { getLatestProperties, getProperties } from "@/lib/appwrite";
+import { featuredPackages, getAllPackages } from "@/lib/appwrite";
 import { router, useLocalSearchParams } from "expo-router";
 import { Card } from "@/components/Cards";
 import NoResults from "@/components/NoResults";
@@ -19,7 +19,7 @@ const Featured = () => {
   const params = useLocalSearchParams<{ query?: string; filter?: string }>();
   const { data: latestProperties, loading: latestPropertiesLoading } =
     useAppwrite({
-      fn: getLatestProperties,
+      fn: featuredPackages,
     });
 
   const {
@@ -27,7 +27,7 @@ const Featured = () => {
     refetch,
     loading,
   } = useAppwrite({
-    fn: getProperties,
+    fn: getAllPackages,
     params: {
       filter: params.filter!,
       query: params.query!,
@@ -56,14 +56,14 @@ const Featured = () => {
           <ArrowLeft size={24} color={"#1ABC9C"} />
         </TouchableOpacity>
         <Text className="text-xl font-rubik text-text">
-          Features Properties
+          Featured Properties
         </Text>
         <Text></Text>
       </View>
       <View className="px-5">
         <View className="my-5">
           {/* <Text className="text-xl font-rubik-bold text-text mb-5">
-            Features Properties
+            Featured Properties
           </Text> */}
 
           {latestPropertiesLoading ? (

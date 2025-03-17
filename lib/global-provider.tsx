@@ -1,6 +1,6 @@
-import React, { createContext, useContext, ReactNode } from "react";
+import React, { createContext, useContext, useState, ReactNode } from "react";
 
-import { getCurrentUser } from "./appwrite";
+import { getCurrentUser, updateUser } from "./appwrite"; // ✅ Import updateUser
 import { useAppwrite } from "./useAppwrite";
 
 import { Redirect } from "expo-router";
@@ -11,6 +11,8 @@ interface GlobalContextType {
   loading: boolean;
   refetch: (...args: any[]) => Promise<void>;
   isAgent: boolean;
+  isAgentTemp: boolean;
+  toggleAgentView: () => Promise<void>; // ✅ Function to toggle agent view
 }
 
 interface User {
@@ -19,6 +21,7 @@ interface User {
   email: string;
   avatar: string;
   isAgent: boolean;
+  isAgentTemp?: boolean;
 }
 
 const GlobalContext = createContext<GlobalContextType | undefined>(undefined);
@@ -36,16 +39,41 @@ export const GlobalProvider = ({ children }: GlobalProviderProps) => {
     fn: getCurrentUser,
   });
 
+  // ✅ Store `isAgentTemp` in state for instant UI updates
+  const [isAgentTemp, setIsAgentTemp] = useState(rawUser?.isAgentTemp || false);
+
   const isLogged = !!rawUser;
   const isAgent = rawUser?.isAgent || false;
+
+  /** ✅ Toggle Agent View */
+  const toggleAgentView = async () => {
+    try {
+      if (!rawUser?.$id) return;
+
+      const newAgentView = !isAgentTemp; // ✅ Toggle the state
+
+      console.log("[Toggling Agent View] ==> ", newAgentView);
+
+      setIsAgentTemp(newAgentView); // ✅ Update UI instantly
+
+      await updateUser(rawUser.$id, { isAgentTemp: newAgentView }); // ✅ Update in DB
+      await refetch(); // ✅ Ensure data syncs
+
+      console.log("[Agent View Toggled] ==> ", newAgentView);
+    } catch (error) {
+      console.error("[Error Toggling Agent View] ==> ", error);
+    }
+  };
 
   return (
     <GlobalContext.Provider
       value={{
         isLogged,
-        rawUser, // ✅ Keep rawUser without modifying avatar
+        rawUser,
         loading,
         isAgent,
+        isAgentTemp,
+        toggleAgentView, // ✅ Expose function
         refetch,
       }}
     >

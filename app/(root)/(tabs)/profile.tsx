@@ -8,24 +8,25 @@ import {
   Text,
   TouchableOpacity,
   View,
+  Switch,
 } from "react-native";
-import { logout, storage, databases, account, config } from "@/lib/appwrite";
+import {
+  logout,
+  storage,
+  config,
+  databases,
+  updateUser,
+  deleteUserAccount,
+} from "@/lib/appwrite";
 import * as ImagePicker from "expo-image-picker";
-import * as FileSystem from "expo-file-system"; // ✅ Import to get file info
 import { useGlobalContext } from "@/lib/global-provider";
-import { ID, Query } from "react-native-appwrite";
 import images from "@/constants/images";
 import { Bell, LucideShare2, User2 } from "lucide-react-native";
 import icons from "@/constants/icons";
 import { InviteFriends } from "@/lib/invite-friends";
 import { router } from "expo-router";
 import { handleAvtarImagePicked } from "@/lib/storage";
-
-interface User {
-  $id: string;
-  name: string;
-  avatar?: string;
-}
+import { Query } from "react-native-appwrite";
 
 interface SettingsItemProp {
   icon: typeof Bell;
@@ -57,7 +58,7 @@ const SettingsItem = ({
 );
 
 const Profile: React.FC = () => {
-  const { rawUser, refetch } = useGlobalContext();
+  const { rawUser, refetch, isAgent, toggleAgentView } = useGlobalContext();
   const [loading, setLoading] = useState<boolean>(false);
   const [avatarUrl, setAvatarUrl] = useState<string | null>(
     rawUser?.avatar || null
@@ -68,6 +69,51 @@ const Profile: React.FC = () => {
       fetchAvatar(rawUser.avatar);
     }
   }, [rawUser?.avatar]);
+
+  const [agentView, setAgentView] = useState(
+    rawUser?.isAgentTemp || rawUser?.isAgent
+  );
+
+  const switchAgentView = async () => {
+    try {
+      if (!rawUser?.$id) {
+        Alert.alert("Error", "User ID not found.");
+        return;
+      }
+
+      // ✅ Find user document
+      const userDocs = await databases.listDocuments(
+        config.databaseId!,
+        config.usersCollectionId!,
+        [Query.equal("userId", rawUser.$id)]
+      );
+
+      if (userDocs.total === 0) {
+        console.error("Error: User document not found.");
+        Alert.alert("Error", "User profile not found in the database.");
+        return;
+      }
+
+      const userDocId = userDocs.documents[0].$id;
+      const newAgentView = !rawUser.isAgentTemp; // ✅ Toggle current value
+
+      // ✅ Update user document
+      await databases.updateDocument(
+        config.databaseId!,
+        config.usersCollectionId!,
+        userDocId,
+        { isAgentTemp: newAgentView }
+      );
+
+      console.log("[Agent View Toggled] ==> ", newAgentView);
+
+      // ✅ Ensure the UI updates correctly
+      await refetch(); // ✅ Call refetch immediately to update the global context
+    } catch (error) {
+      console.error("[Error Updating User] ==> ", error);
+      Alert.alert("Error", "Failed to update user.");
+    }
+  };
 
   /**
    * Fetch the avatar URL from Appwrite storage
@@ -81,7 +127,7 @@ const Profile: React.FC = () => {
       setAvatarUrl(fileUrl);
     } catch (error) {
       console.error("Failed to fetch avatar:", error);
-      throw new Error("Failed to  fetch avatar:");
+      throw new Error("Failed to fetch avatar:");
     }
   };
 
@@ -145,19 +191,21 @@ const Profile: React.FC = () => {
           </View>
         </View>
 
+        {/* ✅ Agent Toggle */}
+        {isAgent && ( // ✅ Only show toggle switch to agents
+          <View className="flex flex-row justify-between items-center px-4 py-3 rounded-lg mt-6">
+            <Text className="text-lg font-semibold text-gray-800">
+              Agent View
+            </Text>
+            <Switch value={agentView} onValueChange={switchAgentView} />
+          </View>
+        )}
+
         <View className="flex flex-col mt-10">
           <SettingsItem icon={icons.calendar} title="Bookings" />
-          {/* <SettingsItem
-            onPress={() => router.push("/create-package")}
-            icon={icons.wallet}
-            title="Payments"
-          /> */}
         </View>
 
         <View className="flex flex-col mt-5 border-t pt-5 border-primary-200">
-          {/* <Text className="text-text text-xl font-rubik">Settings</Text> */}
-          {/* <SettingsItem icon={Bell} title="Notification" />
-          <SettingsItem icon={HelpCircle} title="Help Center" /> */}
           <SettingsItem
             icon={LucideShare2}
             title="Invite Friends"
@@ -166,7 +214,6 @@ const Profile: React.FC = () => {
         </View>
 
         <View className="flex flex-col mt-5 border-t pt-5 border-primary-200">
-          {/* <Text className="text-text text-xl font-rubik">Settings</Text> */}
           <SettingsItem
             onPress={() => router.push("/update-password")}
             icon={Bell}
@@ -181,6 +228,15 @@ const Profile: React.FC = () => {
             textStyle="text-danger font-bold"
             showArrow={false}
             onPress={handleLogout}
+          />
+        </View>
+        <View className="flex flex-col border-t mt-5 pt-5 border-primary-200">
+          <SettingsItem
+            icon={icons.logout}
+            title="Delete Account"
+            textStyle="text-danger font-bold"
+            showArrow={false}
+            onPress={() => deleteUserAccount(rawUser?.$id!)}
           />
         </View>
       </ScrollView>

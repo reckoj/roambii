@@ -1,6 +1,9 @@
 import { useEffect, useState } from "react";
 import { router, useLocalSearchParams } from "expo-router";
 import {
+  avatar,
+  config,
+  databases,
   getAgentById,
   getLatestProperties,
   getProperties,
@@ -18,6 +21,7 @@ import {
   Modal,
   ActivityIndicator,
   FlatList,
+  Alert,
 } from "react-native";
 import icons from "@/constants/icons";
 import { Star, X, MessageCircle, ChevronRight } from "lucide-react-native";
@@ -26,6 +30,8 @@ import { Card } from "@/components/Cards";
 import NoResults from "@/components/NoResults";
 import ReviewModal from "@/components/ReviewModal";
 import images from "@/constants/images";
+import { useGlobalContext } from "@/lib/global-provider";
+import { ID, Query } from "react-native-appwrite";
 
 type Package = {
   name: string;
@@ -49,6 +55,7 @@ const AgentProfile = () => {
   const [selectedReview, setSelectedReview] = useState<Review | null>(null);
   const [isModalVisible, setIsModalVisible] = useState(false);
   const [loading1, setLoading1] = useState(true);
+  const { rawUser } = useGlobalContext();
 
   const { data: latestProperties, loading: latestPropertiesLoading } =
     useAppwrite({
@@ -108,14 +115,67 @@ const AgentProfile = () => {
     fetchAgent();
   }, [id]);
 
-  const handleCardPress = (id: string) => router.push(`/properties/${id}`);
-
   if (!agent)
     return (
       <View className=" w-full h-full flex justify-center items-center">
         <ActivityIndicator className="text-primary-300" size="large" />
       </View>
     );
+
+  const handleContact = async () => {
+    if (!agent || !rawUser) {
+      Alert.alert("Error", "Cannot start chat. Missing user or agent data.");
+      return;
+    }
+
+    const room_id = `${rawUser.$id}_${agent.$id}`; // ✅ Create unique room ID
+
+    try {
+      // ✅ Check if a chat room already exists
+      const existingRoom = await databases.listDocuments(
+        config.databaseId!,
+        config.chatRoomsCollectionId!,
+        [Query.equal("room_id", room_id)]
+      );
+
+      let chatRoomId = room_id; // Default room ID
+
+      if (existingRoom.total === 0) {
+        // ✅ No chat room exists, create a new one
+        const newRoom = await databases.createDocument(
+          config.databaseId!,
+          config.chatRoomsCollectionId!,
+          ID.unique(),
+          {
+            room_id,
+            user_id: rawUser.$id, // User initiating the chat
+            agent_id: agent.$id, // Agent receiving the chat
+            last_message: "",
+            last_updated: new Date().toISOString(),
+          }
+        );
+
+        chatRoomId = newRoom.$id; // Use newly created chat room ID
+      } else {
+        // ✅ Use existing chat room ID
+        chatRoomId = existingRoom.documents[0].$id;
+      }
+
+      // ✅ Navigate to chat screen with room ID
+      router.push({
+        pathname: "/chatScreen",
+        params: {
+          room_id: chatRoomId,
+          user: rawUser.$id,
+          agentId: agent.$id,
+          avatar: agent.avatar,
+        },
+      });
+    } catch (error) {
+      console.error("Error starting chat:", error);
+      Alert.alert("Error", "Failed to start chat.");
+    }
+  };
 
   // Sample data - in a real app, this would come from props or API
   const tagent = {
@@ -163,6 +223,7 @@ const AgentProfile = () => {
       },
     ],
   };
+  const handleCardPress = (id: string) => router.push(`/properties/${id}`);
 
   const renderStars = (rating: number) => {
     return (
@@ -215,6 +276,7 @@ const AgentProfile = () => {
         <TouchableOpacity
           className="bg-primary-300"
           style={styles.contactButton}
+          onPress={() => handleContact()}
         >
           <MessageCircle size={20} color="#FFF" />
           <Text style={styles.contactButtonText}>Contact Me</Text>

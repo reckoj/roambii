@@ -37,23 +37,6 @@ export const account = new Account(client);
 export const databases = new Databases(client);
 export const storage = new Storage(client);
 
-export const updateUserAvatar = async (userId: string, avatarUrl: string) => {
-  try {
-    await databases.updateDocument(
-      config.databaseId!,
-      config.usersCollectionId!,
-      userId,
-      {
-        avatar: avatarUrl,
-      }
-    );
-    return true;
-  } catch (error) {
-    console.error("Error updating user avatar:", error);
-    return false;
-  }
-};
-
 export const uploadImage = async (imageUri: string, userId: string) => {
   try {
     // Create a file name with extension from URI

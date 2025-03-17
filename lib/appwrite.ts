@@ -12,6 +12,8 @@ import * as Linking from "expo-linking";
 import { openAuthSessionAsync } from "expo-web-browser";
 import { PackageFormData } from "./packageFormData";
 import images from "@/constants/images";
+import { Alert } from "react-native";
+import { useGlobalContext } from "./global-provider";
 
 export const config = {
   platform: "com.bysprk.roamii",
@@ -28,11 +30,21 @@ export const config = {
   flightInfoCollectionId:
     process.env.EXPO_PUBLIC_APPWRITE_FlIGHT_INFO_COLLECTION_ID,
   bucketId: process.env.EXPO_PUBLIC_APPWRITE_BUCKET_ID,
-  chatCollectionId: process.env.EXPO_PUBLIC_APPWRITE_MESSAGE_COLLECTION_ID,
   packageImagesId: process.env.EXPO_PUBLIC_APPWRITE_PACKAGEIMAGE_BUCKET_ID,
   avatarBucket: process.env.EXPO_PUBLIC_APPWRITE_BUCKET_ID,
   imagesBuket: process.env.EXPO_PUBLIC_APPWRITE_PACKAGEIMAGES_BUCKET_ID,
+  messagesCollectionId: process.env.EXPO_PUBLIC_APPWRITE_MESSAGE_COLLECTION_ID,
+  chatRoomsCollectionId:
+    process.env.EXPO_PUBLIC_APPWRITE_CHAT_ROOMS_COLLECTION_ID,
 };
+interface User {
+  $id: string;
+  name: string;
+  email: string;
+  avatar?: string;
+  isAgent: boolean;
+  isAgentTemp?: boolean;
+}
 
 export const client = new Client();
 client
@@ -282,11 +294,7 @@ export async function getCurrentUser() {
 
     if (userData.total === 0) {
       console.warn("User document not found in the database.");
-      return {
-        ...authUser,
-        isAgent: false,
-        avatar: null, // ✅ Ensure avatar is null if no record exists
-      };
+      return null;
     }
 
     const user = userData.documents[0];
@@ -296,6 +304,7 @@ export async function getCurrentUser() {
       name: user.name || authUser.name, // ✅ Fallback to auth name
       email: user.email || authUser.email, // ✅ Fallback to auth email
       isAgent: user.isAgent || false,
+      isAgentTemp: user.isAgentTemp || false, // ✅ Ensure fallback
       avatar: user.avatar || null, // ✅ Ensure the avatar is set correctly
     };
   } catch (error) {
@@ -304,32 +313,60 @@ export async function getCurrentUser() {
   }
 }
 
-export async function getLatestProperties() {
+/**
+ * Fetch package images properly
+ */
+const fetchPackageImage = async (fileId: string) => {
+  try {
+    if (!fileId) return null; // ✅ Prevent fetching if no file ID
+    return storage.getFileView(config.imagesBuket!, fileId).toString();
+  } catch (error) {
+    console.error("[Error Fetching Package Image]", error);
+    return null; // ✅ Return null to prevent breaking UI
+  }
+};
+
+export async function featuredPackages() {
   try {
     const result = await databases.listDocuments(
       config.databaseId!,
       config.packagesCollectionId!,
-      [Query.orderAsc("$createdAt"), Query.limit(5)]
+      [
+        Query.equal("isFeatured", true), // ✅ Fetch featured only
+        Query.orderAsc("$createdAt"),
+        Query.limit(5),
+      ]
     );
 
-    return result.documents;
+    // ✅ Fetch images for each package
+    const packagesWithImages = await Promise.all(
+      result.documents.map(async (pkg) => ({
+        ...pkg,
+        imageUrl: await fetchPackageImage(pkg.image), // ✅ Correct image fetching
+      }))
+    );
+
+    return packagesWithImages;
   } catch (error) {
-    console.error(error);
+    console.error("[Error Fetching Featured Packages]", error);
     return [];
   }
 }
 
-export async function getProperties({
+export async function getAllPackages({
   filter,
   query,
-  limit,
+  limit = 6,
+  offset = 0,
 }: {
-  filter: string;
-  query: string;
+  filter?: string;
+  query?: string;
   limit?: number;
+  offset?: number;
 }) {
   try {
     const buildQuery = [Query.orderDesc("$createdAt")];
+    if (offset) buildQuery.push(Query.offset(offset)); // ✅ Handle pagination
 
     if (filter && filter !== "All")
       buildQuery.push(Query.equal("type", filter));
@@ -351,9 +388,25 @@ export async function getProperties({
       buildQuery
     );
 
-    return result.documents;
+    // ✅ Fetch images for each package
+    const packagesWithImages = await Promise.all(
+      result.documents.map(async (pkg) => ({
+        ...pkg,
+        imageUrl: await fetchPackageImage(pkg.image),
+      }))
+    );
+
+    // ✅ Fetch images for each package
+    // const packagesWithImages = await Promise.all(
+    //   result.documents.map(async (pkg) => ({
+    //     ...pkg,
+    //     imageUrl: await fetchPackageImage(pkg.image), // ✅ Fetch correct image URL
+    //   }))
+    // );
+
+    return packagesWithImages;
   } catch (error) {
-    console.error(error);
+    console.error("[Error Fetching Packages]", error);
     return [];
   }
 }
@@ -429,7 +482,7 @@ export async function uploadPimage(fileUri: string, bucketId: string) {
     const fileBlob = await fileInfo.blob();
 
     const fileUpload = {
-      name: `image_${Date.now()}.jpg`,
+      name: `image_${Date.now()}`,
       type: "image/jpeg",
       uri: fileUri,
       size: fileBlob.size,
@@ -457,19 +510,7 @@ export async function uploadPimage(fileUri: string, bucketId: string) {
  * @param userId The Appwrite user ID.
  * @param avatarUrl The URL of the uploaded avatar.
  */
-export async function updateUserAvatar(userId: string, avatarUrl: string) {
-  try {
-    await databases.updateDocument(
-      config.databaseId!,
-      config.usersCollectionId!,
-      userId,
-      { avatar: avatarUrl }
-    );
-  } catch (error) {
-    console.error("Failed to update user avatar:", error);
-    throw new Error("Failed to update user profile.");
-  }
-}
+
 export const uploadPackageImage = async (
   imageUri: string,
   bucketId: string
@@ -621,3 +662,72 @@ export async function getPackageById(packageId: string) {
     return null;
   }
 }
+
+/**
+ * ✅ Update a User in Appwrite Database
+ * @param userId - The Appwrite User ID
+ * @param updates - The fields to update
+ */
+export async function updateUser(userId: string, updates: Partial<User>) {
+  try {
+    const updatedUser = await databases.updateDocument(
+      config.databaseId!,
+      config.usersCollectionId!, // ✅ Ensure you have the correct collection ID
+      userId,
+      updates
+    );
+
+    console.log("[User Updated] ==> ", updatedUser);
+    return updatedUser;
+  } catch (error) {
+    console.error("[Error Updating User] ==> ", error);
+    throw new Error("Failed to update user.");
+  }
+}
+
+/**
+ * ✅ Soft Delete User Account (Client-Side)
+ * - Marks user as deleted instead of fully deleting (because Appwrite doesn't allow self-deletion)
+ */
+export const deleteUserAccount = async (userId: string) => {
+  try {
+    if (!userId) {
+      Alert.alert("Error", "User ID not found.");
+      return;
+    }
+
+    // 🔥 Step 1: Find the user document in the database
+    const userDocs = await databases.listDocuments(
+      config.databaseId!,
+      config.usersCollectionId!,
+      [Query.equal("userId", userId)]
+    );
+
+    if (userDocs.total === 0) {
+      Alert.alert("Error", "User profile not found.");
+      return;
+    }
+
+    const userDocId = userDocs.documents[0].$id;
+
+    // 🔥 Step 2: Update the user document to mark as "deleted"
+    await databases.updateDocument(
+      config.databaseId!,
+      config.usersCollectionId!,
+      userDocId,
+      { isDeleted: true } // ✅ Marks the user as deleted
+    );
+
+    Alert.alert(
+      "Account Deleted",
+      "Your account has been marked for deletion."
+    );
+
+    // 🔥 Step 3: Log out and refresh UI
+    const { refetch } = useGlobalContext();
+    refetch();
+  } catch (error) {
+    console.error("[Error Deleting Account] ==> ", error);
+    Alert.alert("Error", "Failed to delete your account.");
+  }
+};
