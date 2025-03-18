@@ -1,4 +1,4 @@
-import { TextInput, KeyboardTypeOptions } from "react-native";
+import { TextInput, KeyboardTypeOptions, StyleSheet } from "react-native";
 
 interface CustomInputProps {
   value: string;
@@ -6,6 +6,8 @@ interface CustomInputProps {
   placeholder?: string;
   keyboardType?: KeyboardTypeOptions;
   secureTextEntry?: boolean;
+  height?: number;
+  editable?: boolean;
 }
 
 const CustomInput: React.FC<CustomInputProps> = ({
@@ -14,18 +16,34 @@ const CustomInput: React.FC<CustomInputProps> = ({
   placeholder = "",
   keyboardType = "default",
   secureTextEntry = false,
+  height,
+  editable = false,
 }) => {
   return (
     <TextInput
-      className="h-12 px-4 mb-4 border border-gray-300 rounded-md"
+      style={[styles.input, height ? { height } : {}]}
       value={value}
       onChangeText={onChangeText}
       placeholder={placeholder}
       keyboardType={keyboardType}
       secureTextEntry={secureTextEntry}
       autoCapitalize="none"
+      multiline={!!height}
+      editable
     />
   );
 };
 
 export default CustomInput;
+
+const styles = StyleSheet.create({
+  input: {
+    height: 48, // ✅ Default height
+    paddingHorizontal: 16,
+    marginBottom: 16,
+    borderWidth: 1,
+    borderColor: "#D1D5DB",
+    borderRadius: 8,
+    backgroundColor: "#FFF",
+  },
+});

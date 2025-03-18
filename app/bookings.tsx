@@ -124,9 +124,9 @@ const Bookings = () => {
   }
 
   return (
-    <GestureHandlerRootView className="flex-1 bg-primary-200">
+    <GestureHandlerRootView className="flex-1">
       <SafeAreaView className="flex-1 bg-primary-200 ">
-        <View className="flex flex-row justify-between items-center p-2">
+        <View className="flex flex-row justify-between items-center px-2">
           <Text className="text-2xl font-rubik-SemiBold text-white">
             Active Packages
           </Text>

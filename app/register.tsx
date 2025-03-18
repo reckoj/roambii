@@ -12,6 +12,10 @@ import {
   Animated,
   StyleSheet,
   ScrollView,
+  KeyboardAvoidingView,
+  TouchableWithoutFeedback,
+  Keyboard,
+  Platform,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { loginUser, registerUser } from "@/lib/appwrite";
@@ -100,68 +104,73 @@ const Register = () => {
   };
 
   return (
-    <SafeAreaView className="flex-1 bg-white">
-      <ScrollView>
-        <View className="flex-1 px-6 pt-10">
-          <View className="items-center mb-10">
-            <Image
-              source={images.roamiiLogo}
-              className="w-full h-40 resize-contain"
-            />
-            {/* <View><Text className="text-xl font-rubik text-text ml-2 mb-6" >Sign In</Text></View> */}
-          </View>
-          {/* Logo */}
+    <KeyboardAvoidingView
+      behavior={Platform.OS === "ios" ? "padding" : "height"}
+      className="flex-1"
+    >
+      <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
+        <SafeAreaView className="flex-1 bg-white">
+          <ScrollView>
+            <View className="flex-1 px-6 pt-10">
+              <View className="items-center mb-10">
+                <Image
+                  source={images.roamiiLogo}
+                  className="w-full h-40 resize-contain"
+                />
+                {/* <View><Text className="text-xl font-rubik text-text ml-2 mb-6" >Sign In</Text></View> */}
+              </View>
+              {/* Logo */}
 
-          {/* Input Fields */}
-          <View>
-            <Text className="text-text font-rubik-medium">Full Name</Text>
-            <TextInput
-              className="h-12 px-4 mb-4 border border-gray-300 rounded-md"
-              value={name}
-              onChangeText={setName}
-              keyboardType="default"
-              autoCapitalize="none"
-            />
+              {/* Input Fields */}
+              <View>
+                <Text className="text-text font-rubik-medium">Full Name</Text>
+                <TextInput
+                  className="h-12 px-4 mb-4 border border-gray-300 rounded-md"
+                  value={name}
+                  onChangeText={setName}
+                  keyboardType="default"
+                  autoCapitalize="none"
+                />
 
-            <Text className="text-text font-rubik-medium">Email</Text>
-            <TextInput
-              className="h-12 px-4 mb-4 border border-gray-300 rounded-md"
-              value={email}
-              onChangeText={setEmail}
-              keyboardType="email-address"
-              autoCapitalize="none"
-            />
+                <Text className="text-text font-rubik-medium">Email</Text>
+                <TextInput
+                  className="h-12 px-4 mb-4 border border-gray-300 rounded-md"
+                  value={email}
+                  onChangeText={setEmail}
+                  keyboardType="email-address"
+                  autoCapitalize="none"
+                />
 
-            <View className="relative mb-4">
-              <Text className="text-text font-rubik-medium">Password</Text>
-              <TextInput
-                className="h-12 px-4 border border-gray-300 rounded-md"
-                value={password}
-                onChangeText={setPassword}
-                secureTextEntry={!showPassword}
-              />
-              <TouchableOpacity
-                className="absolute right-4 top-8"
-                onPress={() => setShowPassword(!showPassword)}
-              >
-                {showPassword ? (
-                  <EyeClosedIcon color="#1ABC9C" size={22} />
-                ) : (
-                  <EyeIcon color="#1ABC9C" size={22} />
-                )}
-              </TouchableOpacity>
-            </View>
-            <View className="relative mb-4">
-              <Text className="text-text font-rubik-medium">
-                Confirm Password
-              </Text>
-              <TextInput
-                className="h-12 px-4 border border-gray-300 rounded-md"
-                value={confirmPassword}
-                onChangeText={setConfirmPassword}
-                secureTextEntry={!showCPassword}
-              />
-              {/* <TouchableOpacity
+                <View className="relative mb-4">
+                  <Text className="text-text font-rubik-medium">Password</Text>
+                  <TextInput
+                    className="h-12 px-4 border border-gray-300 rounded-md"
+                    value={password}
+                    onChangeText={setPassword}
+                    secureTextEntry={!showPassword}
+                  />
+                  <TouchableOpacity
+                    className="absolute right-4 top-8"
+                    onPress={() => setShowPassword(!showPassword)}
+                  >
+                    {showPassword ? (
+                      <EyeClosedIcon color="#1ABC9C" size={22} />
+                    ) : (
+                      <EyeIcon color="#1ABC9C" size={22} />
+                    )}
+                  </TouchableOpacity>
+                </View>
+                <View className="relative mb-4">
+                  <Text className="text-text font-rubik-medium">
+                    Confirm Password
+                  </Text>
+                  <TextInput
+                    className="h-12 px-4 border border-gray-300 rounded-md"
+                    value={confirmPassword}
+                    onChangeText={setConfirmPassword}
+                    secureTextEntry={!showCPassword}
+                  />
+                  {/* <TouchableOpacity
               className="absolute right-4 top-8"
               onPress={() => setShowPassword(!showPassword)}
             >
@@ -169,84 +178,86 @@ const Register = () => {
                
             
             </TouchableOpacity> */}
-            </View>
+                </View>
 
-            <View className="mb-4">
-              <Text className="mb-2">
-                {!isAgent ? (
-                  "Register as an agent"
-                ) : (
-                  <Text className="text-danger">
-                    You will be required to verify your agent status
+                <View className="mb-4">
+                  <Text className="mb-2">
+                    {!isAgent ? (
+                      "Register as an agent"
+                    ) : (
+                      <Text className="text-danger">
+                        You will be required to verify your agent status
+                      </Text>
+                    )}{" "}
                   </Text>
-                )}{" "}
-              </Text>
-              <Switch
-                trackColor={{ false: "#95A5A6", true: "#1ABC9C" }}
-                thumbColor={isAgent ? "#FFFFFF" : "#FFFFFF"}
-                value={isAgent}
-                onValueChange={setIsAgent}
-              />
-            </View>
-          </View>
+                  <Switch
+                    trackColor={{ false: "#95A5A6", true: "#1ABC9C" }}
+                    thumbColor={isAgent ? "#FFFFFF" : "#FFFFFF"}
+                    value={isAgent}
+                    onValueChange={setIsAgent}
+                  />
+                </View>
+              </View>
 
-          {!isAgent ? (
-            <View></View>
-          ) : (
-            <View style={styles.container}>
-              <Text style={styles.title}>Select Your Travel Niche</Text>
-              <Text style={styles.subtitle}>
-                Choose the travel category you specialize in
-              </Text>
-              <View style={styles.pillsContainer}>
-                {NICHE_OPTIONS.map((niche) => (
-                  <TouchableOpacity
-                    key={niche}
-                    style={[
-                      styles.pill,
-                      selectedNiche === niche && styles.selectedPill,
-                    ]}
-                    onPress={() => handleSelectNiche(niche)}
-                  >
-                    <Text
-                      style={[
-                        styles.pillText,
-                        selectedNiche === niche && styles.selectedPillText,
-                      ]}
-                    >
-                      {niche}
-                    </Text>
-                  </TouchableOpacity>
-                ))}
+              {!isAgent ? (
+                <View></View>
+              ) : (
+                <View style={styles.container}>
+                  <Text style={styles.title}>Select Your Travel Niche</Text>
+                  <Text style={styles.subtitle}>
+                    Choose the travel category you specialize in
+                  </Text>
+                  <View style={styles.pillsContainer}>
+                    {NICHE_OPTIONS.map((niche) => (
+                      <TouchableOpacity
+                        key={niche}
+                        style={[
+                          styles.pill,
+                          selectedNiche === niche && styles.selectedPill,
+                        ]}
+                        onPress={() => handleSelectNiche(niche)}
+                      >
+                        <Text
+                          style={[
+                            styles.pillText,
+                            selectedNiche === niche && styles.selectedPillText,
+                          ]}
+                        >
+                          {niche}
+                        </Text>
+                      </TouchableOpacity>
+                    ))}
+                  </View>
+                </View>
+              )}
+
+              {/* Login Button */}
+              <TouchableOpacity
+                className="h-12 mb-4 bg-primary-300 rounded-md items-center justify-center"
+                onPress={handleRegister}
+                disabled={loading}
+              >
+                <Text className="text-lg font-rubik-bold text-white ml-2">
+                  {loading ? (
+                    <ActivityIndicator className="text-white" size={8} />
+                  ) : (
+                    "Sign up"
+                  )}
+                </Text>
+              </TouchableOpacity>
+
+              {/* Sign Up Link */}
+              <View className="flex-row justify-center my-6">
+                <Text className="text-gray-600">Already have an account? </Text>
+                <TouchableOpacity onPress={() => router.back()}>
+                  <Text className="text-emerald-500">Login</Text>
+                </TouchableOpacity>
               </View>
             </View>
-          )}
-
-          {/* Login Button */}
-          <TouchableOpacity
-            className="h-12 mb-4 bg-primary-300 rounded-md items-center justify-center"
-            onPress={handleRegister}
-            disabled={loading}
-          >
-            <Text className="text-lg font-rubik-bold text-white ml-2">
-              {loading ? (
-                <ActivityIndicator className="text-white" size={8} />
-              ) : (
-                "Sign up"
-              )}
-            </Text>
-          </TouchableOpacity>
-
-          {/* Sign Up Link */}
-          <View className="flex-row justify-center my-6">
-            <Text className="text-gray-600">Already have an account? </Text>
-            <TouchableOpacity onPress={() => router.back()}>
-              <Text className="text-emerald-500">Login</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-      </ScrollView>
-    </SafeAreaView>
+          </ScrollView>
+        </SafeAreaView>
+      </TouchableWithoutFeedback>
+    </KeyboardAvoidingView>
   );
 };
 

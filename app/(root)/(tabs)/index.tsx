@@ -1,17 +1,16 @@
 import {
-  ActivityIndicator,
   FlatList,
   Image,
   StatusBar,
   Text,
   TouchableOpacity,
   View,
+  RefreshControl,
 } from "react-native";
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { router, useLocalSearchParams } from "expo-router";
 import { SafeAreaView } from "react-native-safe-area-context";
 
-import Search from "@/components/Search";
 import NoResults from "@/components/NoResults";
 import { Card, FeaturedCard } from "@/components/Cards";
 import { useAppwrite } from "@/lib/useAppwrite";
@@ -22,7 +21,6 @@ import Bookings from "@/app/bookings";
 
 const getGreeting = () => {
   const currentHour = new Date().getHours();
-
   if (currentHour < 12) return "Good Morning";
   else if (currentHour >= 12 && currentHour < 18) return "Good Afternoon";
   return "Good Evening";
@@ -31,26 +29,31 @@ const getGreeting = () => {
 const Home = () => {
   const { rawUser, isAgent } = useGlobalContext();
   const greeting = getGreeting();
-
   const params = useLocalSearchParams<{ query?: string; filter?: string }>();
+
   const [packages, setPackages] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
+  const [refreshing, setRefreshing] = useState(false); // ✅ For pull-to-refresh
   const [offset, setOffset] = useState(0);
   const [hasMore, setHasMore] = useState(true);
 
-  const { data: featured, loading: featuredLoading } = useAppwrite({
+  const { data: featured } = useAppwrite({
     fn: featuredPackages,
   });
 
+  // ✅ Initial Fetch (Only Runs Once)
   useEffect(() => {
-    fetchPackages(0, true); // ✅ Initial load of packages
-  }, [params.filter, params.query]);
+    if (packages.length === 0) {
+      fetchPackages(0, true);
+    }
+  }, []);
 
+  // ✅ Fetch Packages (Handles Pagination)
   const fetchPackages = async (newOffset = 0, reset = false) => {
     if (reset) {
       setLoading(true);
-      setPackages([]); // ✅ Reset packages when applying filters/search
+      setPackages([]); // ✅ Reset packages on refresh
     } else {
       setLoadingMore(true);
     }
@@ -64,14 +67,13 @@ const Home = () => {
 
     if (newPackages.length < 6) setHasMore(false); // ✅ Stop loading when fewer than 6 packages
 
-    // ✅ Check for duplicates before adding new data
     setPackages((prev) => {
-      const existingIds = new Set(prev.map((pkg) => pkg.$id)); // ✅ Track existing package IDs
+      const existingIds = new Set(prev.map((pkg) => pkg.$id));
       const filteredNewPackages = newPackages.filter(
         (pkg) => !existingIds.has(pkg.$id)
-      ); // ✅ Only add new unique packages
+      );
 
-      return reset ? newPackages : [...prev, ...filteredNewPackages]; // ✅ Prevents duplication
+      return reset ? newPackages : [...prev, ...filteredNewPackages];
     });
 
     setOffset(newOffset + 6);
@@ -79,11 +81,18 @@ const Home = () => {
     setLoadingMore(false);
   };
 
+  // ✅ Load More Data When Reaching Bottom
   const handleLoadMore = () => {
     if (!loadingMore && hasMore) {
       fetchPackages(offset);
     }
   };
+
+  // ✅ Pull-to-Refresh Function
+  const handleRefresh = useCallback(() => {
+    setRefreshing(true);
+    fetchPackages(0, true).then(() => setRefreshing(false));
+  }, []);
 
   const handleCardPress = (id: string) => router.push(`/properties/${id}`);
 
@@ -93,43 +102,27 @@ const Home = () => {
         <SafeAreaView className="flex-1 bg-white">
           <StatusBar backgroundColor="#f8f9fa" barStyle="dark-content" />
 
+          {/* ✅ FlatList with Pull-to-Refresh */}
           <FlatList
             data={packages}
-            numColumns={2} // ✅ Keeps a two-column layout
+            numColumns={2}
             renderItem={({ item }) => (
-              <View
-                className={`${
-                  featuredPackages.length === 1
-                    ? "w-[48%] self-center"
-                    : "w-[48%]"
-                } p-2`}
-              >
+              <View className="w-[48%] p-2">
                 <Card item={item} onPress={() => handleCardPress(item.$id)} />
               </View>
             )}
-            keyExtractor={(item) => item.$id} // ✅ Ensures unique keys
+            keyExtractor={(item) => item.$id}
             contentContainerClassName="pb-32"
-            columnWrapperClassName={
-              fetchPackages.length > 1 ? "flex gap-6" : ""
-            }
+            columnWrapperClassName="flex gap-6"
             showsVerticalScrollIndicator={false}
-            ListEmptyComponent={
-              loading ? (
-                <ActivityIndicator
-                  size="large"
-                  className="text-primary-300 mt-5"
-                />
-              ) : (
-                <NoResults />
-              )
-            }
-            onEndReached={handleLoadMore} // ✅ Triggers pagination
+            onEndReached={handleLoadMore}
             onEndReachedThreshold={0.5}
-            ListFooterComponent={
-              loadingMore ? (
-                <ActivityIndicator size="small" className="mt-5" />
-              ) : null
-            } // ✅ Fix
+            refreshControl={
+              <RefreshControl
+                refreshing={refreshing}
+                onRefresh={handleRefresh}
+              />
+            } // ✅ Enables pull-to-refresh
             ListHeaderComponent={() => (
               <View className="px-5">
                 <View className="flex flex-row items-center justify-between mt-5">
@@ -149,7 +142,7 @@ const Home = () => {
                   </View>
                 </View>
 
-                {/* Featured Section */}
+                {/* ✅ Featured Packages */}
                 <View className="my-5">
                   <View className="flex flex-row items-center justify-between">
                     <Text className="text-xl font-rubik-bold text-text">
@@ -162,12 +155,7 @@ const Home = () => {
                     </TouchableOpacity>
                   </View>
 
-                  {featuredLoading ? (
-                    <ActivityIndicator
-                      size="large"
-                      className="text-primary-300"
-                    />
-                  ) : !featured || featured.length === 0 ? (
+                  {featured?.length === 0 ? (
                     <NoResults />
                   ) : (
                     <FlatList
@@ -178,7 +166,7 @@ const Home = () => {
                           onPress={() => handleCardPress(item.$id)}
                         />
                       )}
-                      keyExtractor={(item, index) => `${item.$id}-${index}`} // ✅ Ensures uniqueness
+                      keyExtractor={(item, index) => `${item.$id}-${index}`}
                       horizontal
                       bounces={false}
                       showsHorizontalScrollIndicator={false}
@@ -187,7 +175,7 @@ const Home = () => {
                   )}
                 </View>
 
-                {/* Recommended Agents */}
+                {/* ✅ Recommended Agents */}
                 <View className="mt-4">
                   <View className="flex flex-row items-center justify-between">
                     <Text className="text-xl font-rubik-bold text-text">

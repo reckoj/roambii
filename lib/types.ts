@@ -7,3 +7,10 @@ export interface MessageType {
   timestamp: string;
   read: boolean;
 }
+
+export interface Package {
+  $id: string;
+  name: string;
+  price: string;
+  imageUrl: string | null;
+}

@@ -2,7 +2,6 @@ import React, { useEffect, useState } from "react";
 import {
   View,
   Text,
-  TextInput,
   ScrollView,
   TouchableOpacity,
   Alert,
@@ -11,6 +10,8 @@ import {
   Image,
   ActivityIndicator,
   StyleSheet,
+  KeyboardAvoidingView,
+  Platform,
 } from "react-native";
 import { useLocalSearchParams, router } from "expo-router";
 import { getPackageById, updatePackage } from "@/lib/appwrite";
@@ -22,14 +23,15 @@ import CustomInput from "@/components/CustomInput";
 import { useGlobalContext } from "@/lib/global-provider";
 import { handlePackageImagePicked } from "@/lib/storage";
 import FacilitySelection from "@/components/FacilitySelection";
+import FlightInformation from "./FlightInfo";
+import { ArrowBigLeft, ArrowLeft } from "lucide-react-native";
 
 const EditPackageScreen = () => {
   const { refetch } = useGlobalContext();
-  const { id } = useLocalSearchParams<{ id: string }>(); // ✅ Get Package ID from URL
+  const { id } = useLocalSearchParams<{ id: string }>();
   const [formData, setFormData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
 
-  /** ✅ Fetch package data when the screen loads */
   useEffect(() => {
     const fetchPackage = async () => {
       if (!id) {
@@ -39,39 +41,24 @@ const EditPackageScreen = () => {
       }
 
       const data = await getPackageById(id);
-      // console.log("[Fetched Package] ==> ", data);
-
       if (data) {
-        setFormData(data); // ✅ Pre-populate form with existing data
+        setFormData(data);
       } else {
         Alert.alert("Error", "Package not found.");
         router.back();
       }
-
       setLoading(false);
     };
 
     fetchPackage();
   }, [id]);
 
-  /** ✅ Handle form field updates */
   const handleChange = (key: string, value: any) => {
     setFormData((prev: any) => ({ ...prev, [key]: value }));
   };
 
-  /** ✅ Handle Image Upload */
   const pickImage = async () => {
     try {
-      // const { status } =
-      // await ImagePicker.requestMediaLibraryPermissionsAsync();
-      // if (status !== "granted") {
-      //   Alert.alert(
-      //     "Permission Required",
-      //     "Sorry, we need camera roll permissions."
-      //   );
-      //   return;
-      // }
-
       const result = await ImagePicker.launchImageLibraryAsync({
         allowsEditing: true,
         aspect: [4, 3],
@@ -86,76 +73,89 @@ const EditPackageScreen = () => {
     }
   };
 
-  /** ✅ Handle package update */
   const handleUpdate = async () => {
     if (!formData?.name || !formData?.price) {
       Alert.alert("Error", "Package Name and Price are required.");
       return;
     }
-    const uploadedFileId = await handlePackageImagePicked(formData.image, id);
-    const updatedPackage = await updatePackage(id, {
-      name: formData.name,
-      type: formData.type,
-      description: formData.description,
-      price: parseInt(formData.price),
-      bedrooms: parseInt(formData.bedrooms),
-      bathrooms: parseInt(formData.bathrooms),
-      rating: parseFloat(formData.rating),
-      facilities: formData.facilities,
-      image: uploadedFileId,
-      allinclusive: formData.allinclusive,
-      roomType: formData.roomType,
 
-      // ✅ Flight Information
-      flightInfo: {
-        departingFrom: formData.flightInfo?.departingFrom,
-        arrivingTo: formData.flightInfo?.arrivingTo,
-        returningFrom: formData.flightInfo?.returningFrom,
-        returningTo: formData.flightInfo?.returningTo,
-        departingTime: formData.flightInfo?.departingTime,
-        arrivingToTime: formData.flightInfo?.arrivingToTime,
-        returningFromTime: formData.flightInfo?.returningFromTime,
-        returningToTime: formData.flightInfo?.returningToTime,
-        departureDate: formData.flightInfo?.departureDate,
-        returnDate: formData.flightInfo?.returnDate,
-      },
-    });
+    try {
+      // Ensure only relevant fields are updated
+      const updatedData = { ...formData };
 
-    if (updatedPackage) {
+      // Remove system fields from Appwrite document
+      delete updatedData.$id;
+      delete updatedData.$databaseId;
+      delete updatedData.$collectionId;
+      delete updatedData.$createdAt;
+      delete updatedData.$updatedAt;
+      delete updatedData.$permissions;
+
+      // Validate and format numeric fields
+      if (isNaN(parseInt(formData.price))) {
+        Alert.alert("Error", "Price must be a valid integer.");
+        return;
+      }
+      if (isNaN(parseInt(formData.bedrooms))) {
+        Alert.alert("Error", "Bedrooms must be a valid integer.");
+        return;
+      }
+      if (isNaN(parseInt(formData.bathrooms))) {
+        Alert.alert("Error", "Bathrooms must be a valid integer.");
+        return;
+      }
+      if (isNaN(parseFloat(formData.rating))) {
+        Alert.alert("Error", "Rating must be a valid number.");
+        return;
+      }
+
+      updatedData.price = parseInt(formData.price);
+      updatedData.bedrooms = parseInt(formData.bedrooms);
+      updatedData.bathrooms = parseInt(formData.bathrooms);
+      updatedData.rating = parseFloat(formData.rating);
+
+      // Handle Image Upload if changed
+      if (formData.image && !formData.image.startsWith("https://")) {
+        updatedData.image = await handlePackageImagePicked(formData.image, id);
+      }
+
+      // Perform update
+      await updatePackage(id, updatedData);
       refetch();
       Alert.alert("Success", "Package updated successfully!");
-
       router.back();
-    } else {
-      Alert.alert("Error", "Failed to update package.");
+    } catch (error) {
+      console.error("Error updating package:", error);
+      Alert.alert("Error", `Failed to update package: ${error}`);
     }
   };
 
-  // if (loading) {
-  //   return (
-  //     <View className="flex-1 items-center justify-center">
-  //       <ActivityIndicator size="large" color="#1ABC9C" />
-  //     </View>
-  //   );
-  // }
-
   return (
-    <SafeAreaView className="flex-1 bg-white">
-      {!loading ? (
-        <>
-          <View className="flex flex-row items-center w-full justify-between">
-            <TouchableOpacity
-              onPress={() => router.back()}
-              className="flex flex-row rounded-full size-11 ml-4 items-center justify-center"
-            >
-              <Image source={icons.backArrow} className="size-8" />
-            </TouchableOpacity>
-            <Text className="text-xl font-semibold">Edit Package</Text>
-            <View></View>
-          </View>
-          <ScrollView className="p-4 bg-white">
-            {/* ✅ Image Upload */}
-
+    <KeyboardAvoidingView
+      behavior={Platform.OS === "ios" ? "padding" : "height"}
+      className="flex-1"
+    >
+      <SafeAreaView className=" bg-primary-200">
+        <View className="flex flex-row justify-between items-center ">
+          <TouchableOpacity
+            onPress={() => router.back()}
+            className="flex flex-row rounded-full size-11 items-center justify-center"
+          >
+            <ArrowLeft color={"#fff"} />
+          </TouchableOpacity>
+          <Text className="text-2xl font-rubik-SemiBold text-white">
+            Edit Package
+          </Text>
+          <View></View>
+        </View>
+        {!loading ? (
+          <ScrollView
+            className=" bg-white"
+            contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 40 }}
+            keyboardShouldPersistTaps="handled"
+            showsVerticalScrollIndicator={false}
+          >
+            {/* Image Upload */}
             <Text style={styles.sectionTitle}>Property Information</Text>
             <View style={styles.section}>
               <Text style={styles.label}>Banner Image</Text>
@@ -173,95 +173,96 @@ const EditPackageScreen = () => {
               </TouchableOpacity>
             </View>
 
-            {/* ✅ Name */}
-            {/* ✅ Property Type */}
-
-            {/* Label */}
-            <Text
-              style={styles.label}
-              className="text-lg font-semibold text-[#34495E] mb-2"
-            >
-              Property Type
-            </Text>
-            <View className="border border-gray-300 rounded-lg mb-4">
+            {/* Property Type */}
+            <Text style={styles.label}>Property Type</Text>
+            <View className="border border-gray-300 rounded-lg px-3 mb-4">
               <Picker
                 selectedValue={formData?.type}
                 onValueChange={(value) => handleChange("type", value)}
-                style={{ color: "#34495E", height: 190 }} // ✅ Picker text color
-                itemStyle={{ fontSize: 20, color: "#34495E" }} // ✅ iOS support
+                style={{ color: "#34495E", height: 190 }}
+                itemStyle={{ fontSize: 20, color: "#34495E" }}
               >
-                <Picker.Item label="Luxury" value="Luxury" />
-                <Picker.Item label="Budget" value="Budget" />
-                <Picker.Item label="Standard" value="Standard" />
-                <Picker.Item label="House" value="House" />
-                <Picker.Item label="Condo" value="Condo" />
+                <Picker.Item label="Villa" value="Villa" />
+                <Picker.Item label="Resort" value="Resort" />
+                <Picker.Item label="Hotel" value="Hotel" />
+                <Picker.Item label="Motel" value="Motel" />
+                <Picker.Item label="BnB" value="BnB" />
               </Picker>
             </View>
 
-            <Text style={styles.label}>Package Name</Text>
-            <CustomInput
-              value={formData?.name || ""}
-              onChangeText={(text) => handleChange("name", text)}
-            />
+            {/* Text Inputs */}
+            <View style={styles.row}>
+              <View style={styles.column}>
+                <Text style={styles.label}>Package Name</Text>
+                <CustomInput
+                  value={formData?.name || ""}
+                  onChangeText={(text) => handleChange("name", text)}
+                />
+              </View>
+              <View style={styles.column}>
+                <Text style={styles.label}>Price</Text>
+                <CustomInput
+                  value={formData?.price?.toString() || ""}
+                  onChangeText={(text) => handleChange("price", text)}
+                  keyboardType="numeric"
+                />
+              </View>
+            </View>
 
-            <Text style={styles.label}>Description</Text>
+            <View style={styles.row}>
+              <View style={styles.column}>
+                <Text style={styles.label}>Bedrooms</Text>
+                <CustomInput
+                  value={formData?.bedrooms?.toString() || ""}
+                  onChangeText={(text) => handleChange("bedrooms", text)}
+                  keyboardType="numeric"
+                />
+              </View>
+              <View style={styles.column}>
+                <Text style={styles.label}>Bathrooms</Text>
+                <CustomInput
+                  value={formData?.bathrooms?.toString() || ""}
+                  onChangeText={(text) => handleChange("bathrooms", text)}
+                  keyboardType="numeric"
+                />
+              </View>
+              <View style={styles.column}>
+                <Text style={styles.label}>Rating</Text>
+                <CustomInput
+                  value={formData?.rating.toString() || ""}
+                  onChangeText={(text) => handleChange("rating", text)}
+                  keyboardType="numeric"
+                />
+              </View>
+            </View>
+
+            {/* Description */}
+            <Text style={styles.label}>Package Description</Text>
             <CustomInput
-              value={formData.description}
+              height={120}
+              value={formData?.description || ""}
               onChangeText={(text) => handleChange("description", text)}
             />
 
-            <Text style={styles.label}>Price</Text>
-            <CustomInput
-              value={formData?.price?.toString() || ""}
-              onChangeText={(text) => handleChange("price", text)}
-              keyboardType="numeric"
-            />
-
-            <Text style={styles.label}>Bedrooms</Text>
-            <CustomInput
-              value={formData?.bedrooms?.toString() || ""}
-              onChangeText={(text) => handleChange("bedrooms", text)}
-              keyboardType="numeric"
-            />
-
-            <Text style={styles.label}>Bathrooms</Text>
-            <CustomInput
-              value={formData?.bathrooms?.toString() || ""}
-              onChangeText={(text) => handleChange("bathrooms", text)}
-              keyboardType="numeric"
-            />
-            <Text style={styles.label}>Rating</Text>
-            <CustomInput
-              value={formData?.rating || ""}
-              onChangeText={(text) => handleChange("rating", text)}
-              keyboardType="numeric"
-            />
-
-            {/* <Text style={styles.label}>Facilities</Text>
-            <CustomInput
-              value={formData.facilities.join(", ")}
-              onChangeText={(text) =>
-                handleChange("facilities", text.split(", "))
-              }
-            /> */}
-
+            {/* Facility Selection */}
             <FacilitySelection
               formData={formData}
               handleChange={handleChange}
             />
 
+            {/* Room Type */}
             <Text className="mt-5" style={styles.label}>
               Room Type
             </Text>
-            <View className="border border-gray-300 rounded-lg  px-3">
+            <View className="border border-gray-300 rounded-lg px-3">
               <Picker
                 selectedValue={formData.roomType}
                 onValueChange={(value) => handleChange("roomType", value)}
-                style={{ color: "#34495E", height: 190 }} // ✅ Picker text color
-                itemStyle={{ fontSize: 20, color: "#34495E" }} // ✅ iOS support
+                style={{ color: "#34495E", height: 190 }}
+                itemStyle={{ fontSize: 20, color: "#34495E" }}
               >
-                <Picker.Item label="Standard" value="Standard Room" />
-                <Picker.Item label="Deluxe" value="Deluxe Room" />
+                <Picker.Item label="Standard Room" value="Standard Room" />
+                <Picker.Item label="Deluxe Room" value="Deluxe Room" />
                 <Picker.Item label="Suite" value="Suite" />
                 <Picker.Item label="Superior Room" value="Superior Room" />
                 <Picker.Item label="Double Room" value="Double Room" />
@@ -272,6 +273,7 @@ const EditPackageScreen = () => {
                 <Picker.Item label="Junior Suite" value="Junior Suite" />
               </Picker>
             </View>
+            {/* All-Inclusive Toggle */}
             <Text style={styles.label} className="mt-4">
               All-Inclusive
             </Text>
@@ -280,93 +282,31 @@ const EditPackageScreen = () => {
               onValueChange={(value) => handleChange("allinclusive", value)}
             />
 
-            <View style={styles.section} className="mt-6">
-              <Text style={styles.sectionTitle}>Flight Information</Text>
+            {/* Flight Information */}
+            <FlightInformation
+              formData={formData}
+              handleChange={handleChange}
+            />
 
-              <Text style={styles.label}>Departure From</Text>
-              <CustomInput
-                value={formData.flightInfo?.departingFrom}
-                onChangeText={(text) =>
-                  handleChange("flightInfo", {
-                    ...formData.flightInfo,
-                    departingFrom: text,
-                  })
-                }
-              />
-
-              <Text style={styles.label}>Arrival To</Text>
-              <CustomInput
-                value={formData.flightInfo?.arrivingTo}
-                onChangeText={(text) =>
-                  handleChange("flightInfo", {
-                    ...formData.flightInfo,
-                    arrivingTo: text,
-                  })
-                }
-              />
-
-              <Text style={styles.label}>Return From</Text>
-              <CustomInput
-                value={formData.flightInfo?.returningFrom}
-                onChangeText={(text) =>
-                  handleChange("flightInfo", {
-                    ...formData.flightInfo,
-                    returningFrom: text,
-                  })
-                }
-              />
-
-              <Text style={styles.label}>Return To</Text>
-              <CustomInput
-                value={formData.flightInfo?.returningTo}
-                onChangeText={(text) =>
-                  handleChange("flightInfo", {
-                    ...formData.flightInfo,
-                    returningTo: text,
-                  })
-                }
-              />
-
-              <Text style={styles.label}>Departure Date</Text>
-              <CustomInput
-                value={formData.flightInfo?.departureDate}
-                onChangeText={(text) =>
-                  handleChange("flightInfo", {
-                    ...formData.flightInfo,
-                    departureDate: text,
-                  })
-                }
-              />
-
-              <Text style={styles.label}>Return Date</Text>
-              <CustomInput
-                value={formData.flightInfo?.returnDate}
-                onChangeText={(text) =>
-                  handleChange("flightInfo", {
-                    ...formData.flightInfo,
-                    returnDate: text,
-                  })
-                }
-              />
-            </View>
-
-            {/* ✅ Submit Button */}
+            {/* Update Button */}
             <AuthButton title="Update Package" onPress={handleUpdate} />
           </ScrollView>
-        </>
-      ) : (
-        <View className="flex-1 items-center justify-center">
-          <ActivityIndicator size="large" color="#1ABC9C" />
-        </View>
-      )}
-    </SafeAreaView>
+        ) : (
+          <View className="flex-1 items-center justify-center">
+            <ActivityIndicator size="large" color="#1ABC9C" />
+          </View>
+        )}
+      </SafeAreaView>
+    </KeyboardAvoidingView>
   );
 };
+
+export default EditPackageScreen;
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    padding: 16,
+
     backgroundColor: "#fff",
   },
   title: {
@@ -473,6 +413,17 @@ const styles = StyleSheet.create({
     marginBottom: 20,
     textAlign: "center",
   },
+  // label: {
+  //   fontSize: 16,
+  //   fontWeight: "bold",
+  //   marginBottom: 5,
+  // },
+  row: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+  },
+  column: {
+    flex: 1,
+    padding: 2,
+  },
 });
-
-export default EditPackageScreen;

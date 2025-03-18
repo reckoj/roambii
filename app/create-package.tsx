@@ -11,6 +11,10 @@ import {
   TouchableOpacity,
   Image,
   StyleSheet,
+  KeyboardAvoidingView,
+  Platform,
+  TouchableWithoutFeedback,
+  Keyboard,
 } from "react-native";
 import { Picker } from "@react-native-picker/picker";
 import * as ImagePicker from "expo-image-picker";
@@ -30,6 +34,8 @@ import CustomInput from "@/components/CustomInput";
 import AuthButton from "@/components/AuthButton";
 import { handlePackageImagePicked } from "@/lib/storage";
 import FacilitySelection from "@/components/FacilitySelection";
+import FlightInformation from "./FlightInfo";
+import { ArrowLeft } from "lucide-react-native";
 
 const CreatePackageScreen = () => {
   const { rawUser, isLogged, isAgent, refetch } = useGlobalContext();
@@ -59,6 +65,14 @@ const CreatePackageScreen = () => {
     reviews: "",
     allinclusive: false,
     roomType: "standard", // Default enum
+    flightInfo: {
+      departingFrom: "",
+      arrivingTo: "",
+      returningFrom: "",
+      returningTo: "",
+      departureDate: "",
+      returnDate: "",
+    },
   });
 
   const handleChange = (key: string, value: any) => {
@@ -212,220 +226,175 @@ const CreatePackageScreen = () => {
   };
 
   return (
-    <SafeAreaView className="flex-1 bg-white">
-      <View className="flex flex-row items-center w-full justify-between">
-        <TouchableOpacity
-          onPress={() => router.back()}
-          className="flex flex-row rounded-full size-11 ml-4 items-center justify-center"
-        >
-          <Image source={icons.backArrow} className="size-8" />
-        </TouchableOpacity>
-        <Text style={styles.title}>Create New Package Listing</Text>
-        <View></View>
-      </View>
-      <ScrollView style={styles.container}>
-        <Text style={styles.sectionTitle}>Property Information</Text>
-        <View style={styles.section}>
-          <Text style={styles.label}>Banner Image</Text>
-          <TouchableOpacity style={styles.imageUpload} onPress={pickImage}>
-            {formData.image ? (
-              <Image
-                source={{ uri: formData.image }}
-                style={styles.previewImage}
-              />
-            ) : (
-              <Text style={styles.imageUploadText}>Tap to upload image</Text>
-            )}
-          </TouchableOpacity>
-        </View>
-
-        <View style={styles.section}>
-          <View className="mb-4">
-            {/* Label */}
-            <Text
-              style={styles.label}
-              className="text-lg font-semibold text-[#34495E] mb-2"
-            >
-              Property Type
-            </Text>
-
-            {/* Picker Container */}
-            <View className="border border-gray-300 rounded-lg px-3">
-              <Picker
-                selectedValue={formData.type}
-                onValueChange={(value) => handleChange("type", value)}
-                className="text-[#34495E]"
-                style={{ color: "#34495E", height: 190 }} // ✅ Picker text color
-                itemStyle={{ fontSize: 20, color: "#34495E" }} // ✅ iOS support
-              >
-                <Picker.Item label="Villa" value="Villa" />
-                <Picker.Item label="Resort" value="Resort" />
-                <Picker.Item label="Hotel" value="Hotel" />
-                <Picker.Item label="Motel" value="Motel" />
-                <Picker.Item label="BnB" value="BnB" />
-              </Picker>
-            </View>
-          </View>
-        </View>
-        <View>
-          <Text style={styles.label}>Package Name</Text>
-          <CustomInput
-            value={formData.name}
-            onChangeText={(text) => handleChange("name", text)}
-          />
-
-          <View style={styles.row}>
-            <View style={styles.column}>
-              <Text style={styles.label}>Description</Text>
-              <CustomInput
-                value={formData.description}
-                onChangeText={(text) => handleChange("description", text)}
-              />
-            </View>
-
-            <View style={styles.column}>
-              <Text style={styles.label}>Price</Text>
-              <CustomInput
-                value={formData.price}
-                onChangeText={(text) => handleChange("price", text)}
-                keyboardType="numeric"
-              />
-            </View>
-          </View>
-
-          <View style={styles.row}>
-            <View style={styles.column}>
-              <Text style={styles.label}>Bedrooms</Text>
-              <CustomInput
-                value={formData.bedrooms}
-                onChangeText={(text) => handleChange("bedrooms", text)}
-                keyboardType="numeric"
-              />
-            </View>
-
-            <View style={styles.column}>
-              <Text style={styles.label}>Bathrooms</Text>
-              <CustomInput
-                value={formData.bathrooms}
-                onChangeText={(text) => handleChange("bathrooms", text)}
-                keyboardType="numeric"
-              />
-            </View>
-            <View style={styles.column}>
-              <Text style={styles.label}>Rating</Text>
-              <CustomInput
-                value={formData.rating}
-                onChangeText={(text) => handleChange("rating", text)}
-                keyboardType="numeric"
-              />
-            </View>
-          </View>
-        </View>
-
-        <FacilitySelection formData={formData} handleChange={handleChange} />
-
-        {/* <Text>Image URL</Text>
-        <TextInput
-          value={formData.image}
-          onChangeText={(text) => handleChange("image", text)}
-          style={styles.input}
-        />
-        <Button title="Upload Image" onPress={handleImageUpload} /> */}
-
-        {/* <Text>Geolocation</Text>
-        <TextInput
-          value={formData.geolocation}
-          onChangeText={(text) => handleChange("geolocation", text)}
-          style={styles.input}
-        /> */}
-
-        <Text className="mt-5" style={styles.label}>
-          Room Type
-        </Text>
-        <View className="border border-gray-300 rounded-lg  px-3">
-          <Picker
-            selectedValue={formData.roomType}
-            onValueChange={(value) => handleChange("roomType", value)}
-            style={{ color: "#34495E", height: 190 }} // ✅ Picker text color
-            itemStyle={{ fontSize: 20, color: "#34495E" }} // ✅ iOS support
+    <KeyboardAvoidingView
+      behavior={Platform.OS === "ios" ? "padding" : "height"}
+      className="flex-1"
+    >
+      <SafeAreaView className="bg-primary-200">
+        <View className="flex flex-row items-center w-full justify-between">
+          <TouchableOpacity
+            onPress={() => router.back()}
+            className="flex flex-row rounded-full size-11 items-center justify-center"
           >
-            <Picker.Item label="Standard Room" value="Standard Room" />
-            <Picker.Item label="Deluxe Room" value="Deluxe Room" />
-            <Picker.Item label="Suite" value="Suite" />
-            <Picker.Item label="Superior Room" value="Superior Room" />
-            <Picker.Item label="Double Room" value="Double Room" />
-            <Picker.Item
-              label="Presidential Suite"
-              value="Presidential Suite"
+            <ArrowLeft color={"#fff"} />
+          </TouchableOpacity>
+          <Text className="text-2xl font-rubik-SemiBold text-white">
+            Create New Package Listing
+          </Text>
+          <View></View>
+        </View>
+        <ScrollView
+          className="bg-white"
+          contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 40 }}
+          showsVerticalScrollIndicator={false}
+          keyboardShouldPersistTaps="handled"
+          // style={styles.container}
+        >
+          {/* <TouchableWithoutFeedback onPress={Keyboard.dismiss}> */}
+          <Text style={styles.sectionTitle}>Property Information</Text>
+          <View style={styles.section}>
+            <Text style={styles.label}>Banner Image</Text>
+            <TouchableOpacity style={styles.imageUpload} onPress={pickImage}>
+              {formData.image ? (
+                <Image
+                  source={{ uri: formData.image }}
+                  style={styles.previewImage}
+                />
+              ) : (
+                <Text style={styles.imageUploadText}>Tap to upload image</Text>
+              )}
+            </TouchableOpacity>
+          </View>
+
+          <View style={styles.section}>
+            <View className="mb-4">
+              {/* Label */}
+              <Text
+                style={styles.label}
+                className="text-lg font-semibold text-[#34495E] mb-2"
+              >
+                Property Type
+              </Text>
+
+              {/* Picker Container */}
+              <View className="border border-gray-300 rounded-lg px-3">
+                <Picker
+                  selectedValue={formData.type}
+                  onValueChange={(value) => handleChange("type", value)}
+                  className="text-[#34495E]"
+                  style={{ color: "#34495E", height: 190 }} // ✅ Picker text color
+                  itemStyle={{ fontSize: 20, color: "#34495E" }} // ✅ iOS support
+                >
+                  <Picker.Item label="Villa" value="Villa" />
+                  <Picker.Item label="Resort" value="Resort" />
+                  <Picker.Item label="Hotel" value="Hotel" />
+                  <Picker.Item label="Motel" value="Motel" />
+                  <Picker.Item label="BnB" value="BnB" />
+                </Picker>
+              </View>
+            </View>
+          </View>
+          <View>
+            <View style={styles.row}>
+              <View style={styles.column}>
+                <Text style={styles.label}>Name</Text>
+                <CustomInput
+                  value={formData.name}
+                  onChangeText={(text) => handleChange("name", text)}
+                />
+              </View>
+
+              <View style={styles.column}>
+                <Text style={styles.label}>Price</Text>
+                <CustomInput
+                  value={formData.price}
+                  onChangeText={(text) => handleChange("price", text)}
+                  keyboardType="numeric"
+                />
+              </View>
+            </View>
+
+            <View style={styles.row}>
+              <View style={styles.column}>
+                <Text style={styles.label}>Bedrooms</Text>
+                <CustomInput
+                  value={formData.bedrooms}
+                  onChangeText={(text) => handleChange("bedrooms", text)}
+                  keyboardType="numeric"
+                />
+              </View>
+
+              <View style={styles.column}>
+                <Text style={styles.label}>Bathrooms</Text>
+                <CustomInput
+                  value={formData.bathrooms}
+                  onChangeText={(text) => handleChange("bathrooms", text)}
+                  keyboardType="numeric"
+                />
+              </View>
+              <View style={styles.column}>
+                <Text style={styles.label}>Rating</Text>
+                <CustomInput
+                  value={formData.rating}
+                  onChangeText={(text) => handleChange("rating", text)}
+                  keyboardType="numeric"
+                />
+              </View>
+            </View>
+            <Text style={styles.label}>Package Description</Text>
+            <CustomInput
+              height={120}
+              value={formData.description}
+              onChangeText={(text) => handleChange("description", text)}
             />
-            <Picker.Item label="Junior Suite" value="Junior Suite" />
-          </Picker>
-        </View>
+          </View>
 
-        <Text style={styles.label} className="mt-4">
-          All-Inclusive
-        </Text>
-        <Switch
-          value={formData.allinclusive}
-          onValueChange={(value) => handleChange("allinclusive", value)}
-        />
+          <FacilitySelection formData={formData} handleChange={handleChange} />
 
-        <View style={styles.section} className="mt-6">
-          <Text style={styles.sectionTitle}>Flight Information</Text>
+          <Text className="mt-5" style={styles.label}>
+            Room Type
+          </Text>
+          <View className="border border-gray-300 rounded-lg  px-3">
+            <Picker
+              selectedValue={formData.roomType}
+              onValueChange={(value) => handleChange("roomType", value)}
+              style={{ color: "#34495E", height: 190 }} // ✅ Picker text color
+              itemStyle={{ fontSize: 20, color: "#34495E" }} // ✅ iOS support
+            >
+              <Picker.Item label="Standard Room" value="Standard Room" />
+              <Picker.Item label="Deluxe Room" value="Deluxe Room" />
+              <Picker.Item label="Suite" value="Suite" />
+              <Picker.Item label="Superior Room" value="Superior Room" />
+              <Picker.Item label="Double Room" value="Double Room" />
+              <Picker.Item
+                label="Presidential Suite"
+                value="Presidential Suite"
+              />
+              <Picker.Item label="Junior Suite" value="Junior Suite" />
+            </Picker>
+          </View>
 
-          <Text style={styles.label}>Departure From</Text>
-          <CustomInput
-            value={formData.departingFrom}
-            onChangeText={(text) => handleChange("departingFrom", text)}
-            // style={styles.input}
+          <Text style={styles.label} className="mt-4">
+            All-Inclusive
+          </Text>
+          <Switch
+            value={formData.allinclusive}
+            onValueChange={(value) => handleChange("allinclusive", value)}
           />
+          <FlightInformation formData={formData} handleChange={handleChange} />
 
-          <Text style={styles.label}>Arrival To</Text>
-          <CustomInput
-            value={formData.arrivingTo}
-            onChangeText={(text) => handleChange("arrivingTo", text)}
-            // style={styles.input}
-          />
-
-          <Text style={styles.label}>Return From</Text>
-          <CustomInput
-            value={formData.returningFrom}
-            onChangeText={(text) => handleChange("returningFrom", text)}
-            // style={styles.input}
-          />
-
-          <Text style={styles.label}>Return To</Text>
-          <CustomInput
-            value={formData.returningTo}
-            onChangeText={(text) => handleChange("returningTo", text)}
-            // style={styles.input}
-          />
-
-          <Text style={styles.label}>Departure Date</Text>
-          <CustomInput
-            value={formData.departureDate}
-            onChangeText={(text) => handleChange("departureDate", text)}
-            // style={styles.input}
-          />
-
-          <Text style={styles.label}>Return Date</Text>
-          <CustomInput
-            value={formData.returnDate}
-            onChangeText={(text) => handleChange("returnDate", text)}
-            // style={styles.input}
-          />
-        </View>
-
-        <AuthButton title="Create Package" onPress={handleSubmit} />
-      </ScrollView>
-    </SafeAreaView>
+          <AuthButton title="Create Package" onPress={handleSubmit} />
+          {/* </TouchableWithoutFeedback> */}
+        </ScrollView>
+      </SafeAreaView>
+    </KeyboardAvoidingView>
   );
 };
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    padding: 16,
+
     backgroundColor: "#fff",
   },
   title: {

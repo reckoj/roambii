@@ -396,14 +396,6 @@ export async function getAllPackages({
       }))
     );
 
-    // ✅ Fetch images for each package
-    // const packagesWithImages = await Promise.all(
-    //   result.documents.map(async (pkg) => ({
-    //     ...pkg,
-    //     imageUrl: await fetchPackageImage(pkg.image), // ✅ Fetch correct image URL
-    //   }))
-    // );
-
     return packagesWithImages;
   } catch (error) {
     console.error("[Error Fetching Packages]", error);
