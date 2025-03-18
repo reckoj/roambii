@@ -32,6 +32,7 @@ import ReviewModal from "@/components/ReviewModal";
 import images from "@/constants/images";
 import { useGlobalContext } from "@/lib/global-provider";
 import { ID, Query } from "react-native-appwrite";
+import AgentReviews from "@/components/AgentReviews";
 
 type Package = {
   name: string;
@@ -252,34 +253,7 @@ const AgentProfile = () => {
             <Text className="text-lg font-rubik-bold text-text">
               Client Reviews
             </Text>
-            <FlatList
-              data={fakeReviews}
-              keyExtractor={(item) => item.id.toString()}
-              horizontal
-              showsHorizontalScrollIndicator={false}
-              nestedScrollEnabled // ✅ Fixes nested FlatList inside ScrollView issue
-              renderItem={({ item }) => (
-                <TouchableOpacity
-                  style={styles.reviewCard}
-                  onPress={() => {
-                    setSelectedReview(item);
-                    setIsModalVisible(true);
-                  }}
-                >
-                  <View style={styles.reviewHeader}>
-                    <Image
-                      source={{ uri: item.avatar }}
-                      style={styles.reviewerAvatar}
-                    />
-                    <Text style={styles.reviewerName}>{item.author}</Text>
-                  </View>
-                  {renderStars(item.rating)}
-                  <Text numberOfLines={2} style={styles.reviewPreview}>
-                    {item.comment}
-                  </Text>
-                </TouchableOpacity>
-              )}
-            />
+            <AgentReviews agentId={agentId} />
           </View>
         </ScrollView>
 
