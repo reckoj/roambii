@@ -25,6 +25,7 @@ interface Review {
   createdAt: string;
   author: string;
   avatar: string;
+  $permissions?: string[];
 }
 
 interface AgentReviewsProps {
@@ -38,6 +39,7 @@ const AgentReviews: React.FC<AgentReviewsProps> = ({ agentId }) => {
   const [comment, setComment] = useState("");
   const [reviews, setReviews] = useState<Review[]>([]);
   const [loading, setLoading] = useState(true);
+  const [userHasReviewed, setUserHasReviewed] = useState(false);
   const [debugMode, setDebugMode] = useState(true);
   const [debugInfo, setDebugInfo] = useState({
     agentId: "",
@@ -53,6 +55,24 @@ const AgentReviews: React.FC<AgentReviewsProps> = ({ agentId }) => {
       fetchReviews();
     }
   }, [agentId]);
+
+  // Check if current user has already reviewed this agent
+  useEffect(() => {
+    if (rawUser && reviews.length > 0) {
+      const userReview = reviews.find(
+        (review) =>
+          // Check if user ID is in users array
+          (Array.isArray(review.users) && review.users.includes(rawUser.$id)) ||
+          // Or check permissions (as a fallback)
+          (review.$permissions &&
+            Array.isArray(review.$permissions) &&
+            review.$permissions.some((p) => p.includes(`user:${rawUser.$id}`)))
+      );
+
+      setUserHasReviewed(!!userReview);
+      console.log("User has already reviewed this agent:", !!userReview);
+    }
+  }, [reviews, rawUser]);
 
   const fetchReviews = async () => {
     try {
@@ -250,6 +270,7 @@ const AgentReviews: React.FC<AgentReviewsProps> = ({ agentId }) => {
             createdAt: doc.createdAt || new Date().toISOString(),
             author: userData.name,
             avatar: userData.avatar,
+            $permissions: doc.$permissions || [],
           };
         })
       );
@@ -257,6 +278,25 @@ const AgentReviews: React.FC<AgentReviewsProps> = ({ agentId }) => {
       console.log(
         `Processed ${processedReviews.length} reviews with user data`
       );
+
+      // Check if current user has already reviewed
+      if (rawUser) {
+        const hasReviewed = processedReviews.some(
+          (review) =>
+            // Check if user ID is in users array
+            (Array.isArray(review.users) &&
+              review.users.includes(rawUser.$id)) ||
+            // Or check permissions (as a fallback)
+            (review.$permissions &&
+              Array.isArray(review.$permissions) &&
+              review.$permissions.some((p) =>
+                p.includes(`user:${rawUser.$id}`)
+              ))
+        );
+
+        setUserHasReviewed(hasReviewed);
+        console.log("User has already reviewed this agent:", hasReviewed);
+      }
 
       // Set final reviews state
       setReviews(processedReviews);
@@ -279,6 +319,13 @@ const AgentReviews: React.FC<AgentReviewsProps> = ({ agentId }) => {
       return;
     }
 
+    // Check if user has already reviewed this agent
+    if (userHasReviewed) {
+      Alert.alert("Error", "You have already reviewed this agent.");
+      setIsModalVisible(false);
+      return;
+    }
+
     try {
       console.log("\n=== SUBMITTING REVIEW ===");
       console.log(`Agent ID: ${agentId}`);
@@ -292,6 +339,7 @@ const AgentReviews: React.FC<AgentReviewsProps> = ({ agentId }) => {
         agentRating: rating,
         comment,
         createdAt: new Date().toISOString(),
+        users: [rawUser.$id], // Add user ID to the users array
       };
 
       console.log("Review data:", JSON.stringify(reviewData));
@@ -324,6 +372,7 @@ const AgentReviews: React.FC<AgentReviewsProps> = ({ agentId }) => {
 
       // Update local state
       setReviews((prevReviews) => [formattedReview, ...prevReviews]);
+      setUserHasReviewed(true); // Update the flag to indicate user has reviewed
 
       // Reset form and close modal
       setIsModalVisible(false);
@@ -354,73 +403,8 @@ const AgentReviews: React.FC<AgentReviewsProps> = ({ agentId }) => {
     </View>
   );
 
-  // Debug info component
-  //   const renderDebugInfo = () => {
-  //     if (!debugMode) return null;
-
-  //     return (
-  //       <View style={styles.debugPanel}>
-  //         <Text style={styles.debugTitle}>DEBUG INFO</Text>
-  //         <Text style={styles.debugText}>Agent ID: {debugInfo.agentId}</Text>
-  //         <Text style={styles.debugText}>
-  //           Total Reviews: {debugInfo.totalReviews}
-  //         </Text>
-  //         <Text style={styles.debugText}>
-  //           Non-Null Reviews: {debugInfo.nonNullReviews}
-  //         </Text>
-  //         <Text style={styles.debugText}>
-  //           Matching Reviews: {debugInfo.matchingReviews}
-  //         </Text>
-  //         <Text style={styles.debugText}>
-  //           Current State Reviews: {reviews.length}
-  //         </Text>
-
-  //         {debugInfo.reviewDetails.length > 0 && (
-  //           <>
-  //             <Text style={styles.debugSubtitle}>Review Details:</Text>
-  //             {debugInfo.reviewDetails.map((review, index) => (
-  //               <View key={index} style={styles.debugReviewItem}>
-  //                 <Text style={styles.debugText}>ID: {review.id}</Text>
-  //                 <Text style={styles.debugText}>
-  //                   AgentID:{" "}
-  //                   {typeof review.agentId === "object"
-  //                     ? JSON.stringify(review.agentId)
-  //                     : review.agentId}
-  //                 </Text>
-  //                 <Text style={styles.debugText}>Type: {review.agentIdType}</Text>
-  //                 <Text style={styles.debugText}>
-  //                   Match: {review.isExactMatch ? "Yes" : "No"}
-  //                 </Text>
-  //               </View>
-  //             ))}
-  //           </>
-  //         )}
-  //       </View>
-  //     );
-  //   };
-
   return (
     <View>
-      {/* Leave a Review Button */}
-      {/* <View>
-        <TouchableOpacity onPress={() => setIsModalVisible(true)}>
-          <Text className="text-text text-center">Leave a Review</Text>
-        </TouchableOpacity>
-      </View> */}
-
-      {/* Debug Toggle */}
-      {/* <TouchableOpacity
-        style={styles.debugToggle}
-        onPress={() => setDebugMode(!debugMode)}
-      >
-        <Text style={styles.debugToggleText}>
-          {debugMode ? "Hide Debug" : "Show Debug"}
-        </Text>
-      </TouchableOpacity> */}
-
-      {/* Debug Info */}
-      {/* {renderDebugInfo()} */}
-
       {/* Loading state */}
       {loading && (
         <View className="py-4 flex items-center">
@@ -464,11 +448,6 @@ const AgentReviews: React.FC<AgentReviewsProps> = ({ agentId }) => {
                 <Text style={styles.reviewDate}>
                   {new Date(item.createdAt).toLocaleDateString()}
                 </Text>
-                {/* {debugMode && (
-                  <Text style={styles.reviewId}>
-                    ID: {item.$id.substring(0, 8)}...
-                  </Text>
-                )} */}
               </View>
             )}
           />
@@ -524,14 +503,17 @@ const AgentReviews: React.FC<AgentReviewsProps> = ({ agentId }) => {
         </View>
       </Modal>
 
-      {/* Refresh Button */}
-      {/* <TouchableOpacity onPress={fetchReviews} style={styles.refreshButton}>
-        <Text style={styles.refreshButtonText}>Refresh Reviews</Text>
-      </TouchableOpacity> */}
+      {/* Leave Review or View Your Review Button */}
       <View className="bg-primary-100">
-        <TouchableOpacity onPress={() => setIsModalVisible(true)}>
-          <Text className="text-text text-center">Leave a Review</Text>
-        </TouchableOpacity>
+        {!userHasReviewed ? (
+          <TouchableOpacity onPress={() => setIsModalVisible(true)}>
+            <Text className="text-text text-center">Leave a Review</Text>
+          </TouchableOpacity>
+        ) : (
+          <Text className="text-text text-center opacity-70">
+            You've already reviewed this agent
+          </Text>
+        )}
       </View>
     </View>
   );
@@ -586,73 +568,10 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     marginRight: 8,
   },
-  debugToggle: {
-    position: "absolute",
-    right: 10,
-    top: 10,
-    backgroundColor: "#F3F4F6",
-    padding: 4,
-    borderRadius: 4,
-    zIndex: 10,
-  },
-  debugToggleText: {
-    fontSize: 10,
-    color: "#4B5563",
-  },
-  debugPanel: {
-    margin: 8,
-    padding: 8,
-    backgroundColor: "#F9FAFB",
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: "#E5E7EB",
-  },
-  debugTitle: {
-    fontSize: 12,
-    fontWeight: "bold",
-    color: "#4B5563",
-    marginBottom: 4,
-  },
-  debugSubtitle: {
-    fontSize: 11,
-    fontWeight: "bold",
-    color: "#4B5563",
-    marginTop: 6,
-    marginBottom: 2,
-  },
-  debugText: {
-    fontSize: 10,
-    color: "#4B5563",
-    marginBottom: 2,
-  },
-  debugReviewItem: {
-    marginLeft: 8,
-    marginBottom: 4,
-    paddingLeft: 4,
-    borderLeftWidth: 1,
-    borderLeftColor: "#D1D5DB",
-  },
-  reviewId: {
-    fontSize: 10,
-    color: "#9CA3AF",
-    marginTop: 4,
-  },
-  refreshButton: {
-    backgroundColor: "#EEF2FF",
-    padding: 8,
-    borderRadius: 4,
-    alignItems: "center",
-    margin: 8,
-  },
-  refreshButtonText: {
-    color: "#4F46E5",
-    fontSize: 12,
-  },
   sectionTitle: {
     fontSize: 16,
     fontWeight: "600",
     color: "#1F2937",
-
     marginTop: 8,
   },
 });
