@@ -195,37 +195,112 @@ export async function loginUser(email: string, password: string) {
     return { success: false, message: error.message };
   }
 }
-
 export async function loginWGoogle() {
+  let createdSession = null;
+
   try {
+    // Step 1: Create OAuth2 token
     const redirectUri = Linking.createURL("/");
 
     const response = await account.createOAuth2Token(
       OAuthProvider.Google,
       redirectUri
     );
-    // if (!response) throw new Error("Create OAuth2 token failed");
-    if (!response) return;
+    if (!response) {
+      return false;
+    }
+
+    // Step 2: Open authentication browser session
 
     const browserResult = await openAuthSessionAsync(
       response.toString(),
       redirectUri
     );
-    if (browserResult.type !== "success")
-      // throw new Error("Create OAuth2 token failed");
-      return;
 
+    if (browserResult.type !== "success") {
+      console.error("Browser authentication failed or was cancelled");
+      return false;
+    }
+
+    // Step 3: Extract authentication parameters
     const url = new URL(browserResult.url);
     const secret = url.searchParams.get("secret")?.toString();
     const userId = url.searchParams.get("userId")?.toString();
-    if (!secret || !userId) throw new Error("Create OAuth2 token failed");
+
+    if (!secret || !userId) {
+      console.error("Missing authentication parameters in redirect");
+      return false;
+    }
+
+    // Step 4: Create user session
 
     const session = await account.createSession(userId, secret);
-    if (!session) throw new Error("Failed to create session");
+
+    if (!session) {
+      console.error("Failed to create session");
+      return false;
+    }
+
+    createdSession = session.$id;
+
+    // Step 5: Fetch user details and create database record
+
+    const authUser = await account.get();
+
+    // Check if user already exists in database
+
+    const existingUser = await databases.listDocuments(
+      config.databaseId!,
+      config.usersCollectionId!,
+      [Query.equal("userId", authUser.$id)]
+    );
+
+    // Create user record if it doesn't exist
+    if (existingUser.total === 0) {
+      try {
+        // Only include fields that exist in your schema
+        await databases.createDocument(
+          config.databaseId!,
+          config.usersCollectionId!,
+          ID.unique(),
+          {
+            userId: authUser.$id,
+            email: authUser.email,
+            name: authUser.name,
+            isAgent: false,
+            isAgentTemp: false,
+            avatar: null,
+          }
+        );
+      } catch (dbError) {
+        console.error("Failed to create user record:", dbError);
+
+        // Clean up the session since we couldn't complete the process
+        if (createdSession) {
+          try {
+            await account.deleteSession(createdSession);
+          } catch (cleanupError) {
+            console.error("Failed to clean up session:", cleanupError);
+          }
+        }
+
+        return false;
+      }
+    }
 
     return true;
   } catch (error) {
-    // console.error(error);
+    console.error("Google login error:", error);
+
+    // Clean up session if it was created
+    if (createdSession) {
+      try {
+        await account.deleteSession(createdSession);
+      } catch (cleanupError) {
+        console.error("Failed to clean up session:", cleanupError);
+      }
+    }
+
     return false;
   }
 }
