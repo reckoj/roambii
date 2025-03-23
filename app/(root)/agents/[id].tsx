@@ -250,9 +250,9 @@ const AgentProfile = () => {
             )}
           </View>
           <View className="px-2 mt-6">
-            <Text className="text-lg font-rubik-bold text-text">
+            {/* <Text className="text-lg font-rubik-bold text-text">
               Client Reviews
-            </Text>
+            </Text> */}
             <AgentReviews agentId={agentId} />
           </View>
         </ScrollView>
