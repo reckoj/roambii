@@ -7,6 +7,7 @@ import {
   View,
   Dimensions,
   Platform,
+  SafeAreaView,
 } from "react-native";
 import { router, useLocalSearchParams } from "expo-router";
 
@@ -19,6 +20,7 @@ import { useAppwrite } from "@/lib/useAppwrite";
 import { getAgentById, getCurrentUser, getPropertyById } from "@/lib/appwrite";
 import FlightInfo from "@/components/FlightInfo";
 import { useEffect, useState } from "react";
+import { ArrowLeft } from "lucide-react-native";
 
 interface AgentProps {
   id: string; // Agent ID
@@ -48,7 +50,24 @@ const Property = () => {
   //   router.push("/(root)/(tabs)/chat");
   // };
   return (
-    <View>
+    <SafeAreaView className="flex-1 bg-transparent">
+      <View className="flex flex-row items-center w-full justify-between">
+        <TouchableOpacity
+          onPress={() => router.back()}
+          className=" bg-transparent size-11 items-center justify-center"
+        >
+          <ArrowLeft color={"#000"} />
+        </TouchableOpacity>
+
+        {/* <View className="flex flex-row items-center gap-3">
+                <Image
+                  source={icons.heart}
+                  className="size-7"
+                  tintColor={"#191D31"}
+                />
+                <Image source={icons.send} className="size-7" />
+              </View> */}
+      </View>
       <ScrollView
         showsVerticalScrollIndicator={false}
         contentContainerClassName="pb-32 bg-white"
@@ -69,25 +88,7 @@ const Property = () => {
             style={{
               top: Platform.OS === "ios" ? 70 : 20,
             }}
-          >
-            <View className="flex flex-row items-center w-full justify-between">
-              <TouchableOpacity
-                onPress={() => router.back()}
-                className="flex flex-row bg-primary-300  rounded-full size-11 items-center justify-center"
-              >
-                <Image source={icons.backArrow} className="size-5" />
-              </TouchableOpacity>
-
-              {/* <View className="flex flex-row items-center gap-3">
-                <Image
-                  source={icons.heart}
-                  className="size-7"
-                  tintColor={"#191D31"}
-                />
-                <Image source={icons.send} className="size-7" />
-              </View> */}
-            </View>
-          </View>
+          ></View>
         </View>
 
         <View className="px-5 mt-7 flex gap-2">
@@ -206,7 +207,7 @@ const Property = () => {
               />
             </View>
           )}
-          <FlightInfo />
+          {/* <FlightInfo /> */}
           <View className="w-full border-t border-accent-100 pt-7 mt-5">
             <View className="flex flex-row items-center justify-between mt-4">
               <View className="flex flex-row items-center">
@@ -312,12 +313,12 @@ const Property = () => {
 
           <TouchableOpacity className="flex-1 flex flex-row items-center justify-center bg-primary-300 py-3 rounded-full shadow-md shadow-zinc-400">
             <Text className="text-white text-lg text-center font-rubik-bold">
-              Book Now
+              Chat with me
             </Text>
           </TouchableOpacity>
         </View>
       </View>
-    </View>
+    </SafeAreaView>
   );
 };
 

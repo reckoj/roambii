@@ -46,8 +46,8 @@ const ChatScreen = () => {
   }
 
   return (
-    <SafeAreaView className="flex-1 bg-primary-200">
-      <View className="flex-1 bg-white">
+    <SafeAreaView className="flex-1 bg-white">
+      <View className="flex-1 ">
         <StatusBar backgroundColor="#f8f9fa" barStyle="dark-content" />
         <Text className="text-2xl font-semibold p-4">Messages</Text>
 

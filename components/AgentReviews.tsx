@@ -15,6 +15,7 @@ import { useGlobalContext } from "@/lib/global-provider";
 import { ID, Query, Permission, Role } from "react-native-appwrite";
 import { config, databases } from "@/lib/appwrite";
 import CustomInput from "./CustomInput";
+import images from "@/constants/images";
 
 interface Review {
   $id: string;
@@ -367,7 +368,7 @@ const AgentReviews: React.FC<AgentReviewsProps> = ({ agentId }) => {
         comment,
         createdAt: new Date().toISOString(),
         author: rawUser.name || "Anonymous",
-        avatar: rawUser.avatar || "https://via.placeholder.com/40",
+        avatar: rawUser.avatar || images.avatar,
       };
 
       // Update local state

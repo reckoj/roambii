@@ -58,37 +58,6 @@ const AgentProfile = () => {
   const [selectedReview, setSelectedReview] = useState<Review | null>(null);
   const [isModalVisible, setIsModalVisible] = useState(false);
 
-  const fakeReviews: Review[] = [
-    {
-      id: 1,
-      author: "John Doe",
-      rating: 5,
-      comment:
-        "Absolutely amazing experience! The agent was super helpful and the package was perfect.",
-      avatar: "https://randomuser.me/api/portraits/men/1.jpg",
-    },
-    {
-      id: 2,
-      author: "Jane Smith",
-      rating: 4,
-      comment:
-        "Great service and communication! The trip was well-organized and stress-free.",
-      avatar: "https://randomuser.me/api/portraits/women/2.jpg",
-    },
-    {
-      id: 3,
-      author: "Mike Johnson",
-      rating: 5,
-      comment:
-        "Highly recommend! Everything was arranged perfectly and exceeded my expectations.",
-      avatar: "https://randomuser.me/api/portraits/men/3.jpg",
-    },
-  ];
-
-  // const { data: latestProperties, loading: latestPropertiesLoading } =
-  //   useAppwrite({
-  //     fn: getLatestProperties,
-  //   });
   useEffect(() => {
     const fetchAgent = async () => {
       if (agentId) {
@@ -186,8 +155,8 @@ const AgentProfile = () => {
 
   return (
     <>
-      <SafeAreaView style={styles.container}>
-        <View className="flex flex-row items-center p-2 justify-between">
+      <SafeAreaView className="flex-1 bg-white">
+        <View className="flex flex-row items-center p-2 justify-between bg-prim">
           <TouchableOpacity
             onPress={() => router.back()}
             className="flex rounded-full size-2 items-center ml-4 justify-center"
@@ -200,11 +169,11 @@ const AgentProfile = () => {
           <View className="items-center mt-6">
             <Image
               source={{ uri: agent.avatar }}
-              className="w-32 h-32 rounded-full border-4 border-gray-300"
+              className="w-32 h-32 rounded-full border-4 border-white"
             />
             <Text className="text-2xl font-bold mt-2">{agent.name}</Text>
             <Text className="text-lg text-gray-500">
-              {agent.niche} Specialist
+              {agent.niche} Travel Specialist
             </Text>
           </View>
 
@@ -273,7 +242,7 @@ export default AgentProfile;
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: "#FFF",
+    // backgroundColor: "#FFF",
   },
   header: {
     flexDirection: "row",

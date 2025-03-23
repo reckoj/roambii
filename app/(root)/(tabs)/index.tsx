@@ -101,99 +101,102 @@ const Home = () => {
       {!isAgent ? (
         <SafeAreaView className="flex-1 bg-white">
           <StatusBar backgroundColor="#f8f9fa" barStyle="dark-content" />
-
-          {/* ✅ FlatList with Pull-to-Refresh */}
-          <FlatList
-            data={packages}
-            numColumns={2}
-            renderItem={({ item }) => (
-              <View className="w-[48%] p-2">
-                <Card item={item} onPress={() => handleCardPress(item.$id)} />
-              </View>
-            )}
-            keyExtractor={(item) => item.$id}
-            contentContainerClassName="pb-32"
-            columnWrapperClassName="flex gap-6"
-            showsVerticalScrollIndicator={false}
-            onEndReached={handleLoadMore}
-            onEndReachedThreshold={0.5}
-            refreshControl={
-              <RefreshControl
-                refreshing={refreshing}
-                onRefresh={handleRefresh}
-              />
-            } // ✅ Enables pull-to-refresh
-            ListHeaderComponent={() => (
-              <View className="px-5">
-                <View className="flex flex-row items-center justify-between mt-5">
-                  <View className="flex flex-row">
-                    <Image
-                      source={{ uri: rawUser?.avatar }}
-                      className="size-12 rounded-full"
-                    />
-                    <View className="flex flex-col items-start ml-2 justify-center">
-                      <Text className="text-xs font-rubik text-black-100">
-                        {greeting}
-                      </Text>
-                      <Text className="text-sm font-rubik text-text">
-                        {rawUser?.name.split(" ")[0]}
-                      </Text>
+          <View className="">
+            {/* ✅ FlatList with Pull-to-Refresh */}
+            <FlatList
+              data={packages}
+              numColumns={2}
+              renderItem={({ item }) => (
+                <View className="w-[48%] p-2">
+                  <Card item={item} onPress={() => handleCardPress(item.$id)} />
+                </View>
+              )}
+              keyExtractor={(item) => item.$id}
+              contentContainerClassName="pb-32"
+              columnWrapperClassName="flex gap-6"
+              showsVerticalScrollIndicator={false}
+              onEndReached={handleLoadMore}
+              onEndReachedThreshold={0.5}
+              refreshControl={
+                <RefreshControl
+                  refreshing={refreshing}
+                  onRefresh={handleRefresh}
+                />
+              } // ✅ Enables pull-to-refresh
+              ListHeaderComponent={() => (
+                <View className="px-5">
+                  <View className="flex flex-row items-center justify-between mt-5">
+                    <View className="flex flex-row">
+                      <Image
+                        source={{ uri: rawUser?.avatar }}
+                        className="size-12 rounded-full"
+                      />
+                      <View className="flex flex-col items-start ml-2 justify-center">
+                        <Text className="text-xs font-rubik text-black-100">
+                          {greeting}
+                        </Text>
+                        <Text className="text-sm font-rubik text-text">
+                          {rawUser?.name.split(" ")[0]}
+                        </Text>
+                      </View>
                     </View>
                   </View>
-                </View>
 
-                {/* ✅ Featured Packages */}
-                <View className="my-5">
-                  <View className="flex flex-row items-center justify-between">
-                    <Text className="text-xl font-rubik-bold text-text">
-                      Featured
-                    </Text>
-                    <TouchableOpacity onPress={() => router.push("/featured")}>
-                      <Text className="text-base font-rubik-bold text-primary-300">
-                        See all
-                      </Text>
-                    </TouchableOpacity>
-                  </View>
-
-                  {featured?.length === 0 ? (
-                    <NoResults />
-                  ) : (
-                    <FlatList
-                      data={featured}
-                      renderItem={({ item }) => (
-                        <FeaturedCard
-                          item={item}
-                          onPress={() => handleCardPress(item.$id)}
-                        />
-                      )}
-                      keyExtractor={(item, index) => `${item.$id}-${index}`}
-                      horizontal
-                      bounces={false}
-                      showsHorizontalScrollIndicator={false}
-                      contentContainerClassName="flex gap-5 mt-5"
-                    />
-                  )}
-                </View>
-
-                {/* ✅ Recommended Agents */}
-                <View className="mt-4">
-                  <View className="flex flex-row items-center justify-between">
-                    <Text className="text-xl font-rubik-bold text-text">
-                      Recommended Agents
-                    </Text>
-                  </View>
-                  <RecommendedAgents />
-                  <View className="mt-5">
+                  {/* ✅ Featured Packages */}
+                  <View className="my-5">
                     <View className="flex flex-row items-center justify-between">
                       <Text className="text-xl font-rubik-bold text-text">
-                        All Packages
+                        Featured
                       </Text>
+                      <TouchableOpacity
+                        onPress={() => router.push("/featured")}
+                      >
+                        <Text className="text-base font-rubik-bold text-primary-300">
+                          See all
+                        </Text>
+                      </TouchableOpacity>
+                    </View>
+
+                    {featured?.length === 0 ? (
+                      <NoResults />
+                    ) : (
+                      <FlatList
+                        data={featured}
+                        renderItem={({ item }) => (
+                          <FeaturedCard
+                            item={item}
+                            onPress={() => handleCardPress(item.$id)}
+                          />
+                        )}
+                        keyExtractor={(item, index) => `${item.$id}-${index}`}
+                        horizontal
+                        bounces={false}
+                        showsHorizontalScrollIndicator={false}
+                        contentContainerClassName="flex gap-5 mt-5"
+                      />
+                    )}
+                  </View>
+
+                  {/* ✅ Recommended Agents */}
+                  <View className="mt-4">
+                    <View className="flex flex-row items-center justify-between">
+                      <Text className="text-xl font-rubik-bold text-text">
+                        Recommended Agents
+                      </Text>
+                    </View>
+                    <RecommendedAgents />
+                    <View className="mt-5">
+                      <View className="flex flex-row items-center justify-between">
+                        <Text className="text-xl font-rubik-bold text-text">
+                          All Packages
+                        </Text>
+                      </View>
                     </View>
                   </View>
                 </View>
-              </View>
-            )}
-          />
+              )}
+            />
+          </View>
         </SafeAreaView>
       ) : (
         <Bookings />

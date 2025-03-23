@@ -39,7 +39,7 @@ const RecommendedAgents = () => {
         <TouchableOpacity
           key={agent.$id} // ✅ Use document ID
           onPress={() => handleAgentPress(agent.$id)} // ✅ Pass correct ID
-          className="flex flex-col items-center bg-primary-100 rounded-xl mr-4 px-4"
+          className="flex flex-col items-center  mr-4 px-4"
         >
           <Image
             source={{ uri: agent.avatar || images.avatar }} // ✅ Use actual image from Appwrite

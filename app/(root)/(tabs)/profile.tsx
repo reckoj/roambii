@@ -230,15 +230,15 @@ const Profile: React.FC = () => {
             onPress={handleLogout}
           />
         </View>
-        <View className="flex flex-col border-t mt-5 pt-5 border-primary-200">
+        {/* <View className="flex flex-col border-t mt-5 pt-5 border-primary-200">
           <SettingsItem
             icon={icons.logout}
             title="Delete Account"
             textStyle="text-danger font-bold"
             showArrow={false}
-            // onPress={() => deleteUserAccount(rawUser?.$id!)}
+            onPress={() => deleteUserAccount(rawUser?.$id!)}
           />
-        </View>
+        </View> */}
       </ScrollView>
     </SafeAreaView>
   );
