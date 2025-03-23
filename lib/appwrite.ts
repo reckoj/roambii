@@ -34,6 +34,8 @@ export const config = {
   avatarBucket: process.env.EXPO_PUBLIC_APPWRITE_BUCKET_ID,
   imagesBuket: process.env.EXPO_PUBLIC_APPWRITE_PACKAGEIMAGES_BUCKET_ID,
   messagesCollectionId: process.env.EXPO_PUBLIC_APPWRITE_MESSAGE_COLLECTION_ID,
+  agentReviewsCollectionId:
+    process.env.EXPO_PUBLIC_APPWRITE_AGENT_REVIEWS_COLLECTION_ID,
   chatRoomsCollectionId:
     process.env.EXPO_PUBLIC_APPWRITE_CHAT_ROOMS_COLLECTION_ID,
 };
