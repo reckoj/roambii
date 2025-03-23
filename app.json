@@ -5,23 +5,43 @@
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
-    "scheme": "myapp",
+    "scheme": "roambii",
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.anonymous.roambii"
+      "bundleIdentifier": "com.anonymous.roambii",
+      "associatedDomains": ["applinks:roambii.com", "applinks:*.roambii.com"]
     },
     "android": {
       "adaptiveIcon": {
         "foregroundImage": "./assets/images/icon.png",
         "backgroundColor": "#ffffff"
-      }
-    },
-    "web": {
-      "bundler": "metro",
-      "output": "static",
-      "favicon": "./assets/images/favicon.png"
+      },
+      "package": "com.bysprk.roambii",
+      "intentFilters": [
+        {
+          "action": "VIEW",
+          "autoVerify": true,
+          "data": [
+            {
+              "scheme": "https",
+              "host": "*.roambii.com",
+              "pathPrefix": "/"
+            },
+            {
+              "scheme": "https",
+              "host": "roambii.com",
+              "pathPrefix": "/"
+            },
+            {
+              "scheme": "roambii",
+              "host": "*"
+            }
+          ],
+          "category": ["BROWSABLE", "DEFAULT"]
+        }
+      ]
     },
     "plugins": [
       "expo-router",

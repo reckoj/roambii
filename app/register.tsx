@@ -1,5 +1,5 @@
 import images from "@/constants/images";
-import React, { useEffect, useState } from "react";
+import React, { useState } from "react";
 import {
   View,
   Text,
@@ -9,7 +9,6 @@ import {
   Alert,
   Switch,
   ActivityIndicator,
-  Animated,
   StyleSheet,
   ScrollView,
   KeyboardAvoidingView,
@@ -18,12 +17,12 @@ import {
   Platform,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { loginUser, registerUser } from "@/lib/appwrite";
+
 import icons from "@/constants/icons";
 import { useGlobalContext } from "@/lib/global-provider";
-import { Redirect, router } from "expo-router";
+import { router } from "expo-router";
 import { EyeClosedIcon, EyeIcon } from "lucide-react-native";
-import LoadingScreen from "./loadinScreen";
+import { registerUserWithVerification } from "@/lib/auth-service";
 
 // Define niche options
 const NICHE_OPTIONS = [
@@ -36,24 +35,37 @@ const NICHE_OPTIONS = [
 ];
 
 const Register = () => {
-  const { isLogged, loading, refetch } = useGlobalContext();
+  const { refetch } = useGlobalContext();
   const [email, setEmail] = useState("");
   const [name, setName] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [showCPassword, setShowCPassword] = useState(false);
-  const [loading1, setLoading] = useState(false);
+  const [loading, setLoading] = useState(false);
   const [isAgent, setIsAgent] = useState(false);
-  const [showLoadingScreen, setShowLoadingScreen] = useState(false);
-  const fadeAnim = new Animated.Value(0);
   const [selectedNiche, setSelectedNiche] = useState<string>("");
 
   const handleRegister = async () => {
+    if (!name || !email || !password || !confirmPassword) {
+      Alert.alert("Error", "Please fill in all required fields");
+      return;
+    }
+
+    if (password !== confirmPassword) {
+      Alert.alert("Error", "Passwords do not match");
+      return;
+    }
+
+    if (isAgent && !selectedNiche) {
+      Alert.alert("Error", "Please select a niche for your travel agency");
+      return;
+    }
+
     setLoading(true);
     try {
-      // First register the user
-      const registrationResult = await registerUser(
+      // Register the user with verification
+      const registrationResult = await registerUserWithVerification(
         name,
         email,
         password,
@@ -62,23 +74,18 @@ const Register = () => {
         selectedNiche
       );
 
-      if (!registrationResult.success) {
+      if (registrationResult.success) {
+        // Navigate to verification screen instead of logging in
+        router.push({
+          pathname: "/verificationScreen",
+          params: {
+            email: email,
+            userId: registrationResult.userId || "",
+          },
+        });
+      } else {
         Alert.alert("Registration Failed", registrationResult.message);
-        return;
       }
-
-      // Then automatically log them in
-      const loginResult = await loginUser(email, password);
-
-      setTimeout(() => {
-        refetch();
-      }, 3000);
-      if (!loginResult.success) {
-        Alert.alert("Login Failed", loginResult.message);
-        return;
-      }
-
-      setShowLoadingScreen(true);
     } catch (error: any) {
       Alert.alert(
         "Registration Failed",
@@ -89,16 +96,6 @@ const Register = () => {
     }
   };
 
-  if (showLoadingScreen) {
-    return (
-      <LoadingScreen
-        onComplete={() => {
-          setShowLoadingScreen(false);
-          router.replace("/"); // Or whatever your post-login screen is
-        }}
-      />
-    );
-  }
   const handleSelectNiche = (niche: string) => {
     setSelectedNiche(niche);
   };
@@ -114,12 +111,10 @@ const Register = () => {
             <View className="flex-1 px-6 pt-10">
               <View className="items-center mb-10">
                 <Image
-                  source={images.roamiiLogo}
+                  source={images.roambiiLogo}
                   className="w-full h-40 resize-contain"
                 />
-                {/* <View><Text className="text-xl font-rubik text-text ml-2 mb-6" >Sign In</Text></View> */}
               </View>
-              {/* Logo */}
 
               {/* Input Fields */}
               <View>
@@ -129,7 +124,8 @@ const Register = () => {
                   value={name}
                   onChangeText={setName}
                   keyboardType="default"
-                  autoCapitalize="none"
+                  autoCapitalize="words" // Changed to capitalize words
+                  placeholder="Enter your full name (first and last)"
                 />
 
                 <Text className="text-text font-rubik-medium">Email</Text>
@@ -139,6 +135,7 @@ const Register = () => {
                   onChangeText={setEmail}
                   keyboardType="email-address"
                   autoCapitalize="none"
+                  placeholder="Enter your email address"
                 />
 
                 <View className="relative mb-4">
@@ -148,6 +145,7 @@ const Register = () => {
                     value={password}
                     onChangeText={setPassword}
                     secureTextEntry={!showPassword}
+                    placeholder="8-20 characters required"
                   />
                   <TouchableOpacity
                     className="absolute right-4 top-8"
@@ -160,6 +158,7 @@ const Register = () => {
                     )}
                   </TouchableOpacity>
                 </View>
+
                 <View className="relative mb-4">
                   <Text className="text-text font-rubik-medium">
                     Confirm Password
@@ -169,15 +168,18 @@ const Register = () => {
                     value={confirmPassword}
                     onChangeText={setConfirmPassword}
                     secureTextEntry={!showCPassword}
+                    placeholder="Re-enter your password"
                   />
-                  {/* <TouchableOpacity
-              className="absolute right-4 top-8"
-              onPress={() => setShowPassword(!showPassword)}
-            >
-          {  showPassword ? <EyeClosedIcon color="#1ABC9C" size={22}/> : <EyeIcon color="#1ABC9C" size={22}/>}
-               
-            
-            </TouchableOpacity> */}
+                  <TouchableOpacity
+                    className="absolute right-4 top-8"
+                    onPress={() => setShowCPassword(!showCPassword)}
+                  >
+                    {showCPassword ? (
+                      <EyeClosedIcon color="#1ABC9C" size={22} />
+                    ) : (
+                      <EyeIcon color="#1ABC9C" size={22} />
+                    )}
+                  </TouchableOpacity>
                 </View>
 
                 <View className="mb-4">
@@ -199,9 +201,7 @@ const Register = () => {
                 </View>
               </View>
 
-              {!isAgent ? (
-                <View></View>
-              ) : (
+              {isAgent && (
                 <View style={styles.container}>
                   <Text style={styles.title}>Select Your Travel Niche</Text>
                   <Text style={styles.subtitle}>
@@ -231,26 +231,26 @@ const Register = () => {
                 </View>
               )}
 
-              {/* Login Button */}
+              {/* Register Button */}
               <TouchableOpacity
                 className="h-12 mb-4 bg-primary-300 rounded-md items-center justify-center"
                 onPress={handleRegister}
                 disabled={loading}
               >
-                <Text className="text-lg font-rubik-bold text-white ml-2">
-                  {loading ? (
-                    <ActivityIndicator className="text-white" size={8} />
-                  ) : (
-                    "Sign up"
-                  )}
-                </Text>
+                {loading ? (
+                  <ActivityIndicator color="#ffffff" size="small" />
+                ) : (
+                  <Text className="text-lg font-rubik-bold text-white">
+                    Create Account
+                  </Text>
+                )}
               </TouchableOpacity>
 
-              {/* Sign Up Link */}
+              {/* Sign In Link */}
               <View className="flex-row justify-center my-6">
                 <Text className="text-gray-600">Already have an account? </Text>
-                <TouchableOpacity onPress={() => router.back()}>
-                  <Text className="text-emerald-500">Login</Text>
+                <TouchableOpacity onPress={() => router.push("/login")}>
+                  <Text className="text-emerald-500">Log In</Text>
                 </TouchableOpacity>
               </View>
             </View>

@@ -8,12 +8,14 @@ import barChart from "@/assets/images/bar-chart.png";
 import whiteGradient from "@/assets/images/white-gradient.png";
 import map from "@/assets/images/map.png";
 import noResult from "@/assets/images/no-result.png";
-import roamiiLogo from "@/assets/images/splash-icon.png";
+import roambiiLogo from "@/assets/images/splash-icon.png";
 import bahamas from "@/assets/images/bahamas.jpg";
 import nomessages from "@/assets/images/no-chat.png";
 import forgot from "@/assets/images/forgot.png";
 import blank from "@/assets/images/blank.png";
 import jamaica from "@/assets/images/jamaica.png";
+import fail from "@/assets/images/fail.png";
+import email from "@/assets/images/email.png";
 import pudgy from "@/assets/jif/pudgy.gif";
 
 export default {
@@ -27,11 +29,13 @@ export default {
   whiteGradient,
   map,
   noResult,
-  roamiiLogo,
+  roambiiLogo,
   bahamas,
   nomessages,
   pudgy,
   forgot,
   blank,
   jamaica,
+  fail,
+  email,
 };

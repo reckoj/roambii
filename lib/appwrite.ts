@@ -16,7 +16,7 @@ import { Alert } from "react-native";
 import { useGlobalContext } from "./global-provider";
 
 export const config = {
-  platform: "com.bysprk.roamii",
+  platform: "com.bysprk.roambii",
   endpoint: process.env.EXPO_PUBLIC_APPWRITE_ENDPOINT,
   projectId: process.env.EXPO_PUBLIC_APPWRITE_PROJECT_ID,
   databaseId: process.env.EXPO_PUBLIC_APPWRITE_DATABASE_ID,
@@ -349,7 +349,6 @@ export async function checkIsAgent(userId: string) {
     );
     return result.documents.length > 0;
   } catch (error) {
-    // console.error("Error checking agent status:", error);
     return false;
   }
 }
