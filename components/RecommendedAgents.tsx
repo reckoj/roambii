@@ -42,7 +42,7 @@ const RecommendedAgents = () => {
           className="flex flex-col items-center  mr-4 px-4"
         >
           <Image
-            source={{ uri: agent.avatar || images.avatar }} // ✅ Use actual image from Appwrite
+            source={{ uri: agent.avatar }} // ✅ Use actual image from Appwrite
             className="size-16 rounded-full"
           />
           <Text className="text-sm text-text font-rubik">

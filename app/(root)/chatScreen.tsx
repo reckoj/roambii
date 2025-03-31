@@ -1,4 +1,4 @@
-// ChatScreen.tsx - With fixed profile resolution
+// ChatScreen.tsx - With improved bubbles and TypeScript fixes
 import React, { useEffect, useRef, useState } from "react";
 import {
   View,
@@ -12,9 +12,11 @@ import {
   Platform,
   ActivityIndicator,
   Alert,
+  StyleSheet,
+  Animated,
 } from "react-native";
 import { StatusBar } from "react-native";
-import { router, useLocalSearchParams } from "expo-router";
+import { router, useLocalSearchParams, useFocusEffect } from "expo-router";
 import { ChevronLeft, Send } from "lucide-react-native";
 import {
   getMessages,
@@ -23,16 +25,20 @@ import {
   markMessagesAsRead,
   getChatRoomId,
   FirebaseMessage,
+  getConsistentRoomId,
+  sendMessageWithConsistentRoomId,
 } from "@/lib/chatService";
 import { useGlobalContext } from "@/lib/global-provider";
 import images from "@/constants/images";
 import { databases, config } from "@/lib/appwrite";
 import { Query } from "react-native-appwrite";
+import ChatBubble from "@/components/ChatBubble";
 
 const ChatScreen = () => {
   // Get route parameters
   const params = useLocalSearchParams();
   const receivedAgentId = params.agentId as string;
+  const previousScreen = (params.from as string) || ""; // Track where we came from
 
   // Get authenticated user
   const { rawUser } = useGlobalContext();
@@ -45,17 +51,39 @@ const ChatScreen = () => {
   const [error, setError] = useState<string | null>(null);
   const [partnerProfile, setPartnerProfile] = useState<any>(null);
   const [chatRoomId, setChatRoomId] = useState<string | null>(null);
-  const flatListRef = useRef<FlatList>(null);
+  const flatListRef = useRef<FlatList<FirebaseMessage>>(null);
 
   // Debug logs for parameters
   useEffect(() => {
     console.log("ChatScreen initialized with:", {
       currentUserId,
       receivedAgentId,
+      previousScreen,
     });
-  }, [currentUserId, receivedAgentId]);
+  }, [currentUserId, receivedAgentId, previousScreen]);
 
-  // Fetch partner profile from Appwrite - FIXED approach
+  // Add useFocusEffect to mark messages as read when screen is focused
+  useFocusEffect(
+    React.useCallback(() => {
+      console.log("ChatScreen is focused");
+
+      // Mark messages as read whenever the screen comes into focus
+      if (chatRoomId && currentUserId && messages.length > 0) {
+        console.log("Screen focused, marking messages as read");
+        markMessagesAsRead(chatRoomId, currentUserId)
+          .then(() => console.log("Messages marked as read on screen focus"))
+          .catch((err) =>
+            console.error("Error marking messages as read on focus:", err)
+          );
+      }
+
+      return () => {
+        console.log("ChatScreen lost focus");
+      };
+    }, [chatRoomId, currentUserId, messages.length])
+  );
+
+  // Fetch partner profile from Appwrite
   useEffect(() => {
     const fetchPartnerProfile = async () => {
       if (!receivedAgentId) return;
@@ -69,7 +97,6 @@ const ChatScreen = () => {
         // 1. Try to fetch from users collection first
         if (config.usersCollectionId) {
           try {
-            // FIXED: Use receivedAgentId instead of rawUser.$id
             const userProfile = await databases
               .getDocument(
                 config.databaseId!,
@@ -138,30 +165,16 @@ const ChatScreen = () => {
         // Set whatever we found, or create fallback
         if (foundProfile) {
           setPartnerProfile(foundProfile);
-        } else {
-          // Fallback profile with basic info
-          setPartnerProfile({
-            name: "User " + receivedAgentId.substring(0, 8),
-            email: null,
-            avatar: null,
-          });
-          console.log("Using fallback profile for:", receivedAgentId);
         }
       } catch (error) {
         console.error("Error in profile resolution:", error);
-        // Fallback profile
-        setPartnerProfile({
-          name: "User " + receivedAgentId.substring(0, 8),
-          email: null,
-          avatar: null,
-        });
       }
     };
 
     fetchPartnerProfile();
   }, [receivedAgentId]);
 
-  // Set up chat room and messages
+  // Set up chat room and messages with consistent room ID handling
   useEffect(() => {
     if (!currentUserId || !receivedAgentId) {
       setError(
@@ -173,59 +186,77 @@ const ChatScreen = () => {
       return () => {};
     }
 
-    // Generate consistent roomId using the utility function
-    const roomId = getChatRoomId(currentUserId, receivedAgentId);
-    setChatRoomId(roomId);
-    console.log("Using room ID:", roomId);
-
-    if (!roomId) {
-      setError("Could not generate a valid room ID");
-      setLoading(false);
-      return () => {};
-    }
-
-    // Load initial messages
-    const loadInitialData = async () => {
+    // Generate consistent roomId using our enhanced function
+    const setupChatRoom = async () => {
       try {
+        // Use the enhanced function that handles agent/user relationships
+        const roomId = await getConsistentRoomId(
+          currentUserId,
+          receivedAgentId
+        );
+        setChatRoomId(roomId);
+        console.log("Using consistent room ID:", roomId);
+
+        if (!roomId) {
+          setError("Could not generate a valid room ID");
+          setLoading(false);
+          return;
+        }
+
+        // Load initial messages
         console.log("Loading initial messages for room:", roomId);
         const initialMessages = await getMessages(roomId);
 
         console.log(`Loaded ${initialMessages.length} messages`);
         setMessages(initialMessages);
 
-        // Mark messages as read
+        // Mark messages as read immediately when entering chat screen
         if (initialMessages.length > 0) {
+          console.log("Marking initial messages as read");
           await markMessagesAsRead(roomId, currentUserId);
         }
 
         setLoading(false);
+
+        // Subscribe to new messages
+        const unsubscribe = subscribeToMessages(roomId, (updatedMessages) => {
+          console.log(
+            `Received ${updatedMessages.length} messages from subscription`
+          );
+          setMessages(updatedMessages);
+
+          // Mark messages as read automatically if they're for the current user
+          const hasUnreadMessages = updatedMessages.some(
+            (msg) => msg.receiver_id === currentUserId && !msg.read
+          );
+
+          if (hasUnreadMessages) {
+            console.log("New unread messages detected, marking as read");
+            markMessagesAsRead(roomId, currentUserId)
+              .then(() => console.log("New messages marked as read"))
+              .catch((err) =>
+                console.error("Error marking new messages as read:", err)
+              );
+          }
+        });
+
+        return unsubscribe;
       } catch (error) {
-        console.error("Error loading messages:", error);
+        console.error("Error setting up chat room:", error);
         setError("Failed to load messages. Please try again.");
         setLoading(false);
+        return () => {};
       }
     };
 
-    loadInitialData();
-
-    // Subscribe to new messages
-    const unsubscribe = subscribeToMessages(roomId, (updatedMessages) => {
-      console.log(
-        `Received ${updatedMessages.length} messages from subscription`
-      );
-      setMessages(updatedMessages);
-
-      // Mark messages as read automatically if they're for the current user
-      const hasUnreadMessages = updatedMessages.some(
-        (msg) => msg.receiver_id === currentUserId && !msg.read
-      );
-
-      if (hasUnreadMessages) {
-        markMessagesAsRead(roomId, currentUserId);
-      }
+    // Call the async setup function and store the returned unsubscribe function
+    let unsubscribe = () => {};
+    setupChatRoom().then((unsub) => {
+      if (unsub) unsubscribe = unsub;
     });
 
-    return unsubscribe;
+    // Return the unsubscribe function for cleanup
+    return () => unsubscribe();
   }, [receivedAgentId, currentUserId]);
 
   // Scroll to bottom when messages change
@@ -237,6 +268,7 @@ const ChatScreen = () => {
     }
   }, [messages]);
 
+  // Use the new consistent room ID function for sending messages
   const handleSendMessage = async () => {
     if (!newMessage.trim() || !currentUserId || !receivedAgentId) {
       if (!currentUserId) {
@@ -252,8 +284,12 @@ const ChatScreen = () => {
 
       console.log("Sending message to:", receivedAgentId);
 
-      // Send message through Firebase (using our updated service)
-      await sendMessage(currentUserId, receivedAgentId, messageToSend);
+      // Use the enhanced function that ensures consistent room ID
+      await sendMessageWithConsistentRoomId(
+        currentUserId,
+        receivedAgentId,
+        messageToSend
+      );
 
       // No need to manually update messages array as subscription will handle it
       console.log("Message sent successfully");
@@ -281,7 +317,24 @@ const ChatScreen = () => {
     return (
       <SafeAreaView className="flex-1 bg-white">
         <View className="flex-row items-center p-4 border-b border-gray-200">
-          <TouchableOpacity onPress={() => router.back()} className="mr-3">
+          <TouchableOpacity
+            onPress={() => {
+              if (previousScreen === "chatlist") {
+                router.push("/chat");
+              } else if (previousScreen === "agentprofile") {
+                router.back(); // This works correctly for agent profile
+              } else {
+                // Try to determine if we should go to chatlist based on navigation history
+                if (router.canGoBack()) {
+                  router.back();
+                } else {
+                  // Default to chatlist if we can't determine
+                  router.push("/chat");
+                }
+              }
+            }}
+            className="mr-3"
+          >
             <ChevronLeft size={24} color="#000" />
           </TouchableOpacity>
           <Text className="text-lg font-semibold">Chat</Text>
@@ -289,17 +342,27 @@ const ChatScreen = () => {
         <View className="flex-1 items-center justify-center p-4">
           <Text className="text-red-500 text-lg mb-4">{error}</Text>
           <TouchableOpacity
-            className="bg-blue-500 px-4 py-2 rounded-lg"
+            className="bg-primary-200 px-4 py-2 rounded-lg"
             onPress={() => {
               setError(null);
               setLoading(true);
               if (currentUserId && receivedAgentId) {
-                const roomId = getChatRoomId(currentUserId, receivedAgentId);
-                setChatRoomId(roomId);
-                getMessages(roomId)
+                // Use enhanced function for retry too
+                getConsistentRoomId(currentUserId, receivedAgentId)
+                  .then((roomId) => {
+                    if (!roomId) {
+                      setError("Could not generate a valid room ID");
+                      setLoading(false);
+                      return;
+                    }
+                    setChatRoomId(roomId);
+                    return getMessages(roomId);
+                  })
                   .then((msgs) => {
-                    setMessages(msgs);
-                    setLoading(false);
+                    if (msgs) {
+                      setMessages(msgs);
+                      setLoading(false);
+                    }
                   })
                   .catch((err) => {
                     console.error(err);
@@ -325,18 +388,35 @@ const ChatScreen = () => {
 
       {/* Header */}
       <View className="flex-row items-center p-4 border-b border-gray-200">
-        <TouchableOpacity onPress={() => router.back()} className="mr-3">
+        <TouchableOpacity
+          onPress={() => {
+            if (previousScreen === "chatlist") {
+              router.push("/chat");
+            } else if (previousScreen === "agentprofile") {
+              router.back(); // This works correctly for agent profile
+            } else {
+              // Try to determine if we should go to chatlist based on navigation history
+              if (router.canGoBack()) {
+                router.back();
+              } else {
+                // Default to chatlist if we can't determine
+                router.push("/chat");
+              }
+            }
+          }}
+          className="mr-3"
+        >
           <ChevronLeft size={24} color="#000" />
         </TouchableOpacity>
 
-        <Image
-          source={
-            partnerProfile?.avatar
-              ? { uri: partnerProfile.avatar }
-              : images.avatar
-          }
-          className="w-10 h-10 rounded-full mr-3"
-        />
+        {partnerProfile?.avatar ? (
+          <Image
+            source={{ uri: partnerProfile.avatar }}
+            className="w-12 h-12 rounded-full mr-3"
+          />
+        ) : (
+          <View className="w-12 h-12 rounded-full mr-3 bg-gray-200" />
+        )}
 
         <Text className="text-lg font-semibold flex-1">
           {partnerProfile?.name ||
@@ -346,16 +426,8 @@ const ChatScreen = () => {
         </Text>
       </View>
 
-      {/* Debug Info */}
-      <View className="px-4 py-1 bg-yellow-100">
-        <Text className="text-xs">Room ID: {chatRoomId || "None"}</Text>
-        <Text className="text-xs">Messages: {messages.length}</Text>
-        <Text className="text-xs">User ID: {currentUserId || "None"}</Text>
-        <Text className="text-xs">Partner ID: {receivedAgentId || "None"}</Text>
-      </View>
-
       {/* Messages */}
-      <View className="flex-1">
+      <View className="flex-1 bg-gray-50">
         {messages.length === 0 ? (
           <View className="flex-1 items-center justify-center">
             <Text className="text-gray-500">No messages yet</Text>
@@ -370,49 +442,21 @@ const ChatScreen = () => {
             keyExtractor={(item) =>
               item.id || `${item.timestamp}-${item.sender_id}`
             }
-            contentContainerStyle={{ padding: 10 }}
-            renderItem={({ item }) => (
-              <View
-                className={`p-3 my-1 rounded-lg max-w-[75%] ${
-                  item.sender_id === currentUserId
-                    ? "bg-blue-500 ml-auto"
-                    : "bg-gray-200"
-                }`}
-              >
-                <Text
-                  className={`${
-                    item.sender_id === currentUserId
-                      ? "text-white"
-                      : "text-black"
-                  }`}
-                >
-                  {item.content}
-                </Text>
-                <View className="flex-row justify-between items-center mt-1">
-                  <Text
-                    className={`text-xs ${
-                      item.sender_id === currentUserId
-                        ? "text-blue-100"
-                        : "text-gray-500"
-                    }`}
-                  >
-                    {new Date(
-                      typeof item.timestamp === "number"
-                        ? item.timestamp
-                        : Date.now()
-                    ).toLocaleTimeString([], {
-                      hour: "2-digit",
-                      minute: "2-digit",
-                    })}
-                  </Text>
-                  {item.sender_id === currentUserId && (
-                    <Text className="text-xs text-blue-100">
-                      {item.read ? "Read" : "Sent"}
-                    </Text>
-                  )}
-                </View>
-              </View>
-            )}
+            contentContainerStyle={{ padding: 16 }}
+            renderItem={({ item, index }) => {
+              // Determine if this message is from the same sender as the previous one
+              const isConsecutive =
+                index > 0 && messages[index - 1].sender_id === item.sender_id;
+              const isFromCurrentUser = item.sender_id === currentUserId;
+
+              return (
+                <ChatBubble
+                  message={item}
+                  isFromCurrentUser={isFromCurrentUser}
+                  isConsecutive={isConsecutive}
+                />
+              );
+            }}
           />
         )}
       </View>
@@ -420,19 +464,21 @@ const ChatScreen = () => {
       {/* Input */}
       <KeyboardAvoidingView
         behavior={Platform.OS === "ios" ? "padding" : "height"}
-        keyboardVerticalOffset={Platform.OS === "ios" ? 90 : 0}
+        keyboardVerticalOffset={Platform.OS === "ios" ? 10 : 0}
       >
-        <View className="p-2 flex-row items-center border-t border-gray-200">
+        <View style={styles.inputContainer}>
           <TextInput
-            className="flex-1 p-3 border border-gray-300 rounded-lg bg-gray-50"
-            placeholder="Type a message..."
+            style={styles.textInput}
             value={newMessage}
             onChangeText={setNewMessage}
             multiline
           />
           <TouchableOpacity
             onPress={handleSendMessage}
-            className="ml-3 p-3 bg-blue-500 rounded-full"
+            style={[
+              styles.sendButton,
+              !newMessage.trim() ? styles.sendButtonDisabled : {},
+            ]}
             disabled={!newMessage.trim()}
           >
             <Send size={20} color="white" />
@@ -442,5 +488,92 @@ const ChatScreen = () => {
     </SafeAreaView>
   );
 };
+
+// Define styles for the component
+const styles = StyleSheet.create({
+  // Chat bubble styles
+  bubbleBase: {
+    maxWidth: "80%",
+    minWidth: "20%",
+    padding: 8,
+    borderRadius: 18,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.1,
+    shadowRadius: 1,
+    elevation: 1,
+  },
+  bubbleUser: {
+    backgroundColor: "#1ABC9C",
+    borderTopRightRadius: 4,
+  },
+  bubbleUserConsecutive: {
+    borderTopRightRadius: 18,
+  },
+  bubblePartner: {
+    backgroundColor: "#F0F2F5",
+    borderTopLeftRadius: 4,
+  },
+  bubblePartnerConsecutive: {
+    borderTopLeftRadius: 18,
+  },
+  textUser: {
+    color: "#FFFFFF",
+    fontSize: 16,
+  },
+  textPartner: {
+    color: "#000000",
+    fontSize: 16,
+  },
+  metaContainer: {
+    flexDirection: "row",
+    justifyContent: "flex-end",
+    alignItems: "center",
+    marginTop: 4,
+  },
+  metaTextUser: {
+    color: "rgba(255, 255, 255, 0.7)",
+    fontSize: 12,
+  },
+  metaTextPartner: {
+    color: "rgba(0, 0, 0, 0.5)",
+    fontSize: 12,
+  },
+  readStatus: {
+    marginLeft: 5,
+  },
+
+  // Input area styles
+  inputContainer: {
+    flexDirection: "row",
+    alignItems: "center",
+    padding: 8,
+    borderTopWidth: 1,
+    borderTopColor: "#E5E5E5",
+    backgroundColor: "white",
+  },
+  textInput: {
+    flex: 1,
+    padding: 12,
+    borderWidth: 1,
+    borderColor: "#E5E5E5",
+    borderRadius: 20,
+    backgroundColor: "#F6F6F6",
+    maxHeight: 100,
+    fontSize: 16,
+  },
+  sendButton: {
+    marginLeft: 8,
+    backgroundColor: "#1ABC9C",
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  sendButtonDisabled: {
+    backgroundColor: "#A5D6CD",
+  },
+});
 
 export default ChatScreen;

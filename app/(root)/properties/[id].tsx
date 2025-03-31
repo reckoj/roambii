@@ -8,6 +8,7 @@ import {
   Dimensions,
   Platform,
   SafeAreaView,
+  Alert,
 } from "react-native";
 import { router, useLocalSearchParams } from "expo-router";
 
@@ -21,6 +22,7 @@ import { getAgentById, getCurrentUser, getPropertyById } from "@/lib/appwrite";
 import FlightInfo from "@/components/FlightInfo";
 import { useEffect, useState } from "react";
 import { ArrowLeft } from "lucide-react-native";
+import { useGlobalContext } from "@/lib/global-provider";
 
 interface AgentProps {
   id: string; // Agent ID
@@ -28,8 +30,10 @@ interface AgentProps {
 }
 
 const Property = () => {
+  const params = useLocalSearchParams();
   const { id } = useLocalSearchParams<{ id?: string }>();
-
+  const { rawUser } = useGlobalContext();
+  const agentId = Array.isArray(params.id) ? params.id[0] : params.id;
   const windowHeight = Dimensions.get("window").height;
 
   const { data: property } = useAppwrite({
@@ -39,16 +43,63 @@ const Property = () => {
     },
   });
   const [expanded, setExpanded] = useState(false);
-  const description =
-    "Enjoy an unforgettable all-inclusive getaway to Viva Fortuna Beach by Wyndham in Freeport, Bahamas! Nestled on a stunning white-sand beach, this tropical resort offers unlimited dining & drinks, thrilling water sports, daily entertainment, and a vibrant island atmosphere. Relax by the pool, explore crystal-clear waters, or dance the night away—your perfect Bahamian escape awaits! Book now for the ultimate beachfront adventure!";
+
   const [agent, setAgent] = useState<any>(null);
   const [user, setUser] = useState<any>(null);
+  const [loading, setLoading] = useState(true);
 
-  // const handleContact = () => {
-  //   if (!cagent) return;
-  //   const roomId = `${user}_${cagent.$id}`; // Create unique room ID
-  //   router.push("/(root)/(tabs)/chat");
-  // };
+  useEffect(() => {
+    const fetchAgent = async () => {
+      if (property?.agent?.$id) {
+        try {
+          setLoading(true);
+          const data = await getAgentById({ id: String(property.agent.$id) });
+
+          if (data) {
+            setAgent({
+              ...data,
+              avatar: data.avatar && data.avatar.startsWith("https"),
+            });
+          } else {
+            console.warn("[No Agent Data Found]");
+          }
+        } catch (error) {
+          console.error("Error fetching agent by ID:", error);
+        } finally {
+          setLoading(false);
+        }
+      }
+    };
+
+    if (property?.agent?.$id) {
+      fetchAgent();
+    }
+  }, [property]);
+
+  const handleContact = async () => {
+    if (!property?.agent || !rawUser) {
+      Alert.alert("Error", "Cannot start chat. Missing user or agent data.");
+      return;
+    }
+
+    const room_id = `${rawUser.$id}_${property.agent.$id}`;
+
+    try {
+      router.push({
+        pathname: "/chatScreen",
+        params: {
+          room_id,
+          user: rawUser.$id,
+          agentId: property.agent.$id,
+          avatar: property.agent.avatar,
+        },
+      });
+    } catch (error) {
+      console.error("Error starting chat:", error);
+      Alert.alert("Error", "Failed to start chat.");
+    }
+  };
+
   return (
     <SafeAreaView className="flex-1 bg-transparent">
       <View className="flex flex-row items-center w-full justify-between">
@@ -311,7 +362,10 @@ const Property = () => {
             </Text>
           </View>
 
-          <TouchableOpacity className="flex-1 flex flex-row items-center justify-center bg-primary-300 py-3 rounded-full shadow-md shadow-zinc-400">
+          <TouchableOpacity
+            onPress={handleContact}
+            className="flex-1 flex flex-row items-center justify-center bg-primary-300 py-3 rounded-full shadow-md shadow-zinc-400"
+          >
             <Text className="text-white text-lg text-center font-rubik-bold">
               Chat with me
             </Text>

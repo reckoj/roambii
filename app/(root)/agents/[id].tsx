@@ -68,10 +68,7 @@ const AgentProfile = () => {
           if (data) {
             setAgent({
               ...data,
-              avatar:
-                data.avatar && data.avatar.startsWith("https")
-                  ? data.avatar
-                  : images.avatar,
+              avatar: data.avatar && data.avatar.startsWith("https"),
             });
           } else {
             console.warn("[No Agent Data Found]");

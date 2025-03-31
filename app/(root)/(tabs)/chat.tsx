@@ -1,5 +1,4 @@
-// ChatListScreen.tsx - With improved profile resolution matching ChatScreen
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useCallback } from "react";
 import {
   View,
   Text,
@@ -9,14 +8,17 @@ import {
   ActivityIndicator,
   SafeAreaView,
   RefreshControl,
+  Alert,
+  Pressable,
 } from "react-native";
 import { StatusBar } from "react-native";
-import { router } from "expo-router";
-import { getChatRooms, getChatPartner, checkIsAgent } from "@/lib/chatService";
+import { router, useFocusEffect } from "expo-router";
+import { getChatPartner, checkIsAgent, deleteChat } from "@/lib/chatService";
 import { useGlobalContext } from "@/lib/global-provider";
-import images from "@/constants/images";
 import { databases, config } from "@/lib/appwrite";
 import { Query } from "react-native-appwrite";
+import { ref, onValue } from "firebase/database";
+import { firebaseDb } from "@/lib/firebase";
 
 const ChatListScreen = () => {
   const { rawUser } = useGlobalContext();
@@ -26,6 +28,7 @@ const ChatListScreen = () => {
   const [userProfiles, setUserProfiles] = useState<{ [key: string]: any }>({});
   const [isAgent, setIsAgent] = useState(false);
   const [agentUserId, setAgentUserId] = useState<string | null>(null);
+  const [deleting, setDeleting] = useState(false);
 
   // Check if current user is an agent
   useEffect(() => {
@@ -46,7 +49,7 @@ const ChatListScreen = () => {
     checkIfAgent();
   }, [rawUser]);
 
-  // More robust profile fetching that matches the ChatScreen implementation
+  // Fetch partner profile - using ChatScreen's approach
   const fetchPartnerProfile = async (partnerId: string) => {
     if (!partnerId) return null;
 
@@ -105,17 +108,8 @@ const ChatListScreen = () => {
       }
     }
 
-    // Return found profile or create fallback
-    if (foundProfile) {
-      return foundProfile;
-    } else {
-      // Create fallback profile
-      return {
-        name: `User ${partnerId.substring(0, 8)}`,
-        email: null,
-        avatar: null,
-      };
-    }
+    // Return the found profile or null, just like in ChatScreen
+    return foundProfile;
   };
 
   // Fetch profiles for all partners
@@ -129,59 +123,159 @@ const ChatListScreen = () => {
     return profiles;
   };
 
-  // Fetch chat rooms and user profiles
-  const fetchData = async () => {
-    if (!rawUser?.$id) {
-      console.log("No user ID found, cannot fetch chat rooms");
-      setLoading(false);
-      setRefreshing(false);
-      return;
-    }
-
-    try {
-      // Use the correct ID to fetch rooms (agent ID if an agent, user ID otherwise)
-      const userId = isAgent && agentUserId ? agentUserId : rawUser.$id;
-      console.log(
-        `Fetching chat rooms using ID: ${userId} (${
-          isAgent ? "agent" : "user"
-        })`
-      );
-
-      // Fetch chat rooms from Firebase
-      const rooms = await getChatRooms(userId);
-      console.log(`Fetched ${rooms.length} chat rooms`);
-
-      // Get partner IDs to fetch profiles
-      const partnerIds = rooms
-        .map((room) => getChatPartner(room.participants, userId))
-        .filter(Boolean);
-
-      console.log("Partner IDs:", partnerIds);
-
-      // Fetch profiles with improved method matching ChatScreen
-      if (partnerIds.length > 0) {
-        const profiles = await fetchAllPartnerProfiles(partnerIds);
-        setUserProfiles(profiles);
-      }
-
-      setChatRooms(rooms);
-    } catch (error) {
-      console.error("Error fetching chat data:", error);
-    } finally {
-      setLoading(false);
-      setRefreshing(false);
-    }
-  };
-
+  // Setup real-time listener for chat rooms instead of manual fetching
   useEffect(() => {
-    if (rawUser?.$id) {
-      fetchData();
+    if (!rawUser?.$id) {
+      console.log("No user ID found, cannot setup real-time listener");
+      setLoading(false);
+      return () => {};
     }
+
+    // Use the correct ID to fetch rooms (agent ID if an agent, user ID otherwise)
+    const userId = isAgent && agentUserId ? agentUserId : rawUser.$id;
+
+    console.log("Setting up real-time listener for chat rooms:", userId);
+    setLoading(true);
+
+    // Create reference to the chat_rooms node
+    const roomsRef = ref(firebaseDb, "chat_rooms");
+
+    // Set up an onValue listener
+    const unsubscribe = onValue(
+      roomsRef,
+      async (snapshot) => {
+        console.log("Real-time update received for chat rooms");
+
+        if (!snapshot.exists()) {
+          console.log("No chat rooms found");
+          setChatRooms([]);
+          setLoading(false);
+          setRefreshing(false);
+          return;
+        }
+
+        const rooms: any[] = [];
+
+        snapshot.forEach((roomSnapshot) => {
+          const roomData = roomSnapshot.val();
+
+          // Check if participants is an array or an object
+          if (roomData.participants) {
+            // If it's an array, check if user is in it
+            if (Array.isArray(roomData.participants)) {
+              if (roomData.participants.includes(userId)) {
+                rooms.push({
+                  id: roomSnapshot.key || "",
+                  participants: roomData.participants || [],
+                  last_message: roomData.last_message || "",
+                  last_updated: roomData.last_updated || Date.now(),
+                  unread_count: roomData.unread_count?.[userId] || 0,
+                });
+              }
+            }
+            // If it's an object, check if user is a value
+            else if (typeof roomData.participants === "object") {
+              const participantIds = Object.values(roomData.participants);
+              if (participantIds.includes(userId)) {
+                rooms.push({
+                  id: roomSnapshot.key || "",
+                  participants: participantIds as string[],
+                  last_message: roomData.last_message || "",
+                  last_updated: roomData.last_updated || Date.now(),
+                  unread_count: roomData.unread_count?.[userId] || 0,
+                });
+              }
+            }
+          }
+
+          // Also check for rooms with older format
+          if (
+            (roomData.user_id === userId || roomData.agent_id === userId) &&
+            !rooms.some((r) => r.id === roomSnapshot.key)
+          ) {
+            rooms.push({
+              id: roomSnapshot.key || "",
+              participants: [roomData.user_id, roomData.agent_id].filter(
+                Boolean
+              ),
+              last_message: roomData.last_message || "",
+              last_updated: roomData.last_updated || Date.now(),
+              unread_count: roomData.unread_count?.[userId] || 0,
+            });
+          }
+        });
+
+        // Sort by last updated timestamp
+        rooms.sort((a, b) => {
+          const timeA =
+            typeof a.last_updated === "number" ? a.last_updated : Date.now();
+          const timeB =
+            typeof b.last_updated === "number" ? b.last_updated : Date.now();
+          return timeB - timeA;
+        });
+
+        console.log(`Real-time update: Found ${rooms.length} chat rooms`);
+        setChatRooms(rooms);
+
+        // Once we have the rooms, fetch profiles for all partners
+        if (rooms.length > 0) {
+          try {
+            const partnerIds = rooms
+              .map((room) => getChatPartner(room.participants, userId))
+              .filter(Boolean);
+
+            const profiles = await fetchAllPartnerProfiles(partnerIds);
+            console.log(
+              `Fetched ${Object.keys(profiles).length} partner profiles`
+            );
+            setUserProfiles(profiles);
+          } catch (error) {
+            console.error("Error fetching partner profiles:", error);
+          }
+        }
+
+        setLoading(false);
+        setRefreshing(false);
+      },
+      (error) => {
+        console.error("Error setting up real-time listener:", error);
+        setLoading(false);
+        setRefreshing(false);
+      }
+    );
+
+    // Clean up listener on unmount
+    return () => {
+      console.log("Cleaning up real-time listener");
+      unsubscribe();
+    };
   }, [rawUser, isAgent, agentUserId]);
 
+  // Add useFocusEffect to refresh UI when screen comes into focus
+  useFocusEffect(
+    useCallback(() => {
+      console.log("ChatListScreen is now focused");
+
+      // If we're not currently loading, show a brief refresh indicator for user feedback
+      if (!loading) {
+        setRefreshing(true);
+        setTimeout(() => setRefreshing(false), 500);
+      }
+
+      return () => {
+        console.log("ChatListScreen lost focus");
+      };
+    }, [loading])
+  );
+
+  // Update onRefresh to trigger brief UI refresh - data will update via real-time listener
   const onRefresh = () => {
     setRefreshing(true);
-    fetchData();
+
+    // Just wait a moment to provide user feedback
+    setTimeout(() => {
+      setRefreshing(false);
+    }, 1000);
   };
 
   const formatTimestamp = (timestamp: any) => {
@@ -210,7 +304,6 @@ const ChatListScreen = () => {
     return date.toLocaleDateString([], { month: "short", day: "numeric" });
   };
 
-  // Navigate to the chat screen with the correct parameters
   const navigateToChat = (partnerId: string) => {
     console.log("Navigating to chat with partner:", partnerId);
 
@@ -218,8 +311,53 @@ const ChatListScreen = () => {
       pathname: "/chatScreen",
       params: {
         agentId: partnerId,
+        from: "chatlist", // Add this to track navigation source
       },
     });
+  };
+
+  // Handle long press on a chat item to delete
+  const handleLongPress = (roomId: string, partnerId: string) => {
+    const partnerProfile = userProfiles[partnerId];
+    const partnerName =
+      partnerProfile?.name || partnerProfile?.email || partnerId || "Unknown";
+
+    Alert.alert(
+      "Delete Chat",
+      `Are you sure you want to delete your conversation with ${partnerName}?`,
+      [
+        {
+          text: "Cancel",
+          style: "cancel",
+        },
+        {
+          text: "Delete",
+          style: "destructive",
+          onPress: () => deleteConversation(roomId),
+        },
+      ]
+    );
+  };
+
+  // Delete a chat conversation
+  const deleteConversation = async (roomId: string) => {
+    try {
+      setDeleting(true);
+
+      // Implement deleteChat function in chatService.ts
+      await deleteChat(roomId);
+
+      // No need to manually update local state as the real-time listener will handle it
+      console.log(`Chat room ${roomId} deleted successfully`);
+    } catch (error) {
+      console.error("Error deleting chat:", error);
+      Alert.alert(
+        "Error",
+        "Failed to delete the conversation. Please try again."
+      );
+    } finally {
+      setDeleting(false);
+    }
   };
 
   if (loading) {
@@ -237,7 +375,7 @@ const ChatListScreen = () => {
         <Text className="text-2xl font-semibold p-4">Messages</Text>
 
         {/* Debug Info */}
-        <View className="px-4 py-1 bg-yellow-100">
+        {/* <View className="px-4 py-1 bg-yellow-100">
           <Text className="text-xs">User ID: {rawUser?.$id || "None"}</Text>
           <Text className="text-xs">Is Agent: {isAgent ? "Yes" : "No"}</Text>
           <Text className="text-xs">Agent ID: {agentUserId || "N/A"}</Text>
@@ -245,15 +383,19 @@ const ChatListScreen = () => {
           <Text className="text-xs">
             Profiles: {Object.keys(userProfiles).length}
           </Text>
-        </View>
+        </View> */}
+
+        {deleting && (
+          <View className="absolute inset-0 bg-black bg-opacity-20 z-10 flex items-center justify-center">
+            <ActivityIndicator size="large" color="#1ABC9C" />
+          </View>
+        )}
 
         {chatRooms.length === 0 ? (
           <View className="flex-1 items-center justify-center">
-            <Image
-              source={images.nomessages}
-              className="w-60 h-60 mb-4"
-              resizeMode="contain"
-            />
+            <View className="w-60 h-60 mb-4 items-center justify-center bg-gray-100 rounded-full">
+              <Text className="text-6xl">💬</Text>
+            </View>
             <Text className="text-lg font-semibold text-gray-500">
               You have no messages
             </Text>
@@ -280,26 +422,29 @@ const ChatListScreen = () => {
               const partnerProfile = userProfiles[partnerId];
 
               return (
-                <TouchableOpacity
+                <Pressable
                   className="p-4 border-b border-gray-200 flex-row items-center justify-between"
                   onPress={() => navigateToChat(partnerId)}
+                  onLongPress={() => handleLongPress(item.id, partnerId)}
+                  delayLongPress={500} // Adjust timing for long press
+                  android_ripple={{ color: "rgba(0, 0, 0, 0.1)" }}
                 >
                   <View className="flex-row items-center flex-1">
-                    <Image
-                      source={
-                        partnerProfile?.avatar
-                          ? { uri: partnerProfile.avatar }
-                          : images.avatar
-                      }
-                      className="w-12 h-12 rounded-full mr-3"
-                    />
+                    {partnerProfile?.avatar ? (
+                      <Image
+                        source={{ uri: partnerProfile.avatar }}
+                        className="w-12 h-12 rounded-full mr-3"
+                      />
+                    ) : (
+                      <View className="w-12 h-12 rounded-full mr-3 bg-gray-200" />
+                    )}
                     <View className="flex-1">
                       <View className="flex-row justify-between items-center">
                         <Text className="text-lg font-semibold">
                           {partnerProfile?.name ||
                             partnerProfile?.email ||
                             partnerId ||
-                            "Unknown"}
+                            "Chat"}
                         </Text>
                         <Text className="text-xs text-gray-500">
                           {formatTimestamp(item.last_updated)}
@@ -325,7 +470,7 @@ const ChatListScreen = () => {
                       </View>
                     </View>
                   </View>
-                </TouchableOpacity>
+                </Pressable>
               );
             }}
           />

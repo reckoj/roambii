@@ -505,7 +505,7 @@ export async function getAgentById({ id }: { id: string }) {
     // console.log("[Raw Fetched Agent Data] ==> ", agentData);
 
     // ✅ Fix duplicate URLs by extracting the correct part
-    let avatarUrl = agentData.avatar || images.avatar;
+    let avatarUrl = agentData.avatar;
 
     if (avatarUrl.includes("/files/https://")) {
       avatarUrl = avatarUrl.split("/files/https://")[1]; // ✅ Extract correct URL

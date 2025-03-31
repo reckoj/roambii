@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useCallback } from "react";
 import {
   View,
   Text,
@@ -9,10 +9,11 @@ import {
   Alert,
   ActivityIndicator,
   Image,
+  RefreshControl,
 } from "react-native";
 import TripCard from "@/components/TripCard";
 import TripDetailView from "@/components/TripDetailView";
-import { GestureHandlerRootView } from "react-native-gesture-handler"; // Import GestureHandlerRootView
+import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { Swipeable } from "react-native-gesture-handler";
 import { LucideTrash, PlusCircleIcon, Trash2 } from "lucide-react-native";
 import { router } from "expo-router";
@@ -25,6 +26,7 @@ import Animated, {
   useAnimatedStyle,
   withSpring,
 } from "react-native-reanimated";
+
 type FlightDetails = {
   from: string;
   to: string;
@@ -51,22 +53,41 @@ type BookedTrip = {
 const Bookings = () => {
   const { rawUser, isAgent } = useGlobalContext();
   const [packages, setPackages] = useState<any[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [initialLoading, setInitialLoading] = useState(true);
 
-  /** ✅ Fetch all packages when screen loads */
-  useEffect(() => {
-    if (!isAgent || !rawUser?.$id) return;
+  /** Fetch packages function that can be reused */
+  const fetchPackages = async () => {
+    if (!isAgent || !rawUser?.$id) {
+      setInitialLoading(false);
+      return;
+    }
 
-    const fetchPackages = async () => {
+    try {
       const data = await getAgentPackages(rawUser.$id);
       setPackages(data);
-      setLoading(false);
-    };
+    } catch (error) {
+      console.error("Error fetching packages:", error);
+      // Optionally show an error alert
+      // Alert.alert("Error", "Failed to load packages");
+    } finally {
+      setRefreshing(false);
+      setInitialLoading(false);
+    }
+  };
 
+  /** Initial fetch when screen loads */
+  useEffect(() => {
     fetchPackages();
   }, [rawUser?.$id]);
 
-  /** ✅ Handle deleting a package */
+  /** Handle pull to refresh */
+  const onRefresh = useCallback(() => {
+    setRefreshing(true);
+    fetchPackages();
+  }, [rawUser?.$id]);
+
+  /** Handle deleting a package */
   const handleDelete = async (packageId: string) => {
     Alert.alert(
       "Delete Package",
@@ -109,13 +130,14 @@ const Bookings = () => {
             translateX: withSpring(translateX.value, {
               damping: 20,
               stiffness: 100,
-            }), // Swipe animation
+            }),
           },
         ],
       };
     });
 
-  if (loading) {
+  // Show loader only on initial load
+  if (initialLoading) {
     return (
       <View className="flex-1 items-center justify-center">
         <ActivityIndicator size="large" color="#1ABC9C" />
@@ -144,7 +166,17 @@ const Bookings = () => {
             </View>
           )}
         </View>
-        <ScrollView className="flex-1 p-4 mb-14 bg-white">
+        <ScrollView
+          className="flex-1 p-4 mb-14 bg-white"
+          refreshControl={
+            <RefreshControl
+              refreshing={refreshing}
+              onRefresh={onRefresh}
+              colors={["#1ABC9C"]}
+              tintColor="#1ABC9C"
+            />
+          }
+        >
           {packages.length === 0 ? (
             <View>
               <View className="flex items-center justify-center">
@@ -192,7 +224,7 @@ const Bookings = () => {
                       onPress={() =>
                         router.push({
                           pathname: "/editPackage",
-                          params: { id: pkg.$id }, // ✅ Pass package ID as a parameter
+                          params: { id: pkg.$id },
                         })
                       }
                       className="p-2"

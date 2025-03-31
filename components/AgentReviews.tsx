@@ -368,7 +368,7 @@ const AgentReviews: React.FC<AgentReviewsProps> = ({ agentId }) => {
         comment,
         createdAt: new Date().toISOString(),
         author: rawUser.name || "Anonymous",
-        avatar: rawUser.avatar || images.avatar,
+        avatar: rawUser.avatar,
       };
 
       // Update local state

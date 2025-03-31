@@ -1,511 +1,3 @@
-// // lib/chatService.ts
-// import { ID, Query } from "react-native-appwrite";
-// import { databases, account, config, client } from "./appwrite";
-// import { MessageType, ChatRoom } from "./types";
-
-// /** ✅ Generate a Unique Room ID */
-// export function getChatRoomId(userId: string, agentId: string) {
-//   if (!userId || !agentId) {
-//     console.error("Cannot generate room ID: Missing userId or agentId", {
-//       userId,
-//       agentId,
-//     });
-//     return null;
-//   }
-
-//   // Clean IDs to ensure they only contain valid characters
-//   const cleanUserId = userId.replace(/[^a-zA-Z0-9._-]/g, "");
-//   const cleanAgentId = agentId.replace(/[^a-zA-Z0-9._-]/g, "");
-
-//   // Ensure ID doesn't start with special characters
-//   const safeUserId = cleanUserId.match(/^[._-]/)
-//     ? `a${cleanUserId}`
-//     : cleanUserId;
-//   const safeAgentId = cleanAgentId.match(/^[._-]/)
-//     ? `a${cleanAgentId}`
-//     : cleanAgentId;
-
-//   // Limit the length of each ID to ensure the combined ID is not too long
-//   const maxIdLength = 15; // This ensures combined ID with separator stays under 36 chars
-//   const trimmedUserId = safeUserId.slice(0, maxIdLength);
-//   const trimmedAgentId = safeAgentId.slice(0, maxIdLength);
-
-//   // Consistent ordering to ensure the same roomId regardless of who starts the chat
-//   return trimmedUserId < trimmedAgentId
-//     ? `${trimmedUserId}_${trimmedAgentId}`
-//     : `${trimmedAgentId}_${trimmedUserId}`;
-// }
-
-// /** ✅ Fetch Chat Rooms for User */
-// export async function getChatRooms(userId: string) {
-//   try {
-//     if (!userId) {
-//       console.error("Cannot fetch chat rooms: Missing userId");
-//       return [];
-//     }
-
-//     if (!config.databaseId || !config.chatRoomsCollectionId) {
-//       console.error(
-//         "Cannot fetch chat rooms: Missing database or collection configuration",
-//         {
-//           databaseId: config.databaseId,
-//           chatRoomsCollectionId: config.chatRoomsCollectionId,
-//         }
-//       );
-//       return [];
-//     }
-
-//     console.log("[Fetching Chat Rooms for] ==> ", userId);
-//     console.log(
-//       "Using DB:",
-//       config.databaseId,
-//       "Collection:",
-//       config.chatRoomsCollectionId
-//     );
-
-//     const response = await databases.listDocuments(
-//       config.databaseId,
-//       config.chatRoomsCollectionId,
-//       [
-//         Query.or([
-//           Query.equal("user_id", userId),
-//           Query.equal("agent_id", userId),
-//         ]),
-//         Query.orderDesc("last_updated"),
-//       ]
-//     );
-
-//     console.log("[Chat Rooms Response] ==> ", response.documents);
-
-//     return response.documents.map((doc) => ({
-//       $id: doc.$id,
-//       room_id: doc.room_id,
-//       user_id: doc.user_id,
-//       agent_id: doc.agent_id,
-//       name: doc.agent_name || doc.user_name || "Unknown",
-//       last_message: doc.last_message || "No messages yet",
-//       last_updated: doc.last_updated || new Date().toISOString(),
-//       unread_count: doc.unread_count || 0,
-//     }));
-//   } catch (error) {
-//     console.error("[Error Fetching Chat Rooms]", error);
-//     return [];
-//   }
-// }
-
-// /** ✅ Get Messages in a Room */
-// export async function getMessages(roomId: string) {
-//   try {
-//     if (!roomId) {
-//       console.error("Cannot fetch messages: Missing roomId");
-//       return [];
-//     }
-
-//     if (!config.databaseId || !config.messagesCollectionId) {
-//       console.error(
-//         "Cannot fetch messages: Missing database or collection configuration",
-//         {
-//           databaseId: config.databaseId,
-//           messagesCollectionId: config.messagesCollectionId,
-//         }
-//       );
-//       return [];
-//     }
-
-//     console.log("[Fetching Messages for Room] ==> ", roomId);
-//     console.log(
-//       "Using DB:",
-//       config.databaseId,
-//       "Collection:",
-//       config.messagesCollectionId
-//     );
-
-//     // Using .list instead of listDocuments to fetch all available messages
-//     // listDocuments might be filtered by the user's permissions
-//     const response = await databases.listDocuments(
-//       config.databaseId,
-//       config.messagesCollectionId,
-//       [Query.equal("room_id", roomId), Query.orderAsc("timestamp")]
-//     );
-
-//     console.log("[Fetched Messages] ==> ", response.documents);
-
-//     if (response.documents.length === 0) {
-//       // Try with partial match on room_id if exact match returns no results
-//       console.log("[Trying partial match on room_id]");
-//       const partialResponse = await databases.listDocuments(
-//         config.databaseId,
-//         config.messagesCollectionId,
-//         [
-//           Query.startsWith("room_id", roomId.substring(0, 10)),
-//           Query.orderAsc("timestamp"),
-//         ]
-//       );
-
-//       console.log(
-//         "[Fetched Messages with partial match] ==> ",
-//         partialResponse.documents
-//       );
-
-//       if (partialResponse.documents.length > 0) {
-//         // If we found messages with a partial match, use those instead
-//         return partialResponse.documents.map((doc) => ({
-//           $id: doc.$id,
-//           room_id: doc.room_id || roomId,
-//           sender_id: doc.sender_id || "",
-//           receiver_id: doc.receiver_id || "",
-//           content: doc.content || "",
-//           read: doc.read || false,
-//           timestamp: doc.timestamp || new Date().toISOString(),
-//         }));
-//       }
-//     }
-
-//     // Ensure all documents have the required properties
-//     const messages = response.documents.map((doc) => ({
-//       $id: doc.$id,
-//       room_id: doc.room_id || roomId,
-//       sender_id: doc.sender_id || "",
-//       receiver_id: doc.receiver_id || "",
-//       content: doc.content || "",
-//       read: doc.read || false,
-//       timestamp: doc.timestamp || new Date().toISOString(),
-//     }));
-
-//     return messages;
-//   } catch (error) {
-//     console.error("[Error Fetching Messages]", error);
-//     return [];
-//   }
-// }
-
-// /** ✅ Send a Message */
-// export async function sendMessage(
-//   senderId: string,
-//   receiverId: string,
-//   content: string
-// ) {
-//   try {
-//     if (!senderId || !receiverId || !content.trim()) {
-//       console.error("Cannot send message: Missing required data", {
-//         senderId,
-//         receiverId,
-//         hasContent: Boolean(content.trim()),
-//       });
-//       throw new Error("Missing required data for sending a message");
-//     }
-
-//     if (
-//       !config.databaseId ||
-//       !config.messagesCollectionId ||
-//       !config.chatRoomsCollectionId
-//     ) {
-//       console.error(
-//         "Cannot send message: Missing database or collection configuration",
-//         {
-//           databaseId: config.databaseId,
-//           messagesCollectionId: config.messagesCollectionId,
-//           chatRoomsCollectionId: config.chatRoomsCollectionId,
-//         }
-//       );
-//       throw new Error("Application configuration error");
-//     }
-
-//     const roomId = getChatRoomId(senderId, receiverId);
-//     if (!roomId) {
-//       throw new Error("Failed to generate a valid room ID");
-//     }
-
-//     const messageId = ID.unique();
-
-//     console.log("[Sending Message] ==> ", {
-//       roomId,
-//       senderId,
-//       receiverId,
-//       content,
-//     });
-
-//     // First, check if chat room exists
-//     let roomDocument;
-//     try {
-//       // Use ID.unique() instead of the roomId for the document ID
-//       const roomDocId = roomId.length <= 36 ? roomId : ID.unique();
-
-//       // Prepare room data based on available schema
-//       const roomData = {
-//         room_id: roomId, // Store original room ID in a field
-//         user_id: senderId,
-//         agent_id: receiverId,
-//         last_message: content,
-//         last_updated: new Date().toISOString(),
-//         // Only include unread_count if your schema has it
-//         // unread_count: 1,
-//       };
-
-//       try {
-//         roomDocument = await databases.getDocument(
-//           config.databaseId,
-//           config.chatRoomsCollectionId,
-//           roomDocId
-//         );
-//         console.log("[Found Existing Room] ==> ", roomDocument.$id);
-//       } catch (roomError) {
-//         // Room doesn't exist, create it
-//         console.log("[Creating New Room] ==> ", roomDocId);
-//         roomDocument = await databases.createDocument(
-//           config.databaseId,
-//           config.chatRoomsCollectionId,
-//           roomDocId,
-//           roomData,
-//           // Grant permissions to all authenticated users
-//           // This is safer than "any" but makes the room visible to all users
-//           ['read("users")', 'update("users")', 'delete("users")']
-//         );
-//       }
-//     } catch (error) {
-//       console.error("Error with room document:", error);
-//       // Create a fallback room with a guaranteed unique ID
-//       const fallbackRoomId = ID.unique();
-//       console.log("[Creating Fallback Room] ==> ", fallbackRoomId);
-
-//       // Prepare minimal room data based on available schema
-//       const roomData = {
-//         room_id: roomId, // Store the original room ID for reference
-//         user_id: senderId,
-//         agent_id: receiverId,
-//         last_message: content,
-//         last_updated: new Date().toISOString(),
-//         // Only include unread_count if your schema has it
-//         // unread_count: 1,
-//       };
-
-//       roomDocument = await databases.createDocument(
-//         config.databaseId,
-//         config.chatRoomsCollectionId,
-//         fallbackRoomId,
-//         roomData,
-//         // Grant permissions to all authenticated users
-//         ['read("users")', 'update("users")', 'delete("users")']
-//       );
-//     }
-
-//     // Now create the message
-//     console.log("[Creating Message Document] with ID:", messageId);
-//     const newMessage = await databases.createDocument(
-//       config.databaseId,
-//       config.messagesCollectionId,
-//       messageId,
-//       {
-//         room_id: roomId,
-//         sender_id: senderId,
-//         receiver_id: receiverId,
-//         content,
-//         read: false,
-//         timestamp: new Date().toISOString(),
-//       },
-//       // Grant permissions to all authenticated users for the message
-//       ['read("users")', 'update("users")', 'delete("users")']
-//     );
-
-//     // Update the chat room with latest message info
-//     console.log("[Updating Chat Room] with new message:", roomDocument.$id);
-
-//     // Prepare update data based on available schema
-//     const updateData = {
-//       last_message: content,
-//       last_updated: new Date().toISOString(),
-//       // Only include unread_count if your schema has it
-//       // unread_count: (roomDocument.unread_count || 0) + 1,
-//     };
-
-//     await databases.updateDocument(
-//       config.databaseId,
-//       config.chatRoomsCollectionId,
-//       roomDocument.$id, // Use the document's ID instead of the roomId
-//       updateData
-//     );
-
-//     return newMessage;
-//   } catch (error) {
-//     console.error("[Error Sending Message]", error);
-//     throw error;
-//   }
-// }
-
-// /** ✅ Subscribe to Messages in a Room */
-// export function subscribeToMessages(
-//   roomId: string,
-//   callback: (message: MessageType) => void
-// ) {
-//   if (!roomId) {
-//     console.error("Cannot subscribe to messages: Missing roomId");
-//     return () => {}; // Return no-op function
-//   }
-
-//   if (!config.databaseId || !config.messagesCollectionId) {
-//     console.error(
-//       "Cannot subscribe to messages: Missing database or collection configuration"
-//     );
-//     return () => {}; // Return no-op function
-//   }
-
-//   console.log("[Subscribing to Messages] ==> ", {
-//     roomId,
-//     database: config.databaseId,
-//     collection: config.messagesCollectionId,
-//   });
-
-//   try {
-//     // Subscribe to ALL document events for the messages collection
-//     const unsubscribe = client.subscribe(
-//       `databases.${config.databaseId}.collections.${config.messagesCollectionId}.documents`,
-//       (response) => {
-//         // Only process create events
-//         if (
-//           response.events.includes(
-//             "databases.*.collections.*.documents.*.create"
-//           )
-//         ) {
-//           console.log("[Message Event Received] ==> ", {
-//             event: response.events[0],
-//             payload: response.payload,
-//           });
-
-//           const payload = response.payload as any;
-
-//           if (!payload || !payload.room_id) {
-//             console.error("Invalid message payload:", payload);
-//             return;
-//           }
-
-//           // Create a properly typed message object
-//           const newMessage: MessageType = {
-//             $id: payload.$id || "",
-//             room_id: payload.room_id || "",
-//             sender_id: payload.sender_id || "",
-//             receiver_id: payload.receiver_id || "",
-//             content: payload.content || "",
-//             read: payload.read || false,
-//             timestamp: payload.timestamp || new Date().toISOString(),
-//           };
-
-//           // Check if this message belongs to our room
-//           console.log(
-//             `Comparing roomIds: message=${newMessage.room_id}, current=${roomId}`
-//           );
-
-//           if (newMessage.room_id === roomId) {
-//             console.log("[New Message For Current Room] ==> ", newMessage);
-//             callback(newMessage);
-//           } else {
-//             console.log("[Message for different room, ignoring]");
-//           }
-//         }
-//       }
-//     );
-
-//     return () => {
-//       console.log("[Unsubscribed from Messages]");
-//       unsubscribe();
-//     };
-//   } catch (error) {
-//     console.error("[Error Subscribing to Messages]", error);
-//     return () => {}; // Return no-op function on error
-//   }
-// }
-
-// /** ✅ Mark Messages as Read */
-// export async function markMessagesAsRead(roomId: string, userId: string) {
-//   try {
-//     if (!roomId || !userId) {
-//       console.error("[Mark Messages as Read] Invalid parameters:", {
-//         roomId,
-//         userId,
-//       });
-//       return false;
-//     }
-
-//     if (
-//       !config.databaseId ||
-//       !config.messagesCollectionId ||
-//       !config.chatRoomsCollectionId
-//     ) {
-//       console.error(
-//         "Cannot mark messages as read: Missing database or collection configuration"
-//       );
-//       return false;
-//     }
-
-//     console.log("[Marking Messages as Read] ==> ", roomId, userId);
-
-//     // First, get all unread messages for this user
-//     const response = await databases.listDocuments(
-//       config.databaseId,
-//       config.messagesCollectionId,
-//       [
-//         Query.equal("room_id", roomId),
-//         Query.equal("receiver_id", userId),
-//         Query.equal("read", false),
-//       ]
-//     );
-
-//     // Mark each message as read
-//     const updatePromises = response.documents.map((doc) =>
-//       databases.updateDocument(
-//         config.databaseId!,
-//         config.messagesCollectionId!,
-//         doc.$id,
-//         { read: true }
-//       )
-//     );
-
-//     if (updatePromises.length > 0) {
-//       await Promise.all(updatePromises);
-//     }
-
-//     // Reset unread count in chat room - Check if room exists first
-//     try {
-//       // Query to find the room document
-//       const response = await databases.listDocuments(
-//         config.databaseId,
-//         config.chatRoomsCollectionId,
-//         [Query.equal("room_id", roomId)]
-//       );
-
-//       if (response.documents.length > 0) {
-//         // Found room, update unread count if schema supports it
-//         const roomDoc = response.documents[0];
-//         console.log("[Updating last_updated for room] ==> ", roomDoc.$id);
-
-//         // Only update fields that exist in the schema
-//         await databases.updateDocument(
-//           config.databaseId,
-//           config.chatRoomsCollectionId,
-//           roomDoc.$id,
-//           {
-//             last_updated: new Date().toISOString(),
-//             // If you add unread_count to schema, uncomment below
-//             // unread_count: 0
-//           }
-//         );
-//       } else {
-//         console.log("Chat room doesn't exist yet, no need to update");
-//       }
-//     } catch (error) {
-//       console.error("Error updating room:", error);
-//     }
-
-//     return true;
-//   } catch (error) {
-//     console.error("[Error Marking Messages as Read]", error);
-//     return false;
-//   }
-// }
-
-// lib/chatService.ts
-// lib/chatService.ts
-// lib/chatService.ts
-// chatService.ts - Updated with more reliable room ID generation
 import { firebaseDb } from "@/lib/firebase";
 import {
   ref,
@@ -518,6 +10,7 @@ import {
   update,
   serverTimestamp,
   off,
+  remove,
 } from "firebase/database";
 import { account, databases, config } from "./appwrite";
 import { Query } from "react-native-appwrite";
@@ -537,7 +30,7 @@ export interface ChatRoom {
   participants: string[];
   last_message: string;
   last_updated: number | Object;
-  unread_count?: number;
+  unread_count: { [userId: string]: number };
 }
 
 /**
@@ -920,43 +413,96 @@ export async function sendMessage(
 /**
  * Mark messages as read
  */
+/**
+ * Mark messages as read with improved handling for agents
+ */
 export async function markMessagesAsRead(
   roomId: string,
   userId: string
 ): Promise<boolean> {
   if (!roomId || !userId) {
-    console.error("Cannot mark messages as read: Missing data");
+    console.error("Cannot mark messages as read: Missing data", {
+      roomId,
+      userId,
+    });
     return false;
   }
 
   try {
-    console.log("[Marking Messages as Read] ==> ", roomId, userId);
+    console.log(`[Marking Messages as Read] Room: ${roomId}, User: ${userId}`);
 
-    // Update unread count for user
+    // Check if the user is an agent
+    const isAgentResult = await checkIsAgent(userId);
+    const effectiveUserId =
+      isAgentResult.isAgent && isAgentResult.agentId
+        ? isAgentResult.agentId
+        : userId;
+
+    console.log(
+      `Checking agent status: ${
+        isAgentResult.isAgent ? "Is agent" : "Not agent"
+      }, effectiveUserId: ${effectiveUserId}`
+    );
+
+    // First, explicitly update unread count for the user to 0
     const roomRef = ref(firebaseDb, `chat_rooms/${roomId}`);
-    await update(roomRef, {
-      [`unread_count/${userId}`]: 0,
-    });
+    const roomSnapshot = await get(roomRef);
 
-    // Mark all messages as read where user is receiver
-    const messagesRef = ref(firebaseDb, `messages/${roomId}`);
-    const snapshot = await get(messagesRef);
-
-    if (!snapshot.exists()) {
+    if (!roomSnapshot.exists()) {
+      console.log(`Room ${roomId} not found, nothing to mark as read`);
       return true;
     }
 
-    const updates: { [key: string]: any } = {};
+    // Update unread count for both regular user ID and agent ID if applicable
+    console.log(
+      `Setting unread_count to 0 for user ${effectiveUserId} in room ${roomId}`
+    );
+    const updates: { [key: string]: any } = {
+      [`unread_count/${effectiveUserId}`]: 0,
+    };
 
-    snapshot.forEach((childSnapshot) => {
+    // If this is an agent, also update the original user ID's unread count
+    if (isAgentResult.isAgent && isAgentResult.agentId) {
+      updates[`unread_count/${userId}`] = 0;
+      console.log(
+        `Also setting unread_count to 0 for original userId ${userId}`
+      );
+    }
+
+    await update(roomRef, updates);
+
+    // Mark all messages as read where user is receiver (checking both IDs)
+    const messagesRef = ref(firebaseDb, `messages/${roomId}`);
+    const messagesSnapshot = await get(messagesRef);
+
+    if (!messagesSnapshot.exists()) {
+      console.log(`No messages found for room ${roomId}`);
+      return true;
+    }
+
+    const messageUpdates: { [key: string]: any } = {};
+    let updateCount = 0;
+
+    messagesSnapshot.forEach((childSnapshot) => {
       const message = childSnapshot.val();
-      if (message.receiver_id === userId && !message.read) {
-        updates[`${childSnapshot.key}/read`] = true;
+      // Check both the original user ID and effective ID (for agents)
+      if (
+        (message.receiver_id === userId ||
+          message.receiver_id === effectiveUserId) &&
+        !message.read
+      ) {
+        messageUpdates[`${childSnapshot.key}/read`] = true;
+        updateCount++;
       }
     });
 
-    if (Object.keys(updates).length > 0) {
-      await update(messagesRef, updates);
+    if (updateCount > 0) {
+      console.log(`Marking ${updateCount} messages as read in room ${roomId}`);
+      await update(messagesRef, messageUpdates);
+    } else {
+      console.log(
+        `No unread messages found for user ${effectiveUserId} in room ${roomId}`
+      );
     }
 
     return true;
@@ -974,4 +520,184 @@ export function getChatPartner(
   currentUserId: string
 ): string {
   return roomParticipants.find((id) => id !== currentUserId) || "";
+}
+
+/**
+ * Delete a chat room and all its messages
+ */
+export async function deleteChat(roomId: string): Promise<boolean> {
+  if (!roomId) {
+    console.error("Cannot delete chat: Missing roomId");
+    return false;
+  }
+
+  try {
+    console.log("[Deleting Chat Room and Messages] ==> ", roomId);
+
+    // Create references to both the room and messages
+    const roomRef = ref(firebaseDb, `chat_rooms/${roomId}`);
+    const messagesRef = ref(firebaseDb, `messages/${roomId}`);
+
+    // Delete messages first
+    await remove(messagesRef);
+    console.log(`Deleted all messages for room ${roomId}`);
+
+    // Then delete the room
+    await remove(roomRef);
+    console.log(`Deleted chat room ${roomId}`);
+
+    return true;
+  } catch (error) {
+    console.error("Error deleting chat:", error);
+    throw error;
+  }
+}
+
+// Add these functions to your chatService.js file
+
+/**
+ * ENHANCED: Get the consistent room ID regardless of which user is the agent
+ * This handles both directions of communication properly
+ */
+export async function getConsistentRoomId(
+  userId1: string,
+  userId2: string
+): Promise<string> {
+  if (!userId1 || !userId2) {
+    console.error("Cannot generate consistent room ID: Missing user IDs", {
+      userId1,
+      userId2,
+    });
+    return "";
+  }
+
+  console.log("Getting consistent room ID for:", userId1, userId2);
+
+  // First, check if either user is an agent and resolve to their user ID
+  let resolvedId1 = userId1;
+  let resolvedId2 = userId2;
+
+  try {
+    // Check if user1 is an agent
+    const user1Check = await checkIsAgent(userId1);
+    if (user1Check.isAgent && user1Check.agentId) {
+      console.log(`User1 ${userId1} is an agent with ID ${user1Check.agentId}`);
+      resolvedId1 = user1Check.agentId;
+    }
+
+    // Check if user2 is an agent
+    const user2Check = await checkIsAgent(userId2);
+    if (user2Check.isAgent && user2Check.agentId) {
+      console.log(`User2 ${userId2} is an agent with ID ${user2Check.agentId}`);
+      resolvedId2 = user2Check.agentId;
+    }
+
+    // Now use these resolved IDs to get a consistent room ID
+    return getChatRoomId(resolvedId1, resolvedId2);
+  } catch (error) {
+    console.error("Error resolving agent IDs:", error);
+    // Fall back to the basic method if there's an error
+    return getChatRoomId(userId1, userId2);
+  }
+}
+
+/**
+ * ENHANCED: Send a message using consistent room ID resolution
+ */
+export async function sendMessageWithConsistentRoomId(
+  senderId: string,
+  receiverId: string,
+  content: string
+): Promise<FirebaseMessage> {
+  if (!senderId || !receiverId || !content.trim()) {
+    throw new Error("Missing required data for sending a message");
+  }
+
+  try {
+    // Generate a consistent room ID that handles agent/user relationships
+    const roomId = await getConsistentRoomId(senderId, receiverId);
+
+    console.log("[Sending Message with Consistent Room ID] ==> ", {
+      roomId,
+      senderId,
+      receiverId,
+      content,
+    });
+
+    // Prepare message data
+    const messageData: Omit<FirebaseMessage, "id"> = {
+      sender_id: senderId,
+      receiver_id: receiverId,
+      content,
+      timestamp: serverTimestamp(),
+      read: false,
+    };
+
+    // Create message reference
+    const messagesRef = ref(firebaseDb, `messages/${roomId}`);
+    const newMessageRef = push(messagesRef);
+
+    // Save message
+    await set(newMessageRef, messageData);
+
+    // Update chat room data
+    const roomRef = ref(firebaseDb, `chat_rooms/${roomId}`);
+    const roomSnapshot = await get(roomRef);
+
+    if (!roomSnapshot.exists()) {
+      // Create new room with all the fields from your database
+      await set(roomRef, {
+        participants: [senderId, receiverId],
+        last_message: content,
+        last_updated: serverTimestamp(),
+        unread_count: {
+          [receiverId]: 1,
+          [senderId]: 0,
+        },
+      });
+    } else {
+      // Update existing room
+      const roomData = roomSnapshot.val();
+      const updates: any = {
+        last_message: content,
+        last_updated: serverTimestamp(),
+      };
+
+      // Update participants array if needed
+      if (!roomData.participants) {
+        updates.participants = [senderId, receiverId];
+      } else if (Array.isArray(roomData.participants)) {
+        const participants = [...roomData.participants];
+        if (!participants.includes(senderId)) {
+          participants.push(senderId);
+        }
+        if (!participants.includes(receiverId)) {
+          participants.push(receiverId);
+        }
+        updates.participants = participants;
+      }
+
+      // Update unread count for receiver
+      if (!roomData.unread_count) {
+        updates.unread_count = {
+          [receiverId]: 1,
+          [senderId]: 0,
+        };
+      } else {
+        const currentCount = roomData.unread_count[receiverId] || 0;
+        updates[`unread_count/${receiverId}`] = currentCount + 1;
+      }
+
+      await update(roomRef, updates);
+    }
+
+    return {
+      ...messageData,
+      id: newMessageRef.key || "",
+      timestamp: Date.now(), // Replace serverTimestamp with current time for immediate use
+    };
+  } catch (error) {
+    console.error("Error sending message:", error);
+    throw error;
+  }
 }
