@@ -19,6 +19,7 @@ import { databases, config } from "@/lib/appwrite";
 import { Query } from "react-native-appwrite";
 import { ref, onValue } from "firebase/database";
 import { firebaseDb } from "@/lib/firebase";
+import CustomHeader from "@/components/HeaderComponent";
 
 const ChatListScreen = () => {
   const { rawUser } = useGlobalContext();
@@ -369,22 +370,9 @@ const ChatListScreen = () => {
   }
 
   return (
-    <SafeAreaView className="flex-1 bg-white">
-      <View className="flex-1">
-        <StatusBar backgroundColor="#f8f9fa" barStyle="dark-content" />
-        <Text className="text-2xl font-semibold p-4">Messages</Text>
-
-        {/* Debug Info */}
-        {/* <View className="px-4 py-1 bg-yellow-100">
-          <Text className="text-xs">User ID: {rawUser?.$id || "None"}</Text>
-          <Text className="text-xs">Is Agent: {isAgent ? "Yes" : "No"}</Text>
-          <Text className="text-xs">Agent ID: {agentUserId || "N/A"}</Text>
-          <Text className="text-xs">Rooms: {chatRooms.length}</Text>
-          <Text className="text-xs">
-            Profiles: {Object.keys(userProfiles).length}
-          </Text>
-        </View> */}
-
+    <View className="flex-1">
+      <CustomHeader title="Chats" handleSafeArea={true} />
+      <View className="flex-1 bg-white">
         {deleting && (
           <View className="absolute inset-0 bg-black bg-opacity-20 z-10 flex items-center justify-center">
             <ActivityIndicator size="large" color="#1ABC9C" />
@@ -476,7 +464,7 @@ const ChatListScreen = () => {
           />
         )}
       </View>
-    </SafeAreaView>
+    </View>
   );
 };
 

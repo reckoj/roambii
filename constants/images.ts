@@ -16,6 +16,8 @@ import blank from "@/assets/images/blank.png";
 import jamaica from "@/assets/images/jamaica.png";
 import fail from "@/assets/images/fail.png";
 import email from "@/assets/images/email.png";
+import chatbg from "@/assets/images/chat-bg.png";
+import chatbg2 from "@/assets/images/chat-bg-2.png";
 import pudgy from "@/assets/jif/pudgy.gif";
 
 export default {
@@ -38,4 +40,6 @@ export default {
   jamaica,
   fail,
   email,
+  chatbg,
+  chatbg2,
 };

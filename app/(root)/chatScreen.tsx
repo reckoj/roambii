@@ -1,4 +1,3 @@
-// ChatScreen.tsx - With improved bubbles and TypeScript fixes
 import React, { useEffect, useRef, useState } from "react";
 import {
   View,
@@ -14,6 +13,7 @@ import {
   Alert,
   StyleSheet,
   Animated,
+  ImageBackground,
 } from "react-native";
 import { StatusBar } from "react-native";
 import { router, useLocalSearchParams, useFocusEffect } from "expo-router";
@@ -387,7 +387,7 @@ const ChatScreen = () => {
       <StatusBar backgroundColor="#f8f9fa" barStyle="dark-content" />
 
       {/* Header */}
-      <View className="flex-row items-center p-4 border-b border-gray-200">
+      <View className="flex-row items-center p-4 border-b border-primary-300">
         <TouchableOpacity
           onPress={() => {
             if (previousScreen === "chatlist") {
@@ -426,39 +426,53 @@ const ChatScreen = () => {
         </Text>
       </View>
 
-      {/* Messages */}
-      <View className="flex-1 bg-gray-50">
-        {messages.length === 0 ? (
-          <View className="flex-1 items-center justify-center">
-            <Text className="text-gray-500">No messages yet</Text>
-            <Text className="text-gray-400 text-sm mt-2">
-              Start a conversation
-            </Text>
-          </View>
-        ) : (
-          <FlatList
-            ref={flatListRef}
-            data={messages}
-            keyExtractor={(item) =>
-              item.id || `${item.timestamp}-${item.sender_id}`
-            }
-            contentContainerStyle={{ padding: 16 }}
-            renderItem={({ item, index }) => {
-              // Determine if this message is from the same sender as the previous one
-              const isConsecutive =
-                index > 0 && messages[index - 1].sender_id === item.sender_id;
-              const isFromCurrentUser = item.sender_id === currentUserId;
+      {/* Messages with Background Image */}
+      <View style={styles.chatContainer}>
+        {/* Background Image with Opacity Overlay */}
+        <ImageBackground
+          source={images.chatbg2}
+          style={styles.backgroundImage}
+          resizeMode="repeat"
+          imageStyle={styles.backgroundImageStyle}
+        >
+          {/* Opacity Overlay */}
+          <View style={styles.overlayLight} />
 
-              return (
-                <ChatBubble
-                  message={item}
-                  isFromCurrentUser={isFromCurrentUser}
-                  isConsecutive={isConsecutive}
-                />
-              );
-            }}
-          />
-        )}
+          {/* Messages Content */}
+          {messages.length === 0 ? (
+            <View className="flex-1 items-center justify-center">
+              <View style={styles.emptyStateContainer}>
+                <Text className="text-gray-500">No messages yet</Text>
+                <Text className="text-gray-400 text-sm mt-2">
+                  Start a conversation
+                </Text>
+              </View>
+            </View>
+          ) : (
+            <FlatList
+              ref={flatListRef}
+              data={messages}
+              keyExtractor={(item) =>
+                item.id || `${item.timestamp}-${item.sender_id}`
+              }
+              contentContainerStyle={{ padding: 16 }}
+              renderItem={({ item, index }) => {
+                // Determine if this message is from the same sender as the previous one
+                const isConsecutive =
+                  index > 0 && messages[index - 1].sender_id === item.sender_id;
+                const isFromCurrentUser = item.sender_id === currentUserId;
+
+                return (
+                  <ChatBubble
+                    message={item}
+                    isFromCurrentUser={isFromCurrentUser}
+                    isConsecutive={isConsecutive}
+                  />
+                );
+              }}
+            />
+          )}
+        </ImageBackground>
       </View>
 
       {/* Input */}
@@ -491,6 +505,36 @@ const ChatScreen = () => {
 
 // Define styles for the component
 const styles = StyleSheet.create({
+  // Added background image style
+  chatContainer: {
+    flex: 1,
+    position: "relative",
+  },
+  // Background image styles
+  backgroundImage: {
+    flex: 1,
+    width: "100%",
+  },
+
+  // Style for the background image itself
+  backgroundImageStyle: {
+    opacity: 1, // Makes the image lighter (value between 0 and 1)
+  },
+
+  // Alternative: Overlay to lighten the background
+  overlayLight: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: "rgba(255, 255, 255, 0.85)", // White overlay with 85% opacity
+  },
+
+  // Added empty state container with semi-transparent background
+  emptyStateContainer: {
+    backgroundColor: "rgba(255, 255, 255, 0.8)",
+    padding: 20,
+    borderRadius: 10,
+    alignItems: "center",
+  },
+
   // Chat bubble styles
   bubbleBase: {
     maxWidth: "80%",

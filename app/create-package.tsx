@@ -36,6 +36,7 @@ import { handlePackageImagePicked } from "@/lib/storage";
 import FacilitySelection from "@/components/FacilitySelection";
 import FlightInformation from "./FlightInfo";
 import { ArrowLeft } from "lucide-react-native";
+import CustomHeader from "@/components/HeaderComponent";
 
 const CreatePackageScreen = () => {
   const { rawUser, isLogged, isAgent, refetch } = useGlobalContext();
@@ -230,19 +231,9 @@ const CreatePackageScreen = () => {
       behavior={Platform.OS === "ios" ? "padding" : "height"}
       className="flex-1"
     >
-      <SafeAreaView className="bg-primary-200">
-        <View className="flex flex-row items-center w-full justify-between">
-          <TouchableOpacity
-            onPress={() => router.back()}
-            className="flex flex-row rounded-full size-11 items-center justify-center"
-          >
-            <ArrowLeft color={"#fff"} />
-          </TouchableOpacity>
-          <Text className="text-2xl font-rubik-SemiBold text-white">
-            Create New Package Listing
-          </Text>
-          <View></View>
-        </View>
+      <View>
+        <CustomHeader title="New Package" />
+
         <ScrollView
           className="bg-white"
           contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 40 }}
@@ -386,7 +377,7 @@ const CreatePackageScreen = () => {
           <AuthButton title="Create Package" onPress={handleSubmit} />
           {/* </TouchableWithoutFeedback> */}
         </ScrollView>
-      </SafeAreaView>
+      </View>
     </KeyboardAvoidingView>
   );
 };

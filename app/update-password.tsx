@@ -41,7 +41,7 @@ const UpdatePassword = () => {
   };
 
   return (
-    <SafeAreaView>
+    <SafeAreaView className="bg-white flex-1">
       <View className="flex flex-row items-center p-2 justify-between">
         <TouchableOpacity
           onPress={() => router.back()}
@@ -66,7 +66,7 @@ const UpdatePassword = () => {
         <CustomInput
           value={newPassword}
           onChangeText={setNewPassword}
-          placeholder="Confirm new password"
+          placeholder="New password"
         />
 
         <Text className="mb-2">Confirm New Password</Text>

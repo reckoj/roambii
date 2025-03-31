@@ -3,7 +3,6 @@ import {
   View,
   Text,
   ScrollView,
-  SafeAreaView,
   TouchableOpacity,
   StyleSheet,
   Alert,
@@ -15,9 +14,9 @@ import TripCard from "@/components/TripCard";
 import TripDetailView from "@/components/TripDetailView";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { Swipeable } from "react-native-gesture-handler";
-import { LucideTrash, PlusCircleIcon, Trash2 } from "lucide-react-native";
+import { PlusCircleIcon, Trash2 } from "lucide-react-native";
 import { router } from "expo-router";
-import { Pencil, Trash } from "lucide-react-native";
+import { Pencil } from "lucide-react-native";
 import { deletePackage, getAgentPackages } from "@/lib/appwrite";
 import { useGlobalContext } from "@/lib/global-provider";
 import { agents } from "@/constants/data";
@@ -26,6 +25,7 @@ import Animated, {
   useAnimatedStyle,
   withSpring,
 } from "react-native-reanimated";
+import CustomHeader from "@/components/HeaderComponent";
 
 type FlightDetails = {
   from: string;
@@ -147,25 +147,22 @@ const Bookings = () => {
 
   return (
     <GestureHandlerRootView className="flex-1">
-      <SafeAreaView className="flex-1 bg-primary-200 ">
-        <View className="flex flex-row justify-between items-center px-2">
-          <Text className="text-2xl font-rubik-SemiBold text-white">
-            Active Packages
-          </Text>
-          {packages.length === 0 ? (
-            <View></View>
-          ) : (
-            <View>
-              <TouchableOpacity
-                className=" bg-primary-200 w-12 h-12 rounded-full justify-center items-center shadow-lg shadow-black/25 z-50"
-                onPress={() => router.push("/create-package")}
-                activeOpacity={0.8}
-              >
-                <PlusCircleIcon color="white" size={24} />
-              </TouchableOpacity>
-            </View>
-          )}
-        </View>
+      <View className="flex-1">
+        <CustomHeader
+          title="Active Packages"
+          showBackButton={false}
+          rightIcon={
+            packages.length > 0 ? (
+              <PlusCircleIcon color="white" size={34} />
+            ) : undefined
+          }
+          onRightIconPress={
+            packages.length > 0
+              ? () => router.push("/create-package")
+              : undefined
+          }
+        />
+
         <ScrollView
           className="flex-1 p-4 mb-14 bg-white"
           refreshControl={
@@ -180,19 +177,19 @@ const Bookings = () => {
           {packages.length === 0 ? (
             <View>
               <View className="flex items-center justify-center">
-                <Text className=" flex items-center text-lg text-gray-600 text-center">
+                <Text className="flex items-center text-lg text-gray-600 text-center">
                   No packages found.
                 </Text>
                 <Image source={images.blank} className="w-full h-96" />
 
                 <TouchableOpacity
-                  className="flex  bg-primary-200 w-14 h-14 rounded-full justify-center items-center shadow-lg shadow-black/25 z-50"
+                  className="flex bg-primary-200 w-14 h-14 rounded-full justify-center items-center shadow-lg shadow-black/25 z-50"
                   onPress={() => router.push("/create-package")}
                   activeOpacity={0.8}
                 >
                   <PlusCircleIcon color="white" size={24} />
                 </TouchableOpacity>
-                <Text className=" flex items-center text-lg text-text font-rubik-bold text-center">
+                <Text className="flex items-center text-lg text-text font-rubik-bold text-center">
                   Create a new package listing
                 </Text>
               </View>
@@ -244,7 +241,7 @@ const Bookings = () => {
             ))
           )}
         </ScrollView>
-      </SafeAreaView>
+      </View>
     </GestureHandlerRootView>
   );
 };

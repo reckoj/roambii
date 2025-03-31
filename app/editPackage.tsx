@@ -25,6 +25,7 @@ import { handlePackageImagePicked } from "@/lib/storage";
 import FacilitySelection from "@/components/FacilitySelection";
 import FlightInformation from "./FlightInfo";
 import { ArrowBigLeft, ArrowLeft } from "lucide-react-native";
+import CustomHeader from "@/components/HeaderComponent";
 
 const EditPackageScreen = () => {
   const { refetch } = useGlobalContext();
@@ -135,19 +136,8 @@ const EditPackageScreen = () => {
       behavior={Platform.OS === "ios" ? "padding" : "height"}
       className="flex-1"
     >
-      <SafeAreaView className=" bg-primary-200">
-        <View className="flex flex-row justify-between items-center ">
-          <TouchableOpacity
-            onPress={() => router.back()}
-            className="flex flex-row rounded-full size-11 items-center justify-center"
-          >
-            <ArrowLeft color={"#fff"} />
-          </TouchableOpacity>
-          <Text className="text-2xl font-rubik-SemiBold text-white">
-            Edit Package
-          </Text>
-          <View></View>
-        </View>
+      <View>
+        <CustomHeader title="Edit Package" />
         {!loading ? (
           <ScrollView
             className=" bg-white"
@@ -296,7 +286,7 @@ const EditPackageScreen = () => {
             <ActivityIndicator size="large" color="#1ABC9C" />
           </View>
         )}
-      </SafeAreaView>
+      </View>
     </KeyboardAvoidingView>
   );
 };
