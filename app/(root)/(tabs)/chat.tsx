@@ -10,6 +10,7 @@ import {
   RefreshControl,
   Alert,
   Pressable,
+  StyleSheet,
 } from "react-native";
 import { StatusBar } from "react-native";
 import { router, useFocusEffect } from "expo-router";
@@ -20,6 +21,7 @@ import { Query } from "react-native-appwrite";
 import { ref, onValue } from "firebase/database";
 import { firebaseDb } from "@/lib/firebase";
 import CustomHeader from "@/components/HeaderComponent";
+import images from "@/constants/images";
 
 const ChatListScreen = () => {
   const { rawUser } = useGlobalContext();
@@ -222,7 +224,7 @@ const ChatListScreen = () => {
         if (rooms.length > 0) {
           try {
             const partnerIds = rooms
-              .map((room) => getChatPartner(room.participants, userId))
+              .map((room) => getChatPartner(room.participants, userId || ""))
               .filter(Boolean);
 
             const profiles = await fetchAllPartnerProfiles(partnerIds);
@@ -380,15 +382,19 @@ const ChatListScreen = () => {
         )}
 
         {chatRooms.length === 0 ? (
-          <View className="flex-1 items-center justify-center">
-            <View className="w-60 h-60 mb-4 items-center justify-center bg-gray-100 rounded-full">
-              <Text className="text-6xl">💬</Text>
+          <View style={styles.emptyContainer}>
+            <View style={styles.imageContainer}>
+              <Image
+                source={images.nomessages}
+                style={styles.noMessagesImage}
+                resizeMode="contain"
+              />
             </View>
-            <Text className="text-lg font-semibold text-gray-500">
+            <Text className="text-lg font-semibold text-gray-500 mb-4">
               You have no messages
             </Text>
             <TouchableOpacity
-              className="mt-4 p-3 bg-blue-500 rounded-lg"
+              className="p-3 bg-primary-200 rounded-lg"
               onPress={onRefresh}
             >
               <Text className="text-white">Refresh</Text>
@@ -467,5 +473,23 @@ const ChatListScreen = () => {
     </View>
   );
 };
+
+const styles = StyleSheet.create({
+  emptyContainer: {
+    flex: 1,
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: 20,
+  },
+  imageContainer: {
+    alignItems: "center",
+    justifyContent: "center",
+    marginBottom: 16,
+  },
+  noMessagesImage: {
+    width: 200,
+    height: 150,
+  },
+});
 
 export default ChatListScreen;

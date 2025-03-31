@@ -231,7 +231,7 @@ const CreatePackageScreen = () => {
       behavior={Platform.OS === "ios" ? "padding" : "height"}
       className="flex-1"
     >
-      <View>
+      <View className="pb-24">
         <CustomHeader title="New Package" />
 
         <ScrollView

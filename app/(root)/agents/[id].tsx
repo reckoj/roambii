@@ -66,10 +66,7 @@ const AgentProfile = () => {
           const data = await getAgentById({ id: String(agentId) });
 
           if (data) {
-            setAgent({
-              ...data,
-              avatar: data.avatar && data.avatar.startsWith("https"),
-            });
+            setAgent(data);
           } else {
             console.warn("[No Agent Data Found]");
           }
@@ -103,12 +100,13 @@ const AgentProfile = () => {
     fetchPackages();
   }, [agentId]);
 
-  if (!agent)
+  if (loading || !agent) {
     return (
       <View className="w-full h-full flex justify-center items-center">
         <ActivityIndicator className="text-primary-300" size="large" />
       </View>
     );
+  }
 
   const handleContact = async () => {
     if (!agent || !rawUser) {
@@ -126,6 +124,7 @@ const AgentProfile = () => {
           user: rawUser.$id,
           agentId: agent.$id,
           avatar: agent.avatar,
+          from: "agentprofile",
         },
       });
     } catch (error) {
@@ -150,6 +149,25 @@ const AgentProfile = () => {
     );
   };
 
+  const getAvatarUri = () => {
+    if (!agent.avatar) {
+      return images.avatar;
+    }
+
+    // Check if the avatar is a valid URL
+    if (typeof agent.avatar === "string" && agent.avatar.startsWith("http")) {
+      return { uri: agent.avatar };
+    }
+
+    // Check if it's a numerical index for the images object
+    if (typeof agent.avatar === "number") {
+      return agent.avatar;
+    }
+
+    // Default fallback
+    return images.avatar;
+  };
+
   return (
     <>
       <SafeAreaView className="flex-1 bg-white">
@@ -165,8 +183,9 @@ const AgentProfile = () => {
           {/* Header Section */}
           <View className="items-center mt-6">
             <Image
-              source={{ uri: agent.avatar }}
+              source={getAvatarUri()}
               className="w-32 h-32 rounded-full border-4 border-white"
+              defaultSource={images.avatar}
             />
             <Text className="text-2xl font-bold mt-2">{agent.name}</Text>
             <Text className="text-lg text-gray-500">
@@ -216,9 +235,6 @@ const AgentProfile = () => {
             )}
           </View>
           <View className="px-2 mt-6">
-            {/* <Text className="text-lg font-rubik-bold text-text">
-              Client Reviews
-            </Text> */}
             <AgentReviews agentId={agentId} />
           </View>
         </ScrollView>
@@ -239,7 +255,6 @@ export default AgentProfile;
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    // backgroundColor: "#FFF",
   },
   header: {
     flexDirection: "row",
@@ -280,7 +295,6 @@ const styles = StyleSheet.create({
   },
   contactButton: {
     flexDirection: "row",
-
     marginHorizontal: 16,
     padding: 16,
     borderRadius: 8,
