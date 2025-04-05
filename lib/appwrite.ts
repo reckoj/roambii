@@ -442,20 +442,25 @@ export async function getAllPackages({
 }) {
   try {
     const buildQuery = [Query.orderDesc("$createdAt")];
-    if (offset) buildQuery.push(Query.offset(offset)); // ✅ Handle pagination
 
+    // Handle pagination
+    if (offset) buildQuery.push(Query.offset(offset));
+
+    // Filter by type if provided
     if (filter && filter !== "All")
       buildQuery.push(Query.equal("type", filter));
 
+    // Search functionality - removed 'address' which doesn't exist in schema
     if (query)
       buildQuery.push(
         Query.or([
           Query.search("name", query),
-          Query.search("address", query),
           Query.search("type", query),
+          Query.search("agent", query), // Added search for agent name
         ])
       );
 
+    // Handle limit
     if (limit) buildQuery.push(Query.limit(limit));
 
     const result = await databases.listDocuments(
@@ -464,7 +469,7 @@ export async function getAllPackages({
       buildQuery
     );
 
-    // ✅ Fetch images for each package
+    // Fetch images for each package
     const packagesWithImages = await Promise.all(
       result.documents.map(async (pkg) => ({
         ...pkg,

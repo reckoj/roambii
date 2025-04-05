@@ -18,6 +18,8 @@ import fail from "@/assets/images/fail.png";
 import email from "@/assets/images/email.png";
 import chatbg from "@/assets/images/chat-bg.png";
 import chatbg2 from "@/assets/images/chat-bg-2.png";
+import homeImage from "@/assets/images/home-image.png";
+import homeImage2 from "@/assets/images/home-image2.png";
 import pudgy from "@/assets/jif/pudgy.gif";
 
 export default {
@@ -42,4 +44,6 @@ export default {
   email,
   chatbg,
   chatbg2,
+  homeImage,
+  homeImage2,
 };

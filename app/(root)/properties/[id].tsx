@@ -23,6 +23,7 @@ import FlightInfo from "@/components/FlightInfo";
 import { useEffect, useState } from "react";
 import { ArrowLeft } from "lucide-react-native";
 import { useGlobalContext } from "@/lib/global-provider";
+import CustomHeader from "@/components/HeaderComponent";
 
 interface AgentProps {
   id: string; // Agent ID
@@ -101,14 +102,15 @@ const Property = () => {
   };
 
   return (
-    <SafeAreaView className="flex-1 bg-transparent">
+    <View className="flex-1 bg-transparent">
+      <CustomHeader title="" />
       <View className="flex flex-row items-center w-full justify-between">
-        <TouchableOpacity
+        {/* <TouchableOpacity
           onPress={() => router.back()}
           className=" bg-transparent size-11 items-center justify-center"
         >
           <ArrowLeft color={"#000"} />
-        </TouchableOpacity>
+        </TouchableOpacity> */}
 
         {/* <View className="flex flex-row items-center gap-3">
                 <Image
@@ -372,7 +374,7 @@ const Property = () => {
           </TouchableOpacity>
         </View>
       </View>
-    </SafeAreaView>
+    </View>
   );
 };
 
