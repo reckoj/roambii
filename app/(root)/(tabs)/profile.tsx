@@ -21,7 +21,7 @@ import {
 import * as ImagePicker from "expo-image-picker";
 import { useGlobalContext } from "@/lib/global-provider";
 import images from "@/constants/images";
-import { Bell, LucideShare2, User2 } from "lucide-react-native";
+import { Bell, Calendar, LucideShare2, User2 } from "lucide-react-native";
 import icons from "@/constants/icons";
 import { InviteFriends } from "@/lib/invite-friends";
 import { router } from "expo-router";
@@ -201,10 +201,17 @@ const Profile: React.FC = () => {
           </View>
         )}
 
-        <View className="flex flex-col mt-10">
-          <SettingsItem icon={icons.calendar} title="Bookings" />
-        </View>
-
+        {!isAgent && ( //
+          <View className="flex flex-col mt-10">
+            <View className="flex flex-col mt-5 border-t pt-5 border-primary-200">
+              <SettingsItem
+                icon={Calendar}
+                title="My Bookings"
+                onPress={() => router.push("/userBookings")}
+              />
+            </View>
+          </View>
+        )}
         <View className="flex flex-col mt-5 border-t pt-5 border-primary-200">
           <SettingsItem
             icon={LucideShare2}

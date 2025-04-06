@@ -21,7 +21,7 @@ import { useAppwrite } from "@/lib/useAppwrite";
 import { getAgentById, getCurrentUser, getPropertyById } from "@/lib/appwrite";
 import FlightInfo from "@/components/FlightInfo";
 import { useEffect, useState } from "react";
-import { ArrowLeft } from "lucide-react-native";
+import { ArrowLeft, MessageCircle } from "lucide-react-native";
 import { useGlobalContext } from "@/lib/global-provider";
 import CustomHeader from "@/components/HeaderComponent";
 
@@ -204,7 +204,7 @@ const Property = () => {
           </View>
           <View className="mt-7">
             <Text className="text-black-300 text-xl font-rubik-bold">
-              Facilities
+              Amenities
             </Text>
 
             {property?.facilities.length > 0 && (
@@ -279,10 +279,13 @@ const Property = () => {
                 </View>
               </View>
 
-              <View className="flex flex-row items-center gap-3">
-                {/* <Image source={icons.chat} className="size-7" /> */}
+              <TouchableOpacity
+                onPress={handleContact}
+                className="flex flex-row items-center gap-3"
+              >
+                <MessageCircle color={"#1ABC9C"} />
                 {/* <Image source={icons.phone} className="size-7" /> */}
-              </View>
+              </TouchableOpacity>
             </View>
           </View>
           <View className="mt-7">
@@ -349,6 +352,48 @@ const Property = () => {
           )}
         </View>
       </ScrollView>
+      {/* <View className="absolute bg-white bottom-0 w-full rounded-t-2xl border-t border-r border-l border-accent-200 p-7">
+        <View className="flex flex-row items-center justify-between gap-6">
+          <View className="flex flex-col items-start">
+            <Text className="text-black-200 text-xs font-rubik-medium">
+              Price
+            </Text>
+            <Text
+              numberOfLines={1}
+              className="text-primary-300 text-start text-2xl font-rubik-bold"
+            >
+              ${property?.price}
+            </Text>
+          </View>
+
+          <View className="flex flex-row flex-1 gap-2">
+            <TouchableOpacity
+              onPress={() =>
+                router.push({
+                  pathname: "/bookingScreen",
+                  params: {
+                    id: property?.$id,
+                  },
+                })
+              }
+              className="flex-1 bg-primary-300 py-3 rounded-full shadow-md shadow-zinc-400 items-center justify-center"
+            >
+              <Text className="text-white text-base text-center font-rubik-bold">
+                Book Now
+              </Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              onPress={handleContact}
+              className="flex-1 bg-white border border-primary-300 py-3 rounded-full shadow-md shadow-zinc-400 items-center justify-center"
+            >
+              <Text className="text-primary-300 text-base text-center font-rubik-bold">
+                Chat with Me
+              </Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </View> */}
 
       <View className="absolute bg-white bottom-0 w-full rounded-t-2xl border-t border-r border-l border-accent-200 p-7">
         <View className="flex flex-row items-center justify-between gap-10">
@@ -365,11 +410,18 @@ const Property = () => {
           </View>
 
           <TouchableOpacity
-            onPress={handleContact}
+            onPress={() =>
+              router.push({
+                pathname: "/bookingScreen",
+                params: {
+                  id: property?.$id,
+                },
+              })
+            }
             className="flex-1 flex flex-row items-center justify-center bg-primary-300 py-3 rounded-full shadow-md shadow-zinc-400"
           >
             <Text className="text-white text-lg text-center font-rubik-bold">
-              Chat with me
+              Book Now
             </Text>
           </TouchableOpacity>
         </View>

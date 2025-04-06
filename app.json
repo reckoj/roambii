@@ -66,6 +66,13 @@
             "./assets/fonts/Rubik-Light.ttf"
           ]
         }
+      ],
+      [
+        "@stripe/stripe-react-native",
+        {
+          "merchantIdentifier": "your_merchant_identifier",
+          "enableGooglePay": true
+        }
       ]
     ],
 

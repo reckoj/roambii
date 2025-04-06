@@ -125,7 +125,7 @@ const Register = () => {
                   onChangeText={setName}
                   keyboardType="default"
                   autoCapitalize="words" // Changed to capitalize words
-                  placeholder="Enter your full name (first and last)"
+                  // placeholder="Enter your full name (first and last)"
                 />
 
                 <Text className="text-text font-rubik-medium">Email</Text>
@@ -135,7 +135,7 @@ const Register = () => {
                   onChangeText={setEmail}
                   keyboardType="email-address"
                   autoCapitalize="none"
-                  placeholder="Enter your email address"
+                  // placeholder="Enter your email address"
                 />
 
                 <View className="relative mb-4">
@@ -145,7 +145,7 @@ const Register = () => {
                     value={password}
                     onChangeText={setPassword}
                     secureTextEntry={!showPassword}
-                    placeholder="8-20 characters required"
+                    // placeholder="8-20 characters required"
                   />
                   <TouchableOpacity
                     className="absolute right-4 top-8"
@@ -168,7 +168,7 @@ const Register = () => {
                     value={confirmPassword}
                     onChangeText={setConfirmPassword}
                     secureTextEntry={!showCPassword}
-                    placeholder="Re-enter your password"
+                    // placeholder="Re-enter your password"
                   />
                   <TouchableOpacity
                     className="absolute right-4 top-8"
@@ -187,9 +187,22 @@ const Register = () => {
                     {!isAgent ? (
                       "Register as an agent"
                     ) : (
-                      <Text className="text-danger">
-                        You will be required to verify your agent status
-                      </Text>
+                      <View className="w-full">
+                        <Text className="text-text font-rubik-medium">
+                          License Number
+                        </Text>
+                        <TextInput
+                          className="h-12 px-4 mb-4 border border-gray-300 rounded-md"
+                          value={name}
+                          onChangeText={setName}
+                          keyboardType="default"
+                          autoCapitalize="words" // Changed to capitalize words
+                          // placeholder="Enter your full name (first and last)"
+                        />
+                        <Text className="text-danger">
+                          You will be required to verify your agent status
+                        </Text>
+                      </View>
                     )}{" "}
                   </Text>
                   <Switch
@@ -204,6 +217,7 @@ const Register = () => {
               {isAgent && (
                 <View style={styles.container}>
                   <Text style={styles.title}>Select Your Travel Niche</Text>
+
                   <Text style={styles.subtitle}>
                     Choose the travel category you specialize in
                   </Text>

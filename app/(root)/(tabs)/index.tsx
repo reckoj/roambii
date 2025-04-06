@@ -8,6 +8,7 @@ import {
   RefreshControl,
   ImageBackground,
   StyleSheet,
+  Button,
 } from "react-native";
 import { useEffect, useState, useCallback } from "react";
 import { router, useLocalSearchParams } from "expo-router";
@@ -22,7 +23,7 @@ import { featuredPackages, getAllPackages } from "@/lib/appwrite";
 import RecommendedAgents from "@/components/RecommendedAgents";
 import Bookings from "@/app/bookings";
 import Search from "@/components/Search";
-import { SearchIcon } from "lucide-react-native";
+import { Calendar, ChevronRight, SearchIcon } from "lucide-react-native";
 
 const getGreeting = () => {
   const currentHour = new Date().getHours();
@@ -106,11 +107,11 @@ const Home = () => {
       {!isAgent ? (
         <ImageBackground
           source={images.homeImage2}
-          resizeMode="repeat"
+          resizeMode="cover"
           style={styles.backgroundImage}
           imageStyle={styles.backgroundImageStyle}
         >
-          <SafeAreaView className="flex-1">
+          <SafeAreaView className="flex-1 bg-white/20">
             <StatusBar
               backgroundColor="transparent"
               translucent
@@ -161,6 +162,27 @@ const Home = () => {
 
                       <Search />
                     </View>
+                    {/* <View className="mx-5 mt-4 bg-white rounded-lg shadow-sm shadow-black/5 overflow-hidden">
+                      <TouchableOpacity
+                        onPress={() => router.push("/userBookings")}
+                        className="flex-row items-center justify-between p-4 border-b border-gray-100"
+                      >
+                        <View className="flex-row items-center">
+                          <View className="bg-primary-100 w-10 h-10 rounded-full items-center justify-center mr-3">
+                            <Calendar size={20} color="#1ABC9C" />
+                          </View>
+                          <View>
+                            <Text className="text-base font-semibold text-gray-800">
+                              My Bookings
+                            </Text>
+                            <Text className="text-sm text-gray-500">
+                              View your trips and reservations
+                            </Text>
+                          </View>
+                        </View>
+                        <ChevronRight size={20} color="#95A5A6" />
+                      </TouchableOpacity>
+                    </View> */}
 
                     {/* ✅ Featured Packages */}
                     <View className="my-5">
@@ -242,12 +264,12 @@ const styles = StyleSheet.create({
 
   // Style for the background image itself
   backgroundImageStyle: {
-    opacity: 0.6, // Makes the image lighter (value between 0 and 1)
+    opacity: 0.1, // Makes the image lighter (value between 0 and 1)
   },
 
   // Alternative: Overlay to lighten the background
   overlayLight: {
     ...StyleSheet.absoluteFillObject,
-    backgroundColor: "rgba(255, 255, 255, 0.89)", // White overlay with 85% opacity
+    backgroundColor: "rgba(255, 255, 255, 0.1)", // White overlay with 85% opacity
   },
 });

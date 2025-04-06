@@ -42,7 +42,7 @@ const Featured: React.FC = () => {
   return (
     <View className="flex-1">
       {/* Custom Header Component - handling safe area automatically */}
-      <CustomHeader title="Featured Properties" handleSafeArea={true} />
+      <CustomHeader title="Featured Packages" handleSafeArea={true} />
 
       {/* Main content with white background */}
       <View className="flex-1 bg-white">
