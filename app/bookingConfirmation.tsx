@@ -1,3 +1,38 @@
+// Add this helper function at the top of your file
+const formatDateTime = (
+  dateTimeString: string | number | Date,
+  isTime = false
+) => {
+  if (!dateTimeString) return isTime ? "Not specified" : "Not specified";
+
+  try {
+    const date = new Date(dateTimeString);
+
+    if (isNaN(date.getTime())) {
+      return isTime ? "Not specified" : "Not specified";
+    }
+
+    if (isTime) {
+      // Format just the time
+      return date.toLocaleTimeString([], {
+        hour: "numeric",
+        minute: "2-digit",
+        hour12: true,
+      });
+    } else {
+      // Format just the date
+      return date.toLocaleDateString([], {
+        month: "short",
+        day: "numeric",
+        year: "numeric",
+      });
+    }
+  } catch (error) {
+    console.error("Error formatting date/time:", error);
+    return isTime ? "Not specified" : "Not specified";
+  }
+};
+
 import React, { useEffect, useState } from "react";
 import {
   View,
@@ -53,7 +88,7 @@ const BookingConfirmationScreen = () => {
   };
 
   const handleBackToHome = () => {
-    router.push("/");
+    router.replace("/");
   };
 
   if (loading) {
@@ -115,16 +150,16 @@ const BookingConfirmationScreen = () => {
                   <View style={styles.infoRow}>
                     <Calendar size={16} color="#95A5A6" />
                     <Text style={styles.infoText}>
-                      {new Date().toLocaleDateString()} -{" "}
-                      {new Date(
-                        Date.now() + 7 * 24 * 60 * 60 * 1000
-                      ).toLocaleDateString()}
+                      {formatDateTime(packageData?.checkInDate)}{" "}
+                      {formatDateTime(packageData?.checkOutDate)}
                     </Text>
                   </View>
 
                   <View style={styles.infoRow}>
                     <Users size={16} color="#95A5A6" />
-                    <Text style={styles.infoText}>2 Guests</Text>
+                    <Text style={styles.infoText}>
+                      {packageData.guessCount}
+                    </Text>
                   </View>
                 </View>
               </View>
@@ -157,18 +192,18 @@ const BookingConfirmationScreen = () => {
         </View>
 
         <View style={styles.buttonsContainer}>
-          <TouchableOpacity
+          {/* <TouchableOpacity
             style={[styles.button, styles.primaryButton]}
             onPress={handleViewBookings}
           >
             <Text style={styles.primaryButtonText}>View My Bookings</Text>
-          </TouchableOpacity>
+          </TouchableOpacity> */}
 
           <TouchableOpacity
-            style={[styles.button, styles.secondaryButton]}
+            style={[styles.button, styles.primaryButton]}
             onPress={handleBackToHome}
           >
-            <Text style={styles.secondaryButtonText}>Back to Home</Text>
+            <Text style={styles.primaryButtonText}>Back to Home</Text>
           </TouchableOpacity>
         </View>
       </ScrollView>

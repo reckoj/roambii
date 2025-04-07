@@ -1,3 +1,38 @@
+// Add this helper function at the top of your file
+const formatDateTime = (
+  dateTimeString: string | number | Date,
+  isTime = false
+) => {
+  if (!dateTimeString) return isTime ? "Not specified" : "Not specified";
+
+  try {
+    const date = new Date(dateTimeString);
+
+    if (isNaN(date.getTime())) {
+      return isTime ? "Not specified" : "Not specified";
+    }
+
+    if (isTime) {
+      // Format just the time
+      return date.toLocaleTimeString([], {
+        hour: "numeric",
+        minute: "2-digit",
+        hour12: true,
+      });
+    } else {
+      // Format just the date
+      return date.toLocaleDateString([], {
+        month: "short",
+        day: "numeric",
+        year: "numeric",
+      });
+    }
+  } catch (error) {
+    console.error("Error formatting date/time:", error);
+    return isTime ? "Not specified" : "Not specified";
+  }
+};
+
 import React, { useEffect, useState } from "react";
 import {
   View,
@@ -67,9 +102,9 @@ const BookingScreen = () => {
 
   const handlePaymentSuccess = () => {
     // Navigate to booking confirmation screen or show success message
-    router.push({
+    router.replace({
       pathname: "/bookingConfirmation",
-      params: { id },
+      params: { id, reset: "true" },
     });
   };
 
@@ -108,20 +143,20 @@ const BookingScreen = () => {
           <View style={styles.detailRow}>
             <Text style={styles.detailLabel}>Check-in</Text>
             <Text style={styles.detailValue}>
-              {new Date(bookingStartDate).toLocaleDateString()}
+              {formatDateTime(packageData.checkInDate)}
             </Text>
           </View>
 
           <View style={styles.detailRow}>
             <Text style={styles.detailLabel}>Check-out</Text>
             <Text style={styles.detailValue}>
-              {new Date(bookingEndDate).toLocaleDateString()}
+              {formatDateTime(packageData.checkOutDate)}
             </Text>
           </View>
 
           <View style={styles.detailRow}>
             <Text style={styles.detailLabel}>Guests</Text>
-            <Text style={styles.detailValue}>{guestCount}</Text>
+            <Text style={styles.detailValue}>{packageData.guessCount}</Text>
           </View>
 
           <View style={styles.divider} />

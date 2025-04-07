@@ -22,16 +22,23 @@ import AuthButton from "@/components/AuthButton";
 import CustomInput from "@/components/CustomInput";
 import { useGlobalContext } from "@/lib/global-provider";
 import { handlePackageImagePicked } from "@/lib/storage";
-import FacilitySelection from "@/components/FacilitySelection";
+
 import FlightInformation from "./FlightInfo";
 import { ArrowBigLeft, ArrowLeft } from "lucide-react-native";
 import CustomHeader from "@/components/HeaderComponent";
+import DateTimePicker from "@react-native-community/datetimepicker";
+import AmenitySelection from "@/components/AmenitySelection";
 
 const EditPackageScreen = () => {
   const { refetch } = useGlobalContext();
   const { id } = useLocalSearchParams<{ id: string }>();
   const [formData, setFormData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
+  // Date picker states
+  const [showCheckInDate, setShowCheckInDate] = useState(false);
+  const [showCheckOutDate, setShowCheckOutDate] = useState(false);
+  const [showCheckInTime, setShowCheckInTime] = useState(false);
+  const [showCheckOutTime, setShowCheckOutTime] = useState(false);
 
   useEffect(() => {
     const fetchPackage = async () => {
@@ -72,6 +79,20 @@ const EditPackageScreen = () => {
     } catch (error) {
       Alert.alert("Error", "Failed to pick image");
     }
+  };
+
+  // Format date for display
+  const formatDate = (dateString: string | number | Date) => {
+    if (!dateString) return "";
+    const date = new Date(dateString);
+    return date.toLocaleDateString();
+  };
+
+  // Format time for display
+  const formatTime = (timeString: string | number | Date) => {
+    if (!timeString) return "";
+    const time = new Date(timeString);
+    return time.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
   };
 
   const handleUpdate = async () => {
@@ -226,6 +247,116 @@ const EditPackageScreen = () => {
               </View>
             </View>
 
+            {/* Check-in Date */}
+            <View style={styles.row}>
+              <View style={styles.column}>
+                <Text style={styles.label}>Check-in Date</Text>
+                <TouchableOpacity
+                  style={styles.dateTimeButton}
+                  onPress={() => setShowCheckInDate(true)}
+                >
+                  <Text style={styles.dateTimeText}>
+                    {formatDate(formData.checkInDate)}
+                  </Text>
+                </TouchableOpacity>
+                {showCheckInDate && (
+                  <DateTimePicker
+                    value={new Date(formData.checkInDate)}
+                    mode="date"
+                    display="default"
+                    onChange={(event, selectedDate) => {
+                      setShowCheckInDate(Platform.OS === "ios");
+                      if (selectedDate) {
+                        handleChange("checkInDate", selectedDate.toISOString());
+                      }
+                    }}
+                  />
+                )}
+              </View>
+              <View style={styles.column}>
+                <Text style={styles.label}>Check-out Date</Text>
+                <TouchableOpacity
+                  style={styles.dateTimeButton}
+                  onPress={() => setShowCheckOutDate(true)}
+                >
+                  <Text style={styles.dateTimeText}>
+                    {formatDate(formData.checkOutDate)}
+                  </Text>
+                </TouchableOpacity>
+                {showCheckOutDate && (
+                  <DateTimePicker
+                    value={new Date(formData.checkOutDate)}
+                    mode="date"
+                    display="default"
+                    onChange={(event, selectedDate) => {
+                      setShowCheckOutDate(Platform.OS === "ios");
+                      if (selectedDate) {
+                        handleChange(
+                          "checkOutDate",
+                          selectedDate.toISOString()
+                        );
+                      }
+                    }}
+                  />
+                )}
+              </View>
+            </View>
+
+            <View style={styles.row}>
+              <View style={styles.column}>
+                <Text style={styles.label}>Check-in Time</Text>
+                <TouchableOpacity
+                  style={styles.dateTimeButton}
+                  onPress={() => setShowCheckInTime(true)}
+                >
+                  <Text style={styles.dateTimeText}>
+                    {formatTime(formData.checkInTime)}
+                  </Text>
+                </TouchableOpacity>
+                {showCheckInTime && (
+                  <DateTimePicker
+                    value={new Date(formData.checkInTime)}
+                    mode="time"
+                    display="default"
+                    onChange={(event, selectedTime) => {
+                      setShowCheckInTime(Platform.OS === "ios");
+                      if (selectedTime) {
+                        handleChange("checkInTime", selectedTime.toISOString());
+                      }
+                    }}
+                  />
+                )}
+              </View>
+
+              <View style={styles.column}>
+                <Text style={styles.label}>Check-out Time</Text>
+                <TouchableOpacity
+                  style={styles.dateTimeButton}
+                  onPress={() => setShowCheckOutTime(true)}
+                >
+                  <Text style={styles.dateTimeText}>
+                    {formatTime(formData.checkOutTime)}
+                  </Text>
+                </TouchableOpacity>
+                {showCheckOutTime && (
+                  <DateTimePicker
+                    value={new Date(formData.checkOutTime)}
+                    mode="time"
+                    display="default"
+                    onChange={(event, selectedTime) => {
+                      setShowCheckOutTime(Platform.OS === "ios");
+                      if (selectedTime) {
+                        handleChange(
+                          "checkOutTime",
+                          selectedTime.toISOString()
+                        );
+                      }
+                    }}
+                  />
+                )}
+              </View>
+            </View>
+
             {/* Description */}
             <Text style={styles.label}>Package Description</Text>
             <CustomInput
@@ -234,11 +365,8 @@ const EditPackageScreen = () => {
               onChangeText={(text) => handleChange("description", text)}
             />
 
-            {/* Facility Selection */}
-            <FacilitySelection
-              formData={formData}
-              handleChange={handleChange}
-            />
+            {/* Amentity Selection */}
+            <AmenitySelection formData={formData} handleChange={handleChange} />
 
             {/* Room Type */}
             <Text className="mt-5" style={styles.label}>
@@ -384,6 +512,18 @@ const styles = StyleSheet.create({
   dateButtonText: {
     fontSize: 16,
     color: "#333",
+  },
+  dateTimeButton: {
+    borderWidth: 1,
+    borderColor: "#D1D5DB",
+    borderRadius: 8,
+    padding: 12,
+    backgroundColor: "#FFF",
+    marginBottom: 16,
+  },
+  dateTimeText: {
+    fontSize: 16,
+    color: "#34495E",
   },
   submitButton: {
     backgroundColor: "#1ABC9C",

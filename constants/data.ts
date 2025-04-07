@@ -149,13 +149,22 @@ export const settings = [
   },
 ];
 
-export const facilities = [
+export const amenities = [
   {
     title: "Laundry",
     icon: icons.laundry,
   },
+  { title: "Spa", icon: icons.spa },
+  {
+    title: "Restaurant",
+    icon: icons.restaurant,
+  },
+
+  { title: "Conference Room", icon: icons.conference },
+  { title: "Beach", icon: icons.beach },
   {
     title: "Wet Bar",
+    icon: icons.bar,
   },
   {
     title: "Car Parking",

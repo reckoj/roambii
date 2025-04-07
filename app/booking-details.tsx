@@ -1,3 +1,38 @@
+// Add this helper function at the top of your file
+const formatDateTime = (
+  dateTimeString: string | number | Date,
+  isTime = false
+) => {
+  if (!dateTimeString) return isTime ? "Not specified" : "Not specified";
+
+  try {
+    const date = new Date(dateTimeString);
+
+    if (isNaN(date.getTime())) {
+      return isTime ? "Not specified" : "Not specified";
+    }
+
+    if (isTime) {
+      // Format just the time
+      return date.toLocaleTimeString([], {
+        hour: "numeric",
+        minute: "2-digit",
+        hour12: true,
+      });
+    } else {
+      // Format just the date
+      return date.toLocaleDateString([], {
+        month: "short",
+        day: "numeric",
+        year: "numeric",
+      });
+    }
+  } catch (error) {
+    console.error("Error formatting date/time:", error);
+    return isTime ? "Not specified" : "Not specified";
+  }
+};
+
 import React, { useEffect, useState } from "react";
 import {
   View,
@@ -114,8 +149,8 @@ const BookingDetailsScreen = () => {
           status: bookingData.status || "completed",
           bookingReference: bookingData.bookingReference || "",
           bookingDate: bookingData.bookingDate || new Date().toISOString(),
-          checkInDate: bookingData.checkInDate || new Date().toISOString(),
-          checkOutDate: bookingData.checkOutDate || new Date().toISOString(),
+          checkInDate: bookingData.checkInDate,
+          checkOutDate: bookingData.checkOutDate,
           guestCount: bookingData.guestCount || 1,
           transactionId: bookingData.transactionId || "",
           paymentMethod: bookingData.paymentMethod || "card",
@@ -152,11 +187,9 @@ const BookingDetailsScreen = () => {
           booking.packageDetails?.name || "Roambii"
         }\n\nBooking Reference: ${
           booking.bookingReference
-        }\nCheck-in: ${new Date(
+        }\nCheck-in: ${formatDateTime(
           booking.checkInDate
-        ).toLocaleDateString()}\nCheck-out: ${new Date(
-          booking.checkOutDate
-        ).toLocaleDateString()}`,
+        )}\nCheck-out: ${formatDateTime(booking.checkOutDate)}`,
         title: "My Travel Booking",
       });
     } catch (error) {
@@ -197,20 +230,6 @@ const BookingDetailsScreen = () => {
       </SafeAreaView>
     );
   }
-
-  const formatDate = (dateString: string) => {
-    try {
-      const date = new Date(dateString);
-      return date.toLocaleDateString(undefined, {
-        weekday: "long",
-        year: "numeric",
-        month: "long",
-        day: "numeric",
-      });
-    } catch (e) {
-      return dateString;
-    }
-  };
 
   if (loading) {
     return (
@@ -315,7 +334,7 @@ const BookingDetailsScreen = () => {
           <View style={styles.bookingDateRow}>
             <Clock size={16} color="#7F8C8D" />
             <Text style={styles.bookingDateText}>
-              Booked on {formatDate(booking.bookingDate)}
+              Booked on {formatDateTime(booking.bookingDate)}
             </Text>
           </View>
         </View>
@@ -331,7 +350,7 @@ const BookingDetailsScreen = () => {
             <View style={styles.detailContent}>
               <Text style={styles.detailLabel}>Check-in</Text>
               <Text style={styles.detailValue}>
-                {formatDate(booking.checkInDate)}
+                {formatDateTime(booking.checkInDate)}
               </Text>
             </View>
           </View>
@@ -343,7 +362,7 @@ const BookingDetailsScreen = () => {
             <View style={styles.detailContent}>
               <Text style={styles.detailLabel}>Check-out</Text>
               <Text style={styles.detailValue}>
-                {formatDate(booking.checkOutDate)}
+                {formatDateTime(booking.checkOutDate)}
               </Text>
             </View>
           </View>

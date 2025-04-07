@@ -28,7 +28,13 @@ import dog from "@/assets/icons/dog.png";
 import dumbell from "@/assets/icons/dumbell.png";
 import laundry from "@/assets/icons/laundry.png";
 import run from "@/assets/icons/run.png";
+import bar from "@/assets/icons/bar.png";
+import spa from "@/assets/icons/spa.png";
 import swim from "@/assets/icons/swim.png";
+import conference from "@/assets/icons/conference.png";
+import restaurant from "@/assets/icons/restaurant.png";
+import beach from "@/assets/icons/beach.png";
+
 import wifi from "@/assets/icons/wifi.png";
 import location from "@/assets/icons/location.png";
 import edit from "@/assets/icons/edit.png";
@@ -40,6 +46,7 @@ export default {
   home,
   search,
   person,
+  beach,
   bell,
   filter,
   star,
@@ -49,6 +56,8 @@ export default {
   info,
   language,
   logout,
+  conference,
+  restaurant,
   people,
   shield,
   wallet,
@@ -65,6 +74,8 @@ export default {
   dumbell,
   laundry,
   run,
+  spa,
+  bar,
   swim,
   wifi,
   location,

@@ -1,12 +1,12 @@
 import { useState } from "react";
 import { View, Text, TouchableOpacity, StyleSheet } from "react-native";
 
-interface FacilitySelectionProps {
-  formData: { facilities: string[] }; // Explicitly typing formData
-  handleChange: (key: string, value: string[]) => void; // Ensuring handleChange updates facilities
+interface AmenitiesSelectionProps {
+  formData: { amenities: string[] }; // Explicitly typing formData
+  handleChange: (key: string, value: string[]) => void; // Ensuring handleChange updates amenities
 }
 
-const FACILITIES_OPTIONS = [
+const AMENITIES_OPTIONS = [
   "Wifi",
   "Parking",
   "Gym",
@@ -15,53 +15,53 @@ const FACILITIES_OPTIONS = [
   "Bar",
   "Laundry",
   "Conference Room",
+  "Beach",
+  "Pool",
 ];
 
-const FacilitySelection: React.FC<FacilitySelectionProps> = ({
+const AmenitySelection: React.FC<AmenitiesSelectionProps> = ({
   formData,
   handleChange,
 }) => {
-  // ✅ Ensure selected facilities come from Appwrite ENUM
-  const [selectedFacilities, setSelectedFacilities] = useState<string[]>(
-    formData.facilities || []
+  // ✅ Ensure selected amenities come from Appwrite ENUM
+  const [selectedamenities, setSelectedamenities] = useState<string[]>(
+    formData.amenities || []
   );
 
-  const toggleFacility = (facility: string) => {
-    let updatedFacilities;
+  const toggleAmenity = (amenity: string) => {
+    let updatedamenities;
 
-    if (selectedFacilities.includes(facility)) {
-      updatedFacilities = selectedFacilities.filter(
-        (item) => item !== facility
-      );
+    if (selectedamenities.includes(amenity)) {
+      updatedamenities = selectedamenities.filter((item) => item !== amenity);
     } else {
-      updatedFacilities = [...selectedFacilities, facility];
+      updatedamenities = [...selectedamenities, amenity];
     }
 
     // ✅ Ensure Appwrite gets only valid ENUM values
-    const validFacilities = updatedFacilities.filter((f) =>
-      FACILITIES_OPTIONS.includes(f)
+    const validamenities = updatedamenities.filter((f) =>
+      AMENITIES_OPTIONS.includes(f)
     );
 
-    setSelectedFacilities(validFacilities);
-    handleChange("facilities", validFacilities); // ✅ Only pass valid ENUM values
+    setSelectedamenities(validamenities);
+    handleChange("amenities", validamenities); // ✅ Only pass valid ENUM values
   };
 
   return (
     <View style={styles.container}>
-      <Text className="text-lg font-semibold mb-2">Facilities</Text>
+      <Text className="text-lg font-semibold mb-2">amenities</Text>
       <Text style={styles.subtitle}>Select all that apply</Text>
 
       <View style={styles.pillsContainer}>
-        {FACILITIES_OPTIONS.map((facility) => (
+        {AMENITIES_OPTIONS.map((amenity) => (
           <TouchableOpacity
-            key={facility}
-            onPress={() => toggleFacility(facility)}
+            key={amenity}
+            onPress={() => toggleAmenity(amenity)}
             style={[
               styles.pill,
-              selectedFacilities.includes(facility) && styles.selectedPill,
+              selectedamenities.includes(amenity) && styles.selectedPill,
             ]}
             // className={`px-4 py-2 rounded-full border ${
-            //   selectedFacilities.includes(facility)
+            //   selectedamenities.includes(amenity)
             //     ? "bg-primary-300 border-primary-500"
             //     : "bg-gray-200 border-gray-400"
             // }`}
@@ -69,11 +69,10 @@ const FacilitySelection: React.FC<FacilitySelectionProps> = ({
             <Text
               style={[
                 styles.pillText,
-                selectedFacilities.includes(facility) &&
-                  styles.selectedPillText,
+                selectedamenities.includes(amenity) && styles.selectedPillText,
               ]}
             >
-              {facility}
+              {amenity}
             </Text>
           </TouchableOpacity>
         ))}
@@ -82,7 +81,7 @@ const FacilitySelection: React.FC<FacilitySelectionProps> = ({
   );
 };
 
-export default FacilitySelection;
+export default AmenitySelection;
 // Styles equivalent to TailwindCSS classes
 const styles = StyleSheet.create({
   container: {

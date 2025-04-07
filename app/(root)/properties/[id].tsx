@@ -1,3 +1,38 @@
+// Add this helper function at the top of your file
+const formatDateTime = (
+  dateTimeString: string | number | Date,
+  isTime = false
+) => {
+  if (!dateTimeString) return isTime ? "Not specified" : "Not specified";
+
+  try {
+    const date = new Date(dateTimeString);
+
+    if (isNaN(date.getTime())) {
+      return isTime ? "Not specified" : "Not specified";
+    }
+
+    if (isTime) {
+      // Format just the time
+      return date.toLocaleTimeString([], {
+        hour: "numeric",
+        minute: "2-digit",
+        hour12: true,
+      });
+    } else {
+      // Format just the date
+      return date.toLocaleDateString([], {
+        month: "short",
+        day: "numeric",
+        year: "numeric",
+      });
+    }
+  } catch (error) {
+    console.error("Error formatting date/time:", error);
+    return isTime ? "Not specified" : "Not specified";
+  }
+};
+
 import {
   FlatList,
   Image,
@@ -15,7 +50,7 @@ import { router, useLocalSearchParams } from "expo-router";
 import icons from "@/constants/icons";
 import images from "@/constants/images";
 import Comment from "@/components/Comment";
-import { facilities } from "@/constants/data";
+import { amenities } from "@/constants/data";
 
 import { useAppwrite } from "@/lib/useAppwrite";
 import { getAgentById, getCurrentUser, getPropertyById } from "@/lib/appwrite";
@@ -101,26 +136,61 @@ const Property = () => {
     }
   };
 
+  const formatTime = (timeString: string) => {
+    // If the value is empty or undefined
+    if (!timeString) return "";
+
+    try {
+      // If it's already in a nice format like "2:00 PM", just return it
+      if (timeString.includes("AM") || timeString.includes("PM")) {
+        return timeString;
+      }
+
+      // Handle common time formats
+      let hours, minutes, ampm;
+
+      // Check if it's in format HH:MM or HH:MM:SS
+      if (timeString.includes(":")) {
+        const parts = timeString.split(":");
+        hours = parseInt(parts[0], 10);
+        minutes = parseInt(parts[1], 10);
+
+        // Convert to 12-hour format
+        ampm = hours >= 12 ? "PM" : "AM";
+        hours = hours % 12;
+        hours = hours ? hours : 12; // the hour '0' should be '12'
+
+        // Format minutes to always have 2 digits
+        minutes = minutes < 10 ? "0" + minutes : minutes;
+
+        return `${hours}:${minutes} ${ampm}`;
+      }
+
+      // If it's a number (timestamp or hours)
+      const num = parseInt(timeString, 10);
+      if (!isNaN(num)) {
+        // If it looks like hours (0-23)
+        if (num >= 0 && num <= 23) {
+          hours = num;
+          ampm = hours >= 12 ? "PM" : "AM";
+          hours = hours % 12;
+          hours = hours ? hours : 12;
+          return `${hours}:00 ${ampm}`;
+        }
+      }
+
+      // If we can't parse it properly, return as is
+      return timeString;
+    } catch (error) {
+      // If any error occurs, return the original string
+      return timeString;
+    }
+  };
+
   return (
     <View className="flex-1 bg-transparent">
       <CustomHeader title="" />
-      <View className="flex flex-row items-center w-full justify-between">
-        {/* <TouchableOpacity
-          onPress={() => router.back()}
-          className=" bg-transparent size-11 items-center justify-center"
-        >
-          <ArrowLeft color={"#000"} />
-        </TouchableOpacity> */}
-
-        {/* <View className="flex flex-row items-center gap-3">
-                <Image
-                  source={icons.heart}
-                  className="size-7"
-                  tintColor={"#191D31"}
-                />
-                <Image source={icons.send} className="size-7" />
-              </View> */}
-      </View>
+      <View className="flex flex-row items-center w-full justify-between"></View>
       <ScrollView
         showsVerticalScrollIndicator={false}
         contentContainerClassName="pb-32 bg-white"
@@ -170,13 +240,6 @@ const Property = () => {
             </View>
           </View>
           <View className="flex flex-row justify-between mt-5 ">
-            {/* <View className="flex flex-row items-center justify-center bg-primary-100 rounded-full size-10 ml-7">
-              <Image source={icons.bath} className="size-4" />
-            </View> */}
-            {/* <Text className="text-black-300 text-sm font-rubik-medium ml-2">
-              {property?.bathrooms} 
-              Junior Sweet
-            </Text> */}
             <View className="flex flex-row items-center">
               <View className="flex flex-row items-center justify-center bg-primary-100 rounded-full size-10 ">
                 <Image source={icons.bed} className="size-4" />
@@ -185,14 +248,7 @@ const Property = () => {
                 {property?.bedrooms} King Bed
               </Text>
             </View>
-            {/* <View className="flex flex-row items-center">
-              <View className="flex flex-row items-center justify-center bg-primary-100 rounded-full size-10 ">
-                <Image source={icons.bath} className="size-4" />
-              </View>
-              <Text className="text-black-300 text-lg font-rubik-medium ml-2">
-                {property?.bedrooms} King Bed
-              </Text>
-            </View> */}
+
             <View className="flex flex-row items-center">
               <View className="flex flex-row items-center justify-center bg-primary-100 rounded-full size-10 ">
                 <Image source={icons.area} className="size-4" />
@@ -207,11 +263,11 @@ const Property = () => {
               Amenities
             </Text>
 
-            {property?.facilities.length > 0 && (
+            {property?.amenities.length > 0 && (
               <View className="flex flex-row flex-wrap items-start justify-start mt-2 gap-5">
-                {property?.facilities.map((item: string, index: number) => {
-                  const facility = facilities.find(
-                    (facility) => facility.title === item
+                {property?.amenities.map((item: string, index: number) => {
+                  const amenity = amenities.find(
+                    (amenity) => amenity.title === item
                   );
 
                   return (
@@ -221,7 +277,7 @@ const Property = () => {
                     >
                       <View className="size-14 bg-primary-100 rounded-full flex items-center justify-center">
                         <Image
-                          source={facility ? facility.icon : icons.info}
+                          source={amenity ? amenity.icon : icons.info}
                           className="size-6"
                         />
                       </View>
@@ -239,27 +295,76 @@ const Property = () => {
               </View>
             )}
           </View>
-          {property?.gallery.length > 0 && (
-            <View className="mt-7">
-              <Text className="text-black-300 text-xl font-rubik-bold">
-                Gallery
-              </Text>
-              <FlatList
-                contentContainerStyle={{ paddingRight: 20 }}
-                data={property?.gallery}
-                keyExtractor={(item) => item.$id}
-                horizontal
-                showsHorizontalScrollIndicator={false}
-                renderItem={({ item }) => (
-                  <Image
-                    source={{ uri: item.image }}
-                    className="size-40 rounded-xl"
-                  />
-                )}
-                contentContainerClassName="flex gap-4 mt-3"
-              />
+
+          <View className="mt-2">
+            {/* <Text className="text-black-300 text-xl font-rubik-bold">
+               Info
+            </Text> */}
+
+            <View className="flex-row flex-wrap mt-3 justify-between">
+              <View
+                className="flex-col bg-primary-100 p-4 rounded-xl mb-3"
+                style={{ width: "48%" }}
+              >
+                <Text className="text-black-200 text-xs font-rubik-medium">
+                  Check-in Date
+                </Text>
+                <Text className="text-black-300 text-base font-rubik-bold mt-1">
+                  {formatDateTime(property?.checkInDate)}
+                </Text>
+              </View>
+
+              <View
+                className="flex-col bg-primary-100 p-4 rounded-xl mb-3"
+                style={{ width: "48%" }}
+              >
+                <Text className="text-black-200 text-xs font-rubik-medium">
+                  Check-out Date
+                </Text>
+                <Text className="text-black-300 text-base font-rubik-bold mt-1">
+                  {formatDateTime(property?.checkOutDate)}
+                </Text>
+              </View>
+
+              <View
+                className="flex-col bg-primary-100 p-4 rounded-xl mb-3"
+                style={{ width: "48%" }}
+              >
+                <Text className="text-black-200 text-xs font-rubik-medium">
+                  Check-in Time
+                </Text>
+                <Text className="text-black-300 text-base font-rubik-bold mt-1">
+                  {formatDateTime(property?.checkInTime, true) || "2:00 PM"}
+                </Text>
+              </View>
+
+              <View
+                className="flex-col bg-primary-100 p-4 rounded-xl mb-3"
+                style={{ width: "48%" }}
+              >
+                <Text className="text-black-200 text-xs font-rubik-medium">
+                  Check-out Time
+                </Text>
+                <Text className="text-black-300 text-base font-rubik-bold mt-1">
+                  {formatDateTime(property?.checkOutTime, true) || "11:00 AM"}
+                </Text>
+              </View>
+
+              <View
+                className="flex-col bg-primary-100 p-4 rounded-xl"
+                style={{ width: "100%" }}
+              >
+                <Text className="text-black-200 text-xs font-rubik-medium">
+                  Number of Guests
+                </Text>
+                <Text className="text-black-300 text-base font-rubik-bold mt-1">
+                  {property?.guests || "2"}{" "}
+                  {property?.guests === 1 ? "Guest" : "Guests"}
+                </Text>
+              </View>
             </View>
-          )}
+          </View>
+
           {/* <FlightInfo /> */}
           <View className="w-full border-t border-accent-100 pt-7 mt-5">
             <View className="flex flex-row items-center justify-between mt-4">
@@ -311,23 +416,7 @@ const Property = () => {
               </Text>
             </TouchableOpacity>
           </View>
-          {/* 
-          <View className="mt-7">
-            <Text className="text-black-300 text-xl font-rubik-bold">
-              Location
-            </Text>
-            <View className="flex flex-row items-center justify-start mt-4 gap-2">
-              <Image source={icons.location} className="w-7 h-7" />
-              <Text className="text-black-200 text-sm font-rubik-medium">
-                {property?.address}
-              </Text>
-            </View>
 
-            <Image
-              source={images.map}
-              className="h-52 w-full mt-5 rounded-xl"
-            />
-          </View> */}
           {property?.reviews.length > 0 && (
             <View className="mt-7">
               <View className="flex flex-row items-center justify-between">
@@ -352,48 +441,6 @@ const Property = () => {
           )}
         </View>
       </ScrollView>
-      {/* <View className="absolute bg-white bottom-0 w-full rounded-t-2xl border-t border-r border-l border-accent-200 p-7">
-        <View className="flex flex-row items-center justify-between gap-6">
-          <View className="flex flex-col items-start">
-            <Text className="text-black-200 text-xs font-rubik-medium">
-              Price
-            </Text>
-            <Text
-              numberOfLines={1}
-              className="text-primary-300 text-start text-2xl font-rubik-bold"
-            >
-              ${property?.price}
-            </Text>
-          </View>
-
-          <View className="flex flex-row flex-1 gap-2">
-            <TouchableOpacity
-              onPress={() =>
-                router.push({
-                  pathname: "/bookingScreen",
-                  params: {
-                    id: property?.$id,
-                  },
-                })
-              }
-              className="flex-1 bg-primary-300 py-3 rounded-full shadow-md shadow-zinc-400 items-center justify-center"
-            >
-              <Text className="text-white text-base text-center font-rubik-bold">
-                Book Now
-              </Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              onPress={handleContact}
-              className="flex-1 bg-white border border-primary-300 py-3 rounded-full shadow-md shadow-zinc-400 items-center justify-center"
-            >
-              <Text className="text-primary-300 text-base text-center font-rubik-bold">
-                Chat with Me
-              </Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-      </View> */}
 
       <View className="absolute bg-white bottom-0 w-full rounded-t-2xl border-t border-r border-l border-accent-200 p-7">
         <View className="flex flex-row items-center justify-between gap-10">

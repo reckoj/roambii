@@ -1,3 +1,38 @@
+// Add this helper function at the top of your file
+const formatDateTime = (
+  dateTimeString: string | number | Date,
+  isTime = false
+) => {
+  if (!dateTimeString) return isTime ? "Not specified" : "Not specified";
+
+  try {
+    const date = new Date(dateTimeString);
+
+    if (isNaN(date.getTime())) {
+      return isTime ? "Not specified" : "Not specified";
+    }
+
+    if (isTime) {
+      // Format just the time
+      return date.toLocaleTimeString([], {
+        hour: "numeric",
+        minute: "2-digit",
+        hour12: true,
+      });
+    } else {
+      // Format just the date
+      return date.toLocaleDateString([], {
+        month: "short",
+        day: "numeric",
+        year: "numeric",
+      });
+    }
+  } catch (error) {
+    console.error("Error formatting date/time:", error);
+    return isTime ? "Not specified" : "Not specified";
+  }
+};
+
 import React, { useEffect, useState, useCallback } from "react";
 import {
   View,
@@ -16,13 +51,7 @@ import { databases, config } from "@/lib/appwrite";
 import { Query } from "appwrite";
 import { useGlobalContext } from "@/lib/global-provider";
 import CustomHeader from "@/components/HeaderComponent";
-import {
-  Calendar,
-  MapPin,
-  Clock,
-  CheckCircle,
-  XCircle,
-} from "lucide-react-native";
+import { Calendar, MapPin } from "lucide-react-native";
 import images from "@/constants/images";
 
 // Update the Booking interface at the top of your UserBookingsScreen component
@@ -144,8 +173,7 @@ const UserBookingsScreen = () => {
         const now = new Date();
         const processedBookings: Booking[] = await Promise.all(
           matchingDocs.map(async (doc) => {
-            // Determine if booking is active based on the checkout date
-
+            // Initialize status variables
             let isActive = false;
             let isCancelled = false;
             let statusDisplay = "past";
@@ -154,9 +182,10 @@ const UserBookingsScreen = () => {
               // Check if booking is explicitly cancelled
               isCancelled = doc.status === "cancelled";
 
-              // Check if booking is in the past
+              // Check if the checkout date is in the future
               const checkOutDate = new Date(doc.checkOutDate);
-              const now = new Date();
+
+              // A booking is active if checkout date is in the future and not cancelled
               isActive = checkOutDate >= now && !isCancelled;
 
               // Determine display status
@@ -167,14 +196,12 @@ const UserBookingsScreen = () => {
               } else {
                 statusDisplay = "past";
               }
+
+              console.log(
+                `Booking ${doc.$id} - checkOutDate: ${checkOutDate}, now: ${now}, isActive: ${isActive}, statusDisplay: ${statusDisplay}`
+              );
             } catch (e) {
               console.error("Error processing booking status:", e);
-            }
-            try {
-              const checkOutDate = new Date(doc.checkOutDate);
-              isActive = checkOutDate >= now;
-            } catch (e) {
-              console.error("Error parsing date:", e);
             }
 
             // Try to fetch the package details
@@ -215,8 +242,8 @@ const UserBookingsScreen = () => {
               $createdAt: doc.$createdAt,
               $updatedAt: doc.$updatedAt,
               $permissions: doc.$permissions,
-              isCancelled: false,
-              statusDisplay: "",
+              isCancelled: isCancelled,
+              statusDisplay: statusDisplay,
             };
 
             return booking;
@@ -260,10 +287,12 @@ const UserBookingsScreen = () => {
     // });
   };
 
+  // Update the renderBookingItem function to use the formatDateTime helper:
+
   const renderBookingItem = ({ item }: { item: Booking }) => {
-    // Format dates for display
-    const checkInDate = new Date(item.checkInDate).toLocaleDateString();
-    const checkOutDate = new Date(item.checkOutDate).toLocaleDateString();
+    // Format dates using the helper function for consistency
+    const checkInDate = formatDateTime(item.checkInDate);
+    const checkOutDate = formatDateTime(item.checkOutDate);
 
     const getStatusStyles = () => {
       if (item.statusDisplay === "cancelled") {

@@ -37,7 +37,7 @@ const PaymentComponent: React.FC<PaymentComponentProps> = ({
     // Check if user is logged in
     if (!rawUser) {
       Alert.alert("Login Required", "Please log in to make a payment");
-      router.push("/login");
+      router.replace("/login");
       return;
     }
 
@@ -56,7 +56,6 @@ const PaymentComponent: React.FC<PaymentComponentProps> = ({
         description: `Payment for ${packageName}`,
       });
 
-      // In your payment component, modify the handling of the payment result:
       if (result.success) {
         // Create a booking record in Appwrite
         try {
@@ -72,7 +71,7 @@ const PaymentComponent: React.FC<PaymentComponentProps> = ({
           const transactionId = "stripe_" + Date.now(); // Simple unique ID
 
           // Create booking
-          await createBooking(
+          const bookingResult = await createBooking(
             rawUser.$id, // Make sure this is the correct user ID
             packageId,
             amount,
@@ -82,8 +81,14 @@ const PaymentComponent: React.FC<PaymentComponentProps> = ({
             guessCount
           );
 
-          Alert.alert("Payment Successful", "Your booking has been confirmed!");
+          // Call onSuccess callback if provided
           onSuccess && onSuccess();
+
+          // Navigate to booking details or bookings list without allowing back navigation
+          if (bookingResult && bookingResult.$id) {
+            // Navigate to the specific booking details
+            router.replace(`/bookingConfirmation`);
+          }
         } catch (bookingError) {
           console.error("Error creating booking:", bookingError);
           Alert.alert(
@@ -115,7 +120,7 @@ const PaymentComponent: React.FC<PaymentComponentProps> = ({
         {loading ? (
           <ActivityIndicator color="#FFF" size="small" />
         ) : (
-          <Text style={styles.payButtonText}>Pay with Stripe</Text>
+          <Text style={styles.payButtonText}>Buy Now</Text>
         )}
       </TouchableOpacity>
 
