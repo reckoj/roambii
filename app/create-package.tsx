@@ -79,6 +79,7 @@ const CreatePackageScreen = () => {
     checkOutTime: defaultCheckOutTime.toISOString(),
     checkInDate: defaultCheckInDate.toISOString(),
     checkOutDate: defaultCheckOutDate.toISOString(),
+    guestAmount: "",
     allinclusive: false,
     roomType: "standard", // Default enum
     flightInfo: {
@@ -217,6 +218,7 @@ const CreatePackageScreen = () => {
           checkOutTime: formData.checkOutTime,
           checkInDate: formData.checkInDate,
           checkOutDate: formData.checkOutDate,
+          guestAmount: parseInt(formData.guestAmount),
         }
       );
 
@@ -471,6 +473,15 @@ const CreatePackageScreen = () => {
                   />
                 )}
               </View>
+            </View>
+
+            <Text style={styles.label}>Travlers</Text>
+            <View className="w-14">
+              <CustomInput
+                height={30}
+                value={formData.guestAmount}
+                onChangeText={(text) => handleChange("guestAmount", text)}
+              />
             </View>
 
             <Text style={styles.label}>Package Description</Text>

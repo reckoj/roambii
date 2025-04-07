@@ -135,6 +135,7 @@ const EditPackageScreen = () => {
       updatedData.bedrooms = parseInt(formData.bedrooms);
       updatedData.bathrooms = parseInt(formData.bathrooms);
       updatedData.rating = parseFloat(formData.rating);
+      updatedData.guestAmount = parseFloat(formData.guestAmount);
 
       // Handle Image Upload if changed
       if (formData.image && !formData.image.startsWith("https://")) {
@@ -355,6 +356,16 @@ const EditPackageScreen = () => {
                   />
                 )}
               </View>
+            </View>
+
+            <Text style={styles.label}>Travlers</Text>
+            <View className="w-14">
+              <CustomInput
+                height={30}
+                value={formData?.guestAmount?.toString() || ""}
+                onChangeText={(text) => handleChange("guestAmount", text)}
+                keyboardType="numeric"
+              />
             </View>
 
             {/* Description */}

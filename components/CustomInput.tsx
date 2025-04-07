@@ -39,7 +39,7 @@ export default CustomInput;
 const styles = StyleSheet.create({
   input: {
     height: 48, // ✅ Default height
-    paddingHorizontal: 16,
+    paddingHorizontal: 12,
     marginBottom: 16,
     borderWidth: 1,
     borderColor: "#D1D5DB",
