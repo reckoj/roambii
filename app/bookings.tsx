@@ -13,8 +13,12 @@ import {
   Animated as RNAnimated,
   StatusBar,
 } from "react-native";
-import { GestureHandlerRootView } from "react-native-gesture-handler";
-import { Swipeable } from "react-native-gesture-handler";
+import {
+  GestureHandlerRootView,
+  GestureDetector,
+  Gesture,
+  PanGestureHandler,
+} from "react-native-gesture-handler";
 import {
   PlusCircle,
   Trash2,
@@ -33,7 +37,11 @@ import { useGlobalContext } from "@/lib/global-provider";
 import images from "@/constants/images";
 import Animated, {
   useAnimatedStyle,
+  useSharedValue,
+  useAnimatedReaction,
   withSpring,
+  withTiming,
+  runOnJS,
   FadeIn,
   FadeOut,
 } from "react-native-reanimated";
@@ -73,6 +81,112 @@ const formatDate = (dateString: string) => {
     day: "numeric",
     year: "numeric",
   });
+};
+
+// SwipeableRow component to replace the deprecated Swipeable
+const SwipeableRow = ({
+  children,
+  onDelete,
+  onEdit,
+  packageId,
+}: {
+  children: React.ReactNode;
+  onDelete: (id: string) => void;
+  onEdit: (id: string) => void;
+  packageId: string;
+}) => {
+  // Action buttons width
+  const ACTIONS_WIDTH = 144;
+
+  // Shared values for animation
+  const translateX = useSharedValue(0);
+  const rowHeight = useSharedValue(0);
+  const isOpen = useSharedValue(false);
+
+  // Create pan gesture
+  const panGesture = Gesture.Pan()
+    .onUpdate((event) => {
+      // Limit to left swipe only and not beyond action width
+      translateX.value = Math.max(
+        Math.min(event.translationX, 0),
+        -ACTIONS_WIDTH
+      );
+    })
+    .onEnd((event) => {
+      // Determine if should snap open or closed
+      const shouldOpen = event.translationX < -ACTIONS_WIDTH / 2;
+
+      if (shouldOpen) {
+        translateX.value = withSpring(-ACTIONS_WIDTH, { damping: 20 });
+        isOpen.value = true;
+      } else {
+        translateX.value = withSpring(0, { damping: 20 });
+        isOpen.value = false;
+      }
+    });
+
+  // Style for the row
+  const rowStyle = useAnimatedStyle(() => {
+    return {
+      transform: [{ translateX: translateX.value }],
+    };
+  });
+
+  // Close the swipeable programmatically
+  const close = () => {
+    translateX.value = withTiming(0, { duration: 200 });
+    isOpen.value = false;
+  };
+
+  // Handle measurements to know row height
+  const onLayout = (event: any) => {
+    rowHeight.value = event.nativeEvent.layout.height;
+  };
+
+  // Handle edit
+  const handleEdit = () => {
+    close();
+    onEdit(packageId);
+  };
+
+  // Handle delete
+  const handleDelete = () => {
+    close();
+    onDelete(packageId);
+  };
+
+  return (
+    <View>
+      {/* Action buttons behind the row */}
+      <View
+        style={[
+          styles.actionButtons,
+          { position: "absolute", right: 0, height: rowHeight.value },
+        ]}
+      >
+        <TouchableOpacity
+          onPress={handleEdit}
+          style={[styles.actionButton, styles.editButton]}
+        >
+          <Edit size={20} color="#FFF" />
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          onPress={handleDelete}
+          style={[styles.actionButton, styles.deleteButton]}
+        >
+          <Trash2 size={20} color="#FFF" />
+        </TouchableOpacity>
+      </View>
+
+      {/* The swipeable row */}
+      <GestureDetector gesture={panGesture}>
+        <Animated.View style={rowStyle} onLayout={onLayout}>
+          {children}
+        </Animated.View>
+      </GestureDetector>
+    </View>
+  );
 };
 
 const Bookings = () => {
@@ -145,36 +259,6 @@ const Bookings = () => {
   /** Navigate to create package screen */
   const handleCreatePackage = () => {
     router.push("/create-package");
-  };
-
-  // Render right actions for Swipeable
-  const renderRightActions = (packageId: string, progress: any) => {
-    const trans = progress.interpolate({
-      inputRange: [0, 1],
-      outputRange: [64, 0],
-    });
-
-    return (
-      <View style={styles.actionButtons}>
-        <RNAnimated.View style={{ transform: [{ translateX: trans }] }}>
-          <TouchableOpacity
-            onPress={() => handleEdit(packageId)}
-            style={[styles.actionButton, styles.editButton]}
-          >
-            <Edit size={20} color="#FFF" />
-          </TouchableOpacity>
-        </RNAnimated.View>
-
-        <RNAnimated.View style={{ transform: [{ translateX: trans }] }}>
-          <TouchableOpacity
-            onPress={() => handleDelete(packageId)}
-            style={[styles.actionButton, styles.deleteButton]}
-          >
-            <Trash2 size={20} color="#FFF" />
-          </TouchableOpacity>
-        </RNAnimated.View>
-      </View>
-    );
   };
 
   // Header animation
@@ -267,10 +351,10 @@ const Bookings = () => {
               entering={FadeIn.duration(400).delay(index * 100)}
               exiting={FadeOut.duration(300)}
             >
-              <Swipeable
-                renderRightActions={(progress) =>
-                  renderRightActions(pkg.$id, progress)
-                }
+              <SwipeableRow
+                packageId={pkg.$id}
+                onDelete={handleDelete}
+                onEdit={handleEdit}
               >
                 <TouchableOpacity
                   style={styles.packageCard}
@@ -358,7 +442,7 @@ const Bookings = () => {
                     </View>
                   </View>
                 </TouchableOpacity>
-              </Swipeable>
+              </SwipeableRow>
             </Animated.View>
           ))
         )}
@@ -567,8 +651,10 @@ const styles = StyleSheet.create({
   },
   actionButtons: {
     flexDirection: "row",
-    width: 144,
+    width: 144, // This should match the ACTIONS_WIDTH constant
     height: "100%",
+    paddingBottom: 16, // Add padding to make buttons a bit smaller than the card
+    paddingTop: 8,
   },
   actionButton: {
     flex: 1,
@@ -577,9 +663,11 @@ const styles = StyleSheet.create({
   },
   editButton: {
     backgroundColor: "#3498DB",
+    borderRadius: 16,
   },
   deleteButton: {
     backgroundColor: "#E74C3C",
+    borderRadius: 16,
   },
   floatingButton: {
     position: "absolute",
