@@ -1,4 +1,24 @@
-// Add this helper function at the top of your file
+import React, { useEffect, useState, useCallback } from "react";
+import {
+  View,
+  Text,
+  FlatList,
+  StyleSheet,
+  TouchableOpacity,
+  ActivityIndicator,
+  Image,
+  RefreshControl,
+  ScrollView,
+} from "react-native";
+import { router } from "expo-router";
+import { databases, config } from "@/lib/appwrite";
+import { Query } from "appwrite";
+import { useGlobalContext } from "@/lib/global-provider";
+import CustomHeader from "@/components/HeaderComponent";
+import { Calendar, MapPin } from "lucide-react-native";
+import images from "@/constants/images";
+
+// Format date/time helper function
 const formatDateTime = (
   dateTimeString: string | number | Date,
   isTime = false
@@ -33,28 +53,6 @@ const formatDateTime = (
   }
 };
 
-import React, { useEffect, useState, useCallback } from "react";
-import {
-  View,
-  Text,
-  FlatList,
-  StyleSheet,
-  TouchableOpacity,
-  ActivityIndicator,
-  Image,
-  RefreshControl,
-  ScrollView,
-} from "react-native";
-import { router } from "expo-router";
-import { databases, config } from "@/lib/appwrite";
-// Import Query directly from appwrite
-import { Query } from "appwrite";
-import { useGlobalContext } from "@/lib/global-provider";
-import CustomHeader from "@/components/HeaderComponent";
-import { Calendar, MapPin } from "lucide-react-native";
-import images from "@/constants/images";
-
-// Update the Booking interface at the top of your UserBookingsScreen component
 interface Booking {
   $id: string;
   userId: any; // Changed to any to handle both string and array cases
@@ -72,7 +70,7 @@ interface Booking {
   transactionId: string;
   paymentMethod: string;
   metadata?: string;
-  isCancelled: boolean; // Add this
+  isCancelled: boolean;
   statusDisplay: string;
   $collectionId?: string;
   $databaseId?: string;
@@ -81,12 +79,17 @@ interface Booking {
   $permissions?: string[];
 }
 
+type TabType = "active" | "cancelled";
+
 const UserBookingsScreen = () => {
   const { rawUser } = useGlobalContext();
-  const [bookings, setBookings] = useState<Booking[]>([]);
+  const [allBookings, setAllBookings] = useState<Booking[]>([]);
+  const [activeBookings, setActiveBookings] = useState<Booking[]>([]);
+  const [cancelledBookings, setCancelledBookings] = useState<Booking[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [debugInfo, setDebugInfo] = useState<string>("");
+  const [activeTab, setActiveTab] = useState<TabType>("active");
 
   const fetchBookings = useCallback(async () => {
     if (!rawUser?.$id) {
@@ -250,11 +253,35 @@ const UserBookingsScreen = () => {
           })
         );
 
-        setBookings(processedBookings);
-        console.log("Processed bookings length:", processedBookings.length);
+        // Sort bookings by creation date (newest first)
+        const sortedBookings = processedBookings.sort((a, b) => {
+          return (
+            new Date(b.$createdAt || 0).getTime() -
+            new Date(a.$createdAt || 0).getTime()
+          );
+        });
+
+        setAllBookings(sortedBookings);
+
+        // Separate active (including past) and cancelled bookings
+        const active = sortedBookings.filter((booking) => !booking.isCancelled);
+        const cancelled = sortedBookings.filter(
+          (booking) => booking.isCancelled
+        );
+
+        setActiveBookings(active);
+        setCancelledBookings(cancelled);
+
+        console.log("Processed bookings length:", sortedBookings.length);
+        console.log("Active bookings:", active.length);
+        console.log("Cancelled bookings:", cancelled.length);
+
         setDebugInfo(
           (prev) =>
-            prev + `\nProcessed bookings length: ${processedBookings.length}`
+            prev +
+            `\nProcessed bookings length: ${sortedBookings.length}` +
+            `\nActive bookings: ${active.length}` +
+            `\nCancelled bookings: ${cancelled.length}`
         );
       }
     } catch (error) {
@@ -277,17 +304,8 @@ const UserBookingsScreen = () => {
   };
 
   const navigateToBookingDetails = (bookingId: string) => {
-    // For new Expo Router:
     router.push(`/bookings/${bookingId}`);
-
-    // For compatibility with older style if needed:
-    // router.push({
-    //   pathname: "/booking-details",
-    //   params: { id: bookingId },
-    // });
   };
-
-  // Update the renderBookingItem function to use the formatDateTime helper:
 
   const renderBookingItem = ({ item }: { item: Booking }) => {
     // Format dates using the helper function for consistency
@@ -382,6 +400,73 @@ const UserBookingsScreen = () => {
     );
   };
 
+  const renderEmptyState = () => (
+    <View style={styles.emptyContainer}>
+      <Image
+        source={images.noResult}
+        style={styles.emptyImage}
+        resizeMode="contain"
+      />
+      <Text style={styles.emptyTitle}>
+        {activeTab === "active" ? "No Bookings Yet" : "No Cancelled Bookings"}
+      </Text>
+      <Text style={styles.emptyMessage}>
+        {activeTab === "active"
+          ? "Your bookings will appear here once you make a reservation."
+          : "Any cancelled bookings will appear here."}
+      </Text>
+      {activeTab === "active" && (
+        <TouchableOpacity
+          style={styles.exploreButton}
+          onPress={() => router.push("/")}
+        >
+          <Text style={styles.exploreButtonText}>Explore Packages</Text>
+        </TouchableOpacity>
+      )}
+    </View>
+  );
+
+  const renderTabContent = () => {
+    const currentBookings =
+      activeTab === "active" ? activeBookings : cancelledBookings;
+
+    if (currentBookings.length === 0) {
+      return renderEmptyState();
+    }
+
+    return (
+      <FlatList
+        data={currentBookings}
+        renderItem={renderBookingItem}
+        keyExtractor={(item) => item.$id}
+        contentContainerStyle={styles.listContainer}
+        refreshControl={
+          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
+        }
+        ListHeaderComponent={
+          <View style={styles.listHeader}>
+            <Text style={styles.bookingsCount}>
+              {currentBookings.length}{" "}
+              {currentBookings.length === 1 ? "Booking" : "Bookings"}
+            </Text>
+            {activeTab === "active" && (
+              <View style={styles.filterContainer}>
+                <View style={styles.legendItem}>
+                  <View style={styles.activeIndicator} />
+                  <Text style={styles.legendText}>Active</Text>
+                </View>
+                <View style={styles.legendItem}>
+                  <View style={styles.pastIndicator} />
+                  <Text style={styles.legendText}>Past</Text>
+                </View>
+              </View>
+            )}
+          </View>
+        }
+      />
+    );
+  };
+
   return (
     <View style={styles.container}>
       <CustomHeader title="My Bookings" showBackButton={true} />
@@ -393,58 +478,57 @@ const UserBookingsScreen = () => {
         </View>
       ) : (
         <>
-          {bookings.length === 0 ? (
-            <View style={styles.emptyContainer}>
-              <Image
-                source={images.noResult}
-                style={styles.emptyImage}
-                resizeMode="contain"
-              />
-              <Text style={styles.emptyTitle}>No Bookings Yet</Text>
-              <Text style={styles.emptyMessage}>
-                Your bookings will appear here once you make a reservation.
-              </Text>
-              <TouchableOpacity
-                style={styles.exploreButton}
-                onPress={() => router.push("/")}
+          {/* Tab Navigation */}
+          <View style={styles.tabContainer}>
+            <TouchableOpacity
+              style={[
+                styles.tabButton,
+                activeTab === "active" && styles.activeTabButton,
+              ]}
+              onPress={() => setActiveTab("active")}
+            >
+              <Text
+                style={[
+                  styles.tabButtonText,
+                  activeTab === "active" && styles.activeTabButtonText,
+                ]}
               >
-                <Text style={styles.exploreButtonText}>Explore Packages</Text>
-              </TouchableOpacity>
-            </View>
-          ) : (
-            <>
-              <FlatList
-                data={bookings}
-                renderItem={renderBookingItem}
-                keyExtractor={(item) => item.$id}
-                contentContainerStyle={styles.listContainer}
-                refreshControl={
-                  <RefreshControl
-                    refreshing={refreshing}
-                    onRefresh={onRefresh}
-                  />
-                }
-                ListHeaderComponent={
-                  <View style={styles.listHeader}>
-                    <Text style={styles.bookingsCount}>
-                      {bookings.length}{" "}
-                      {bookings.length === 1 ? "Booking" : "Bookings"}
-                    </Text>
-                    <View style={styles.filterContainer}>
-                      <View style={styles.legendItem}>
-                        <View style={styles.activeIndicator} />
-                        <Text style={styles.legendText}>Active</Text>
-                      </View>
-                      <View style={styles.legendItem}>
-                        <View style={styles.pastIndicator} />
-                        <Text style={styles.legendText}>Past</Text>
-                      </View>
-                    </View>
-                  </View>
-                }
-              />
-            </>
-          )}
+                Active
+                {activeBookings.length > 0 && (
+                  <Text style={styles.tabCountBadge}>
+                    {" "}
+                    ({activeBookings.length})
+                  </Text>
+                )}
+              </Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={[
+                styles.tabButton,
+                activeTab === "cancelled" && styles.activeTabButton,
+              ]}
+              onPress={() => setActiveTab("cancelled")}
+            >
+              <Text
+                style={[
+                  styles.tabButtonText,
+                  activeTab === "cancelled" && styles.activeTabButtonText,
+                ]}
+              >
+                Cancelled
+                {cancelledBookings.length > 0 && (
+                  <Text style={styles.tabCountBadge}>
+                    {" "}
+                    ({cancelledBookings.length})
+                  </Text>
+                )}
+              </Text>
+            </TouchableOpacity>
+          </View>
+
+          {/* Tab Content */}
+          {renderTabContent()}
         </>
       )}
     </View>
@@ -455,6 +539,34 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: "#ffffff",
+  },
+  // Tab styles
+  tabContainer: {
+    flexDirection: "row",
+    borderBottomWidth: 1,
+    borderBottomColor: "#ECEFF1",
+  },
+  tabButton: {
+    flex: 1,
+    paddingVertical: 12,
+    alignItems: "center",
+  },
+  activeTabButton: {
+    borderBottomWidth: 2,
+    borderBottomColor: "#1ABC9C",
+  },
+  tabButtonText: {
+    fontSize: 14,
+    fontWeight: "500",
+    color: "#95A5A6",
+  },
+  activeTabButtonText: {
+    color: "#1ABC9C",
+    fontWeight: "600",
+  },
+  tabCountBadge: {
+    fontSize: 14,
+    fontWeight: "400",
   },
   loadingContainer: {
     flex: 1,

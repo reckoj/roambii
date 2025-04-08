@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useCallback } from "react";
+import React, { useEffect, useState, useCallback, useMemo } from "react";
 import {
   View,
   Text,
@@ -11,6 +11,7 @@ import {
   Alert,
   Pressable,
   StyleSheet,
+  Dimensions,
 } from "react-native";
 import { StatusBar } from "react-native";
 import { router, useFocusEffect } from "expo-router";
@@ -18,20 +19,48 @@ import { getChatPartner, checkIsAgent, deleteChat } from "@/lib/chatService";
 import { useGlobalContext } from "@/lib/global-provider";
 import { databases, config } from "@/lib/appwrite";
 import { Query } from "react-native-appwrite";
-import { ref, onValue } from "firebase/database";
+import { ref, onValue, get } from "firebase/database";
 import { firebaseDb } from "@/lib/firebase";
-import CustomHeader from "@/components/HeaderComponent";
+import { LinearGradient } from "expo-linear-gradient";
+import { MessageSquare, MoreVertical } from "lucide-react-native";
 import images from "@/constants/images";
 
-const ChatListScreen = () => {
+// Define theme colors
+const COLORS = {
+  primary: "#1ABC9C",
+  primaryLight: "#8F70FF",
+  secondary: "#D9D9D9",
+  tertiary: "#FF8F70",
+  background: "#F9FAFC",
+  cardBackground: "#FFFFFF",
+  text: "#333333",
+  textLight: "#8A8D9F",
+  white: "#FFFFFF",
+  danger: "#FF4C69",
+  success: "#00D27A",
+  lightGray: "#F0F2F5",
+  divider: "#EEEEEE",
+  messagePreview: "#666666",
+  unreadBadge: "#7F5DF0",
+};
+
+const { width } = Dimensions.get("window");
+
+interface ChatRoom {
+  id: string;
+  participants: string[];
+  last_message: string;
+  last_updated: number;
+  unread_count: number;
+}
+
+const ChatListScreen: React.FC = () => {
   const { rawUser } = useGlobalContext();
-  const [chatRooms, setChatRooms] = useState<any[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [refreshing, setRefreshing] = useState(false);
+  const [chatRooms, setChatRooms] = useState<ChatRoom[]>([]);
+  const [isLoading, setIsLoading] = useState<boolean>(true);
   const [userProfiles, setUserProfiles] = useState<{ [key: string]: any }>({});
-  const [isAgent, setIsAgent] = useState(false);
+  const [isAgent, setIsAgent] = useState<boolean>(false);
   const [agentUserId, setAgentUserId] = useState<string | null>(null);
-  const [deleting, setDeleting] = useState(false);
 
   // Check if current user is an agent
   useEffect(() => {
@@ -111,7 +140,7 @@ const ChatListScreen = () => {
       }
     }
 
-    // Return the found profile or null, just like in ChatScreen
+    // Return the found profile or null
     return foundProfile;
   };
 
@@ -126,11 +155,11 @@ const ChatListScreen = () => {
     return profiles;
   };
 
-  // Setup real-time listener for chat rooms instead of manual fetching
+  // Setup real-time listener for chat rooms
   useEffect(() => {
     if (!rawUser?.$id) {
       console.log("No user ID found, cannot setup real-time listener");
-      setLoading(false);
+      setIsLoading(false);
       return () => {};
     }
 
@@ -138,7 +167,7 @@ const ChatListScreen = () => {
     const userId = isAgent && agentUserId ? agentUserId : rawUser.$id;
 
     console.log("Setting up real-time listener for chat rooms:", userId);
-    setLoading(true);
+    setIsLoading(true);
 
     // Create reference to the chat_rooms node
     const roomsRef = ref(firebaseDb, "chat_rooms");
@@ -152,12 +181,11 @@ const ChatListScreen = () => {
         if (!snapshot.exists()) {
           console.log("No chat rooms found");
           setChatRooms([]);
-          setLoading(false);
-          setRefreshing(false);
+          setIsLoading(false);
           return;
         }
 
-        const rooms: any[] = [];
+        const rooms: ChatRoom[] = [];
 
         snapshot.forEach((roomSnapshot) => {
           const roomData = roomSnapshot.val();
@@ -237,13 +265,11 @@ const ChatListScreen = () => {
           }
         }
 
-        setLoading(false);
-        setRefreshing(false);
+        setIsLoading(false);
       },
       (error) => {
         console.error("Error setting up real-time listener:", error);
-        setLoading(false);
-        setRefreshing(false);
+        setIsLoading(false);
       }
     );
 
@@ -257,29 +283,56 @@ const ChatListScreen = () => {
   // Add useFocusEffect to refresh UI when screen comes into focus
   useFocusEffect(
     useCallback(() => {
+      let isMounted = true;
       console.log("ChatListScreen is now focused");
 
-      // If we're not currently loading, show a brief refresh indicator for user feedback
-      if (!loading) {
-        setRefreshing(true);
-        setTimeout(() => setRefreshing(false), 500);
-      }
+      // Use a one-time flag to prevent infinite loops
+      if (isMounted) {
+        // Flag to prevent triggering on every render
+        isMounted = false;
 
-      return () => {
-        console.log("ChatListScreen lost focus");
-      };
-    }, [loading])
+        // Manual timeout instead of state change to prevent re-renders
+        // This refreshes data without setting loading state
+        const timer = setTimeout(() => {
+          if (rawUser?.$id) {
+            // Re-fetch the latest data by triggering the firebase listener
+            const roomsRef = ref(firebaseDb, "chat_rooms");
+            get(roomsRef).then(() => {
+              // The onValue listener will handle the response
+              console.log("Refreshed data on focus");
+            });
+          }
+        }, 300);
+
+        return () => {
+          clearTimeout(timer);
+          console.log("ChatListScreen lost focus");
+        };
+      }
+    }, [rawUser])
   );
 
-  // Update onRefresh to trigger brief UI refresh - data will update via real-time listener
-  const onRefresh = () => {
-    setRefreshing(true);
+  // Update onRefresh to trigger data refresh
+  const onRefresh = useCallback(() => {
+    setIsLoading(true);
 
-    // Just wait a moment to provide user feedback
-    setTimeout(() => {
-      setRefreshing(false);
-    }, 1000);
-  };
+    // Refresh the data
+    if (rawUser?.$id) {
+      const roomsRef = ref(firebaseDb, "chat_rooms");
+      get(roomsRef)
+        .then(() => {
+          // Give some visual feedback before stopping the loading indicator
+          setTimeout(() => {
+            setIsLoading(false);
+          }, 800);
+        })
+        .catch(() => {
+          setIsLoading(false);
+        });
+    } else {
+      setIsLoading(false);
+    }
+  }, [rawUser]);
 
   const formatTimestamp = (timestamp: any) => {
     if (!timestamp) return "";
@@ -345,7 +398,7 @@ const ChatListScreen = () => {
   // Delete a chat conversation
   const deleteConversation = async (roomId: string) => {
     try {
-      setDeleting(true);
+      setIsLoading(true);
 
       // Implement deleteChat function in chatService.ts
       await deleteChat(roomId);
@@ -358,55 +411,87 @@ const ChatListScreen = () => {
         "Error",
         "Failed to delete the conversation. Please try again."
       );
-    } finally {
-      setDeleting(false);
+      setIsLoading(false);
     }
   };
 
-  if (loading) {
-    return (
-      <View className="flex-1 items-center justify-center bg-white">
-        <ActivityIndicator size="large" color="#1ABC9C" />
-      </View>
-    );
-  }
+  // Generate initials for avatar fallback
+  const getInitials = (name?: string): string => {
+    if (!name) return "?";
+    return name
+      .split(" ")
+      .map((n) => n[0])
+      .join("")
+      .toUpperCase()
+      .substring(0, 2);
+  };
+
+  // Custom header component
+  const CustomHeader = () => (
+    <LinearGradient
+      colors={[COLORS.primary, COLORS.secondary]}
+      start={{ x: 0, y: 0 }}
+      end={{ x: 1, y: 0 }}
+      style={styles.header}
+    >
+      <SafeAreaView>
+        <View style={styles.headerContent}>
+          <View style={styles.headerTitle}>
+            <MessageSquare size={24} color={COLORS.white} />
+            <Text style={styles.headerText}>Messages</Text>
+          </View>
+        </View>
+      </SafeAreaView>
+    </LinearGradient>
+  );
+
+  // Empty state component
+  const EmptyState = () => (
+    <View style={styles.emptyContainer}>
+      <Image
+        source={images.nomessages}
+        style={styles.noMessagesImage}
+        resizeMode="contain"
+      />
+      <Text style={styles.emptyTitle}>No messages yet</Text>
+      <Text style={styles.emptySubtitle}>
+        When you start conversations, they'll appear here
+      </Text>
+      <TouchableOpacity
+        style={styles.refreshButton}
+        onPress={onRefresh}
+        activeOpacity={0.7}
+      >
+        <Text style={styles.refreshButtonText}>Refresh</Text>
+      </TouchableOpacity>
+    </View>
+  );
 
   return (
-    <View className="flex-1">
-      <CustomHeader title="Chats" handleSafeArea={true} />
-      <View className="flex-1 bg-white">
-        {deleting && (
-          <View className="absolute inset-0 bg-black bg-opacity-20 z-10 flex items-center justify-center">
-            <ActivityIndicator size="large" color="#1ABC9C" />
-          </View>
-        )}
+    <View style={styles.container}>
+      <StatusBar barStyle="light-content" />
+      <CustomHeader />
 
-        {chatRooms.length === 0 ? (
-          <View style={styles.emptyContainer}>
-            <View style={styles.imageContainer}>
-              <Image
-                source={images.nomessages}
-                style={styles.noMessagesImage}
-                resizeMode="contain"
-              />
-            </View>
-            <Text className="text-lg font-semibold text-gray-500 mb-4">
-              You have no messages
-            </Text>
-            <TouchableOpacity
-              className="p-3 bg-primary-200 rounded-lg"
-              onPress={onRefresh}
-            >
-              <Text className="text-white">Refresh</Text>
-            </TouchableOpacity>
+      <View style={styles.chatListContainer}>
+        {isLoading && chatRooms.length === 0 ? (
+          <View style={styles.loaderContent}>
+            <ActivityIndicator size="large" color={COLORS.primary} />
           </View>
+        ) : chatRooms.length === 0 ? (
+          <EmptyState />
         ) : (
           <FlatList
             data={chatRooms}
             keyExtractor={(item) => item.id || Math.random().toString()}
             refreshControl={
-              <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
+              <RefreshControl
+                refreshing={isLoading}
+                onRefresh={onRefresh}
+                colors={[COLORS.primary]}
+                tintColor={COLORS.primary}
+              />
             }
+            contentContainerStyle={styles.chatList}
             renderItem={({ item }) => {
               // Determine the real ID to use
               const userId =
@@ -414,47 +499,75 @@ const ChatListScreen = () => {
               const partnerId = getChatPartner(item.participants, userId || "");
 
               const partnerProfile = userProfiles[partnerId];
+              const partnerName =
+                partnerProfile?.name ||
+                partnerProfile?.email ||
+                partnerId ||
+                "Unknown";
+              const hasUnread = item.unread_count > 0;
 
               return (
                 <Pressable
-                  className="p-4 border-b border-gray-200 flex-row items-center justify-between"
+                  style={({ pressed }) => [
+                    styles.chatItem,
+                    pressed ? styles.chatItemPressed : null,
+                    hasUnread ? styles.unreadChatItem : null,
+                  ]}
                   onPress={() => navigateToChat(partnerId)}
                   onLongPress={() => handleLongPress(item.id, partnerId)}
                   delayLongPress={500} // Adjust timing for long press
-                  android_ripple={{ color: "rgba(0, 0, 0, 0.1)" }}
                 >
-                  <View className="flex-row items-center flex-1">
+                  <View style={styles.chatItemContent}>
                     {partnerProfile?.avatar ? (
                       <Image
                         source={{ uri: partnerProfile.avatar }}
-                        className="w-12 h-12 rounded-full mr-3"
+                        style={styles.avatar}
                       />
                     ) : (
-                      <View className="w-12 h-12 rounded-full mr-3 bg-gray-200" />
-                    )}
-                    <View className="flex-1">
-                      <View className="flex-row justify-between items-center">
-                        <Text className="text-lg font-semibold">
-                          {partnerProfile?.name ||
-                            partnerProfile?.email ||
-                            partnerId ||
-                            "Chat"}
-                        </Text>
-                        <Text className="text-xs text-gray-500">
-                          {formatTimestamp(item.last_updated)}
+                      <View style={styles.avatarFallback}>
+                        <Text style={styles.avatarText}>
+                          {getInitials(partnerName)}
                         </Text>
                       </View>
-                      <View className="flex-row justify-between items-center">
+                    )}
+
+                    <View style={styles.chatDetails}>
+                      <View style={styles.chatHeader}>
                         <Text
-                          className="text-gray-500 flex-1"
+                          style={[
+                            styles.chatName,
+                            hasUnread ? styles.boldText : null,
+                          ]}
+                          numberOfLines={1}
+                        >
+                          {partnerName}
+                        </Text>
+                        <Text style={styles.timeStamp}>
+                          {formatTimestamp(item.last_updated)}
+                        </Text>
+                        <TouchableOpacity
+                          style={styles.optionsButton}
+                          onPress={() => handleLongPress(item.id, partnerId)}
+                        >
+                          <MoreVertical size={16} color={COLORS.textLight} />
+                        </TouchableOpacity>
+                      </View>
+
+                      <View style={styles.messageRow}>
+                        <Text
+                          style={[
+                            styles.messagePreview,
+                            hasUnread ? styles.boldText : null,
+                          ]}
                           numberOfLines={1}
                           ellipsizeMode="tail"
                         >
                           {item.last_message || "No messages yet"}
                         </Text>
-                        {item.unread_count > 0 && (
-                          <View className="bg-blue-500 rounded-full min-w-6 h-6 items-center justify-center ml-2">
-                            <Text className="text-white text-xs font-bold px-1">
+
+                        {hasUnread && (
+                          <View style={styles.unreadBadge}>
+                            <Text style={styles.unreadCount}>
                               {item.unread_count > 99
                                 ? "99+"
                                 : item.unread_count}
@@ -467,6 +580,7 @@ const ChatListScreen = () => {
                 </Pressable>
               );
             }}
+            ItemSeparatorComponent={() => <View style={styles.separator} />}
           />
         )}
       </View>
@@ -475,20 +589,191 @@ const ChatListScreen = () => {
 };
 
 const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+    backgroundColor: COLORS.background,
+  },
+  loaderContent: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  header: {
+    paddingTop: StatusBar.currentHeight || 0,
+    paddingBottom: 15,
+  },
+  headerContent: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+  },
+  headerTitle: {
+    flexDirection: "row",
+    alignItems: "center",
+  },
+  headerText: {
+    fontSize: 22,
+    fontWeight: "700",
+    color: COLORS.white,
+    marginLeft: 10,
+  },
+  chatListContainer: {
+    flex: 1,
+    backgroundColor: COLORS.background,
+    marginTop: -20,
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    paddingTop: 20,
+    paddingHorizontal: 10,
+    overflow: "hidden",
+  },
+  chatList: {
+    paddingBottom: 20,
+  },
+  chatItem: {
+    backgroundColor: COLORS.cardBackground,
+    marginHorizontal: 16,
+    marginVertical: 6,
+    padding: 16,
+    borderRadius: 16,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 5,
+    elevation: 2,
+  },
+  chatItemPressed: {
+    backgroundColor: COLORS.lightGray,
+  },
+  unreadChatItem: {
+    backgroundColor: `${COLORS.primary}10`, // 10% opacity of primary color
+  },
+  chatItemContent: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    borderBottomWidth: 1,
+    borderBottomColor: `${COLORS.primary}15`,
+    paddingBottom: 4,
+  },
+  avatar: {
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    marginRight: 14,
+  },
+  avatarFallback: {
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    backgroundColor: `${COLORS.secondary}30`,
+    justifyContent: "center",
+    alignItems: "center",
+    marginRight: 14,
+  },
+  avatarText: {
+    fontSize: 20,
+    fontWeight: "600",
+    color: COLORS.secondary,
+  },
+  chatDetails: {
+    flex: 1,
+  },
+  chatHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: 8,
+  },
+  chatName: {
+    fontSize: 16,
+    fontWeight: "600",
+    color: COLORS.text,
+    flex: 1,
+  },
+  timeStamp: {
+    fontSize: 12,
+    color: COLORS.textLight,
+    marginLeft: 4,
+  },
+  messageRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+  },
+  messagePreview: {
+    fontSize: 14,
+    color: COLORS.messagePreview,
+    flex: 1,
+  },
+  boldText: {
+    fontWeight: "700",
+    color: COLORS.text,
+  },
+  unreadBadge: {
+    backgroundColor: COLORS.primary,
+    minWidth: 22,
+    height: 22,
+    borderRadius: 11,
+    justifyContent: "center",
+    alignItems: "center",
+    marginLeft: 8,
+  },
+  unreadCount: {
+    color: COLORS.white,
+    fontSize: 11,
+    fontWeight: "700",
+    paddingHorizontal: 4,
+  },
+  optionsButton: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  separator: {
+    height: 10, // No visible separator, just spacing
+  },
   emptyContainer: {
     flex: 1,
     alignItems: "center",
     justifyContent: "center",
-    paddingHorizontal: 20,
-  },
-  imageContainer: {
-    alignItems: "center",
-    justifyContent: "center",
-    marginBottom: 16,
+    paddingHorizontal: 30,
   },
   noMessagesImage: {
-    width: 200,
-    height: 150,
+    width: width * 0.6,
+    height: width * 0.4,
+    marginBottom: 20,
+    opacity: 0.9,
+  },
+  emptyTitle: {
+    fontSize: 20,
+    fontWeight: "700",
+    color: COLORS.text,
+    marginBottom: 8,
+  },
+  emptySubtitle: {
+    fontSize: 15,
+    color: COLORS.textLight,
+    textAlign: "center",
+    marginBottom: 24,
+  },
+  refreshButton: {
+    backgroundColor: COLORS.primary,
+    paddingVertical: 12,
+    paddingHorizontal: 24,
+    borderRadius: 12,
+  },
+  refreshButtonText: {
+    color: COLORS.white,
+    fontSize: 16,
+    fontWeight: "600",
   },
 });
 

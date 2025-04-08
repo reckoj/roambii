@@ -39,6 +39,7 @@ export const config = {
     process.env.EXPO_PUBLIC_APPWRITE_AGENT_REVIEWS_COLLECTION_ID,
   chatRoomsCollectionId:
     process.env.EXPO_PUBLIC_APPWRITE_CHAT_ROOMS_COLLECTION_ID,
+  backendApi: process.env.EXPO_PUBLIC_BACKEND_API,
 };
 interface User {
   $id: string;

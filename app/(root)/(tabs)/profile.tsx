@@ -9,6 +9,7 @@ import {
   TouchableOpacity,
   View,
   Switch,
+  StyleSheet,
 } from "react-native";
 import {
   logout,
@@ -21,39 +22,87 @@ import {
 import * as ImagePicker from "expo-image-picker";
 import { useGlobalContext } from "@/lib/global-provider";
 import images from "@/constants/images";
-import { Bell, Calendar, LucideShare2, User2 } from "lucide-react-native";
+import {
+  Bell,
+  Calendar,
+  LucideShare2,
+  User2,
+  Shield,
+  Lock,
+  LogOut,
+  Camera,
+  ChevronRight,
+} from "lucide-react-native";
 import icons from "@/constants/icons";
 import { InviteFriends } from "@/lib/invite-friends";
 import { router } from "expo-router";
 import { handleAvtarImagePicked } from "@/lib/storage";
 import { Query } from "react-native-appwrite";
+import { LinearGradient } from "expo-linear-gradient";
 
-interface SettingsItemProp {
-  icon: typeof Bell;
+// Define theme colors
+const COLORS = {
+  primary: "#1ABC9C",
+  primaryLight: "#8F70FF",
+  secondary: "#D9D9D9",
+  background: "#F9FAFC",
+  text: "#333333",
+  textLight: "#8A8D9F",
+  white: "#FFFFFF",
+  danger: "#FF4C69",
+  success: "#00D27A",
+  lightGray: "#F0F2F5",
+  divider: "#EEEEEE",
+};
+
+interface SettingsItemProps {
+  icon: React.ReactNode;
   title: string;
   onPress?: () => void;
   textStyle?: string;
   showArrow?: boolean;
+  subtitle?: string;
+  iconBgColor?: string;
 }
 
-const SettingsItem = ({
+const SettingsItem: React.FC<SettingsItemProps> = ({
   icon,
   title,
   onPress,
   textStyle,
   showArrow = true,
-}: SettingsItemProp) => (
+  subtitle,
+  iconBgColor = COLORS.lightGray,
+}) => (
   <TouchableOpacity
     onPress={onPress}
-    className="flex flex-row items-center justify-between py-3"
+    style={styles.settingsItemContainer}
+    activeOpacity={0.7}
   >
-    <View className="flex flex-row items-center gap-3">
-      <Text className={`text-lg font-rubik-medium text-black-300 ${textStyle}`}>
-        {title}
-      </Text>
+    <View style={styles.settingsItemContent}>
+      <View style={[styles.iconContainer, { backgroundColor: iconBgColor }]}>
+        {icon}
+      </View>
+      <View style={styles.settingsTextContainer}>
+        <Text
+          style={[
+            styles.settingsTitle,
+            textStyle
+              ? {
+                  color: textStyle.includes("danger")
+                    ? COLORS.danger
+                    : COLORS.text,
+                }
+              : {},
+          ]}
+        >
+          {title}
+        </Text>
+        {subtitle && <Text style={styles.settingsSubtitle}>{subtitle}</Text>}
+      </View>
     </View>
 
-    {showArrow && <Image source={icons.rightArrow} className="size-5" />}
+    {showArrow && <ChevronRight size={18} color={COLORS.textLight} />}
   </TouchableOpacity>
 );
 
@@ -81,7 +130,7 @@ const Profile: React.FC = () => {
         return;
       }
 
-      // ✅ Find user document
+      // Find user document
       const userDocs = await databases.listDocuments(
         config.databaseId!,
         config.usersCollectionId!,
@@ -95,9 +144,9 @@ const Profile: React.FC = () => {
       }
 
       const userDocId = userDocs.documents[0].$id;
-      const newAgentView = !rawUser.isAgentTemp; // ✅ Toggle current value
+      const newAgentView = !rawUser.isAgentTemp;
 
-      // ✅ Update user document
+      // Update user document
       await databases.updateDocument(
         config.databaseId!,
         config.usersCollectionId!,
@@ -107,8 +156,8 @@ const Profile: React.FC = () => {
 
       console.log("[Agent View Toggled] ==> ", newAgentView);
 
-      // ✅ Ensure the UI updates correctly
-      await refetch(); // ✅ Call refetch immediately to update the global context
+      // Ensure the UI updates correctly
+      await refetch();
     } catch (error) {
       console.error("[Error Updating User] ==> ", error);
       Alert.alert("Error", "Failed to update user.");
@@ -123,7 +172,7 @@ const Profile: React.FC = () => {
       if (!fileId) return;
       const fileUrl = storage
         .getFileView(config.avatarBucket!, fileId)
-        .toString(); // ✅ Convert URL to string
+        .toString();
       setAvatarUrl(fileUrl);
     } catch (error) {
       console.error("Failed to fetch avatar:", error);
@@ -144,7 +193,7 @@ const Profile: React.FC = () => {
     if (!pickerResult.canceled) {
       setLoading(true);
       await handleAvtarImagePicked(pickerResult.assets[0].uri, rawUser!.$id);
-      alert("Profile picture updated successfully! 🎉");
+      Alert.alert("Success", "Profile picture updated successfully! 🎉");
       refetch();
     }
   };
@@ -153,102 +202,294 @@ const Profile: React.FC = () => {
    * Handles user logout
    */
   const handleLogout = async () => {
-    const result = await logout();
-    if (result) {
-      refetch();
-    } else {
-      Alert.alert("Error", "Failed to logout");
-    }
+    Alert.alert("Sign Out", "Are you sure you want to sign out?", [
+      {
+        text: "Cancel",
+        style: "cancel",
+      },
+      {
+        text: "Sign Out",
+        onPress: async () => {
+          const result = await logout();
+          if (result) {
+            refetch();
+          } else {
+            Alert.alert("Error", "Failed to logout");
+          }
+        },
+        style: "destructive",
+      },
+    ]);
+  };
+
+  const getInitials = (name?: string): string => {
+    if (!name) return "U";
+    return name
+      .split(" ")
+      .map((n) => n[0])
+      .join("")
+      .toUpperCase()
+      .substring(0, 2);
   };
 
   return (
-    <SafeAreaView className="h-full bg-white">
+    <View style={styles.container}>
+      {/* Header with Gradient */}
+      <LinearGradient
+        colors={[COLORS.primary, COLORS.secondary]}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 1, y: 1 }}
+        style={styles.header}
+      >
+        <View style={styles.profileImageContainer}>
+          {loading ? (
+            <ActivityIndicator size="large" color="#1E90FF" />
+          ) : rawUser?.avatar ? ( // ✅ Display uploaded image if available
+            <Image
+              source={{ uri: rawUser.avatar }}
+              className="size-44 rounded-full border-2 border-slate-300"
+              onLoadEnd={() => setLoading(false)}
+            />
+          ) : (
+            <View className="border-2 rounded-full p-10 border-slate-300">
+              <User2 size={60} color={"#95A5A6"} />
+            </View>
+          )}
+
+          <TouchableOpacity style={styles.cameraButton} onPress={pickImage}>
+            <Camera size={20} color={COLORS.white} />
+          </TouchableOpacity>
+        </View>
+
+        <Text style={styles.userName}>{rawUser?.name || "User"}</Text>
+        <Text style={styles.userEmail}>{rawUser?.email || ""}</Text>
+      </LinearGradient>
+
       <ScrollView
         showsVerticalScrollIndicator={false}
-        contentContainerClassName="pb-32 px-7"
+        contentContainerStyle={styles.scrollContent}
+        style={styles.scrollView}
       >
-        <View className="flex flex-row justify-center mt-5">
-          <View className="flex flex-col items-center relative mt-5">
-            {loading ? (
-              <ActivityIndicator size="large" color="#1E90FF" />
-            ) : rawUser?.avatar ? ( // ✅ Display uploaded image if available
-              <Image
-                source={{ uri: rawUser.avatar }}
-                className="size-44 rounded-full border-2 border-slate-300"
-                onLoadEnd={() => setLoading(false)}
-              />
-            ) : (
-              <View className="border-2 rounded-full p-10 border-slate-300">
-                <User2 size={60} color={"#95A5A6"} />
+        <View style={styles.card}>
+          {/* Agent Toggle */}
+          {isAgent && (
+            <View style={styles.agentToggleContainer}>
+              <View style={styles.agentToggleContent}>
+                <Shield size={22} color={COLORS.primary} />
+                <Text style={styles.agentToggleText}>Agent View</Text>
               </View>
-            )}
-
-            <TouchableOpacity className="p-2" onPress={pickImage}>
-              <Text className="text-blue-600">Change photo</Text>
-            </TouchableOpacity>
-
-            <Text className="text-2xl font-rubik-bold">{rawUser?.name}</Text>
-          </View>
-        </View>
-
-        {/* ✅ Agent Toggle */}
-        {isAgent && ( // ✅ Only show toggle switch to agents
-          <View className="flex flex-row justify-between items-center px-4 py-3 rounded-lg mt-6">
-            <Text className="text-lg font-semibold text-gray-800">
-              Agent View
-            </Text>
-            <Switch value={agentView} onValueChange={switchAgentView} />
-          </View>
-        )}
-
-        {!isAgent && ( //
-          <View className="flex flex-col mt-10">
-            <View className="flex flex-col mt-5 border-t pt-5 border-primary-200">
-              <SettingsItem
-                icon={Calendar}
-                title="My Bookings"
-                onPress={() => router.push("/userBookings")}
+              <Switch
+                value={agentView}
+                onValueChange={switchAgentView}
+                trackColor={{ false: "#E0E0E0", true: COLORS.primaryLight }}
+                thumbColor={agentView ? COLORS.primary : "#F5F5F5"}
               />
             </View>
-          </View>
-        )}
-        <View className="flex flex-col mt-5 border-t pt-5 border-primary-200">
+          )}
+
+          <Text style={styles.sectionTitle}>Account</Text>
+
+          {!isAgent && (
+            <SettingsItem
+              icon={<Calendar size={20} color={COLORS.secondary} />}
+              title="My Bookings"
+              subtitle="View your upcoming and past bookings"
+              onPress={() => router.push("/userBookings")}
+              iconBgColor="rgba(93, 109, 255, 0.1)"
+            />
+          )}
+
           <SettingsItem
-            icon={LucideShare2}
+            icon={<LucideShare2 size={20} color="#00D27A" />}
             title="Invite Friends"
+            subtitle="Share the app with your friends"
             onPress={InviteFriends}
+            iconBgColor="rgba(0, 210, 122, 0.1)"
           />
-        </View>
 
-        <View className="flex flex-col mt-5 border-t pt-5 border-primary-200">
           <SettingsItem
-            onPress={() => router.push("/update-password")}
-            icon={Bell}
+            icon={<Lock size={20} color="#FF9500" />}
             title="Change Password"
+            subtitle="Update your security credentials"
+            onPress={() => router.push("/update-password")}
+            iconBgColor="rgba(255, 149, 0, 0.1)"
           />
-        </View>
 
-        <View className="flex flex-col border-t mt-5 pt-5 border-primary-200">
           <SettingsItem
-            icon={icons.logout}
+            icon={<LogOut size={20} color={COLORS.danger} />}
             title="Sign Out"
-            textStyle="text-danger font-bold"
+            textStyle="text-danger"
             showArrow={false}
             onPress={handleLogout}
+            iconBgColor="rgba(255, 76, 105, 0.1)"
           />
-        </View>
-        {/* <View className="flex flex-col border-t mt-5 pt-5 border-primary-200">
-          <SettingsItem
-            icon={icons.logout}
+
+          {/* <SettingsItem
+            icon={<Trash size={20} color={COLORS.danger} />}
             title="Delete Account"
-            textStyle="text-danger font-bold"
+            textStyle="text-danger"
             showArrow={false}
             onPress={() => deleteUserAccount(rawUser?.$id!)}
-          />
-        </View> */}
+            iconBgColor="rgba(255, 76, 105, 0.1)"
+          /> */}
+        </View>
+
+        <View style={styles.versionContainer}>
+          <Text style={styles.versionText}>App Version 1.0.0</Text>
+        </View>
       </ScrollView>
-    </SafeAreaView>
+    </View>
   );
 };
+
+const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+    backgroundColor: COLORS.background,
+  },
+  header: {
+    paddingTop: "20%",
+    paddingBottom: 30,
+    alignItems: "center",
+    borderBottomLeftRadius: 30,
+    borderBottomRightRadius: 30,
+  },
+  profileImageContainer: {
+    position: "relative",
+    marginBottom: 15,
+  },
+  profileImage: {
+    width: 100,
+    height: 100,
+    borderRadius: 50,
+    borderWidth: 4,
+    borderColor: COLORS.white,
+  },
+  initialsContainer: {
+    width: 100,
+    height: 100,
+    borderRadius: 50,
+    backgroundColor: "rgba(255, 255, 255, 0.3)",
+    justifyContent: "center",
+    alignItems: "center",
+    borderWidth: 4,
+    borderColor: COLORS.white,
+  },
+  initialsText: {
+    fontSize: 36,
+    fontWeight: "bold",
+    color: COLORS.white,
+  },
+  cameraButton: {
+    position: "absolute",
+    bottom: 0,
+    right: 0,
+    backgroundColor: COLORS.primary,
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    justifyContent: "center",
+    alignItems: "center",
+    borderWidth: 3,
+    borderColor: COLORS.white,
+  },
+  userName: {
+    fontSize: 24,
+    fontWeight: "bold",
+    color: COLORS.white,
+    marginTop: 5,
+  },
+  userEmail: {
+    fontSize: 14,
+    color: "rgba(255, 255, 255, 0.8)",
+    marginTop: 2,
+  },
+  scrollView: {
+    flex: 1,
+    marginTop: -25,
+  },
+  scrollContent: {
+    paddingHorizontal: 16,
+    paddingBottom: 32,
+  },
+  card: {
+    backgroundColor: COLORS.white,
+    borderRadius: 16,
+    padding: 20,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 15,
+    elevation: 2,
+    marginBottom: 16,
+  },
+  sectionTitle: {
+    fontSize: 18,
+    fontWeight: "600",
+    color: COLORS.text,
+    marginBottom: 15,
+  },
+  settingsItemContainer: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingVertical: 14,
+    borderBottomWidth: 1,
+    borderBottomColor: COLORS.divider,
+  },
+  settingsItemContent: {
+    flexDirection: "row",
+    alignItems: "center",
+  },
+  iconContainer: {
+    width: 40,
+    height: 40,
+    borderRadius: 12,
+    justifyContent: "center",
+    alignItems: "center",
+    marginRight: 14,
+  },
+  settingsTextContainer: {
+    flex: 1,
+  },
+  settingsTitle: {
+    fontSize: 16,
+    fontWeight: "500",
+    color: COLORS.text,
+  },
+  settingsSubtitle: {
+    fontSize: 13,
+    color: COLORS.textLight,
+    marginTop: 2,
+  },
+  agentToggleContainer: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingVertical: 14,
+    marginBottom: 10,
+    borderBottomWidth: 1,
+    borderBottomColor: COLORS.divider,
+  },
+  agentToggleContent: {
+    flexDirection: "row",
+    alignItems: "center",
+  },
+  agentToggleText: {
+    fontSize: 16,
+    fontWeight: "500",
+    color: COLORS.text,
+    marginLeft: 14,
+  },
+  versionContainer: {
+    alignItems: "center",
+    marginTop: 10,
+    marginBottom: 20,
+  },
+  versionText: {
+    fontSize: 13,
+    color: COLORS.textLight,
+  },
+});
 
 export default Profile;
