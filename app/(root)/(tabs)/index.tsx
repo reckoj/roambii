@@ -406,11 +406,16 @@ const Home = () => {
                 title: "My Bookings",
                 onPress: () => router.push("/userBookings"),
               })}
-              {renderQuickAction({
+              {/* {renderQuickAction({
                 icon: <Heart size={18} color="#E74C3C" />,
                 title: "Wishlist",
                 onPress: () => router.push("/wishlist"),
               })}
+              {renderQuickAction({
+                icon: <Heart size={18} color="#E74C3C" />,
+                title: "Wishlist",
+                onPress: () => router.push("/wishlist"),
+              })} */}
             </View>
 
             {/* Featured Section */}
@@ -571,7 +576,7 @@ const styles = StyleSheet.create({
   // Quick Actions
   quickActionsContainer: {
     flexDirection: "row",
-    justifyContent: "space-around",
+    justifyContent: "flex-start",
     backgroundColor: "#f1f1f1",
     borderRadius: 16,
     padding: 14,

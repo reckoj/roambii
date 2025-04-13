@@ -14,6 +14,7 @@ import { PackageFormData } from "./packageFormData";
 import images from "@/constants/images";
 import { Alert } from "react-native";
 import { useGlobalContext } from "./global-provider";
+import { Activity, DayPlan, Itinerary, ItineraryWithDetails } from "./models";
 
 export const config = {
   platform: "com.bysprk.roambii",
@@ -40,6 +41,10 @@ export const config = {
   chatRoomsCollectionId:
     process.env.EXPO_PUBLIC_APPWRITE_CHAT_ROOMS_COLLECTION_ID,
   backendApi: process.env.EXPO_PUBLIC_BACKEND_API,
+  itinerariesCollectionId:
+    process.env.EXPO_PUBLIC_APPWRITE_USER_ITINERARY_COLLECTION_ID,
+  dayPlansCollectionId: process.env.EXPO_PUBLIC_APPWRITE_USER_DAY_PLANS,
+  activitiesCollectionId: process.env.EXPO_PUBLIC_APPWRITE_USER_ACTIVITIES,
 };
 interface User {
   $id: string;
@@ -819,5 +824,259 @@ export { ID };
 //   } catch (error) {
 //     console.error("[Error Deleting Account] ==> ", error);
 //     Alert.alert("Error", "Failed to delete your account.");
+//   }
+// };
+
+/**
+ * Creates a new itinerary with optional day plans and activities
+ * @param itinerary The itinerary data
+ * @param dayPlans Optional array of day plans to create
+ * @param activities Optional activities mapped to day plans by index
+ * @returns The created itinerary with IDs filled in
+ */
+// export const createItinerary = async (
+//   itinerary: Itinerary,
+//   dayPlans?: Omit<DayPlan, "itinerary_id">[],
+//   activities?: { [dayPlanIndex: number]: Omit<Activity, "day_plan_id">[] }
+// ): Promise<Itinerary> => {
+//   try {
+//     // 1. Create the itinerary
+//     const createdItinerary = (await databases.createDocument(
+//       config.databaseId!,
+//       config.itinerariesCollectionId!,
+//       ID.unique(),
+//       {
+//         ...itinerary,
+//         created_at: new Date().toISOString(),
+//       }
+//     )) as unknown as Itinerary;
+
+//     // 2. Create day plans if provided
+//     if (dayPlans && dayPlans.length > 0) {
+//       const createdDayPlans: DayPlan[] = [];
+
+//       for (let i = 0; i < dayPlans.length; i++) {
+//         const dayPlan = dayPlans[i];
+//         const createdDayPlan = (await databases.createDocument(
+//           config.databaseId!,
+//           config.dayPlansCollectionId!,
+//           ID.unique(),
+//           {
+//             ...dayPlan,
+//             itinerary_id: createdItinerary.$id,
+//           }
+//         )) as unknown as DayPlan;
+
+//         createdDayPlans.push(createdDayPlan);
+
+//         // 3. Create activities for this day plan if provided
+//         if (activities && activities[i] && activities[i].length > 0) {
+//           for (const activity of activities[i]) {
+//             await databases.createDocument(
+//               config.databaseId!,
+//               config.activitiesCollectionId!,
+//               ID.unique(),
+//               {
+//                 ...activity,
+//                 day_plan_id: createdDayPlan.$id,
+//               }
+//             );
+//           }
+//         }
+//       }
+//     }
+
+//     return createdItinerary;
+//   } catch (error) {
+//     console.error("Error creating itinerary:", error);
+//     throw error;
+//   }
+// };
+
+// /**
+//  * Updates an existing itinerary
+//  * @param itineraryId The ID of the itinerary to update
+//  * @param updatedData The updated itinerary data
+//  * @returns The updated itinerary
+//  */
+// export const updateItinerary = async (
+//   itineraryId: string,
+//   updatedData: Partial<Omit<Itinerary, "$id" | "created_at">>
+// ): Promise<Itinerary> => {
+//   try {
+//     const updatedItinerary = (await databases.updateDocument(
+//       config.databaseId!,
+//       config.itinerariesCollectionId!,
+//       itineraryId!,
+//       updatedData
+//     )) as unknown as Itinerary;
+
+//     return updatedItinerary;
+//   } catch (error) {
+//     console.error("Error updating itinerary:", error);
+//     throw error;
+//   }
+// };
+
+// /**
+//  * Fetches an itinerary with all its day plans and activities
+//  * @param itineraryId The ID of the itinerary to fetch
+//  * @returns The itinerary with day plans and activities
+//  */
+// export const getItineraryWithDetails = async (
+//   itineraryId: string
+// ): Promise<ItineraryWithDetails> => {
+//   try {
+//     // 1. Fetch the itinerary
+//     const itinerary = (await databases.getDocument(
+//       config.databaseId!,
+//       config.itinerariesCollectionId!,
+//       itineraryId
+//     )) as unknown as Itinerary;
+
+//     // 2. Fetch day plans for this itinerary
+//     const dayPlansResult = await databases.listDocuments(
+//       config.databaseId!,
+//       config.dayPlansCollectionId!,
+//       [Query.equal("itinerary_id", itineraryId), Query.orderAsc("day")]
+//     );
+
+//     const dayPlans = dayPlansResult.documents as unknown as DayPlan[];
+//     const dayPlansWithActivities: (DayPlan & { activities: Activity[] })[] = [];
+
+//     // 3. Fetch activities for each day plan
+//     for (const dayPlan of dayPlans) {
+//       const activitiesResult = await databases.listDocuments(
+//         config.databaseId!,
+//         config.activitiesCollectionId!,
+//         [Query.equal("day_plan_id", dayPlan.$id!)]
+//       );
+
+//       const activities = activitiesResult.documents as unknown as Activity[];
+
+//       dayPlansWithActivities.push({
+//         ...dayPlan,
+//         activities,
+//       });
+//     }
+
+//     return {
+//       itinerary,
+//       dayPlans: dayPlansWithActivities,
+//     };
+//   } catch (error) {
+//     console.error("Error fetching itinerary details:", error);
+//     throw error;
+//   }
+// };
+
+// /**
+//  * Updates a day plan
+//  * @param dayPlanId The ID of the day plan to update
+//  * @param updatedData The updated day plan data
+//  * @returns The updated day plan
+//  */
+// export const updateDayPlan = async (
+//   dayPlanId: string,
+//   updatedData: Partial<Omit<DayPlan, "$id" | "itinerary_id">>
+// ): Promise<DayPlan> => {
+//   try {
+//     const updatedDayPlan = (await databases.updateDocument(
+//       config.databaseId!,
+//       config.dayPlansCollectionId!,
+//       dayPlanId,
+//       updatedData
+//     )) as unknown as DayPlan;
+
+//     return updatedDayPlan;
+//   } catch (error) {
+//     console.error("Error updating day plan:", error);
+//     throw error;
+//   }
+// };
+
+// /**
+//  * Creates or updates an activity
+//  * @param activity The activity data
+//  * @returns The created or updated activity
+//  */
+// export const saveActivity = async (activity: Activity): Promise<Activity> => {
+//   try {
+//     if (activity.$id) {
+//       // Update existing activity
+//       const { $id, ...activityData } = activity;
+//       return (await databases.updateDocument(
+//         config.databaseId!,
+//         config.activitiesCollectionId!,
+//         $id,
+//         activityData
+//       )) as unknown as Activity;
+//     } else {
+//       // Create new activity
+//       const { $id, ...activityData } = activity;
+//       return (await databases.createDocument(
+//         config.databaseId!,
+//         config.activitiesCollectionId!,
+//         ID.unique(),
+//         activityData
+//       )) as unknown as Activity;
+//     }
+//   } catch (error) {
+//     console.error("Error saving activity:", error);
+//     throw error;
+//   }
+// };
+
+// /**
+//  * Deletes an itinerary and all related day plans and activities
+//  * @param itineraryId The ID of the itinerary to delete
+//  */
+// export const deleteItinerary = async (itineraryId: string): Promise<void> => {
+//   try {
+//     // 1. Fetch all day plans for this itinerary
+//     const dayPlansResult = await databases.listDocuments(
+//       config.databaseId!,
+//       config.dayPlansCollectionId!,
+//       [Query.equal("itinerary_id", itineraryId)]
+//     );
+
+//     const dayPlans = dayPlansResult.documents as unknown as DayPlan[];
+
+//     // 2. Delete all activities for each day plan
+//     for (const dayPlan of dayPlans) {
+//       const activitiesResult = await databases.listDocuments(
+//         config.databaseId!,
+//         config.activitiesCollectionId!,
+//         [Query.equal("day_plan_id", dayPlan.$id!)]
+//       );
+
+//       const activities = activitiesResult.documents as unknown as Activity[];
+
+//       // Delete each activity
+//       for (const activity of activities) {
+//         await databases.deleteDocument(
+//           config.databaseId!,
+//           config.activitiesCollectionId!,
+//           activity.$id as string
+//         );
+//       }
+
+//       // Delete the day plan
+//       await databases.deleteDocument(
+//         config.databaseId!,
+//         config.dayPlansCollectionId!,
+//         dayPlan.$id as string
+//       );
+//     }
+
+//     // 3. Delete the itinerary
+//     await databases.deleteDocument(
+//       config.databaseId!,
+//       config.itinerariesCollectionId!,
+//       itineraryId
+//     );
+//   } catch (error) {
+//     console.error("Error deleting itinerary:", error);
+//     throw error;
 //   }
 // };

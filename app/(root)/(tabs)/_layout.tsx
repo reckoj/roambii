@@ -6,6 +6,7 @@ import {
   MessageCircleIcon,
   PlusCircle,
   User,
+  Map,
 } from "lucide-react-native";
 import { useGlobalContext } from "@/lib/global-provider";
 import { useEffect, useState } from "react";
@@ -185,6 +186,18 @@ const TabsLayout = () => {
             ),
           }}
         />
+
+        <Tabs.Screen
+          name="itinerary"
+          options={{
+            title: "Itinerary",
+            headerShown: false,
+            tabBarIcon: ({ focused }) => (
+              <LucideTabIcon focused={focused} Icon={Map} title="Itinerary" />
+            ),
+          }}
+        />
+
         <Tabs.Screen
           name="profile"
           options={{
