@@ -1,0 +1,58 @@
+// lib/redux/store.ts
+import { configureStore, combineReducers } from "@reduxjs/toolkit";
+import { persistStore, persistReducer } from "redux-persist";
+import AsyncStorage from "@react-native-async-storage/async-storage";
+import authReducer from "../redux/slices/authSlice";
+import packageReducer from "../redux//slices/packageSlice";
+import itineraryReducer from "../redux//slices/itinerarySlice";
+import chatReducer from "../redux//slices/chatSlice";
+import bookingReducer from "../redux//slices/bookingSlice";
+
+// Configure Redux Persist
+const persistConfig = {
+  key: "root",
+  storage: AsyncStorage,
+  whitelist: ["auth"], // Only persist auth state to maintain user sessions
+};
+
+// Specific config for chat reducer to persist user profiles and messages
+const chatPersistConfig = {
+  key: "chat",
+  storage: AsyncStorage,
+  whitelist: ["userProfiles", "chatRooms", "currentMessages", "messageCache"], // Persist profiles, chat rooms, and messages
+};
+
+const rootReducer = combineReducers({
+  auth: authReducer,
+  packages: packageReducer,
+  itineraries: itineraryReducer,
+  chat: persistReducer(chatPersistConfig, chatReducer), // Apply persist to chat slice
+  bookings: bookingReducer,
+});
+
+const persistedReducer = persistReducer(persistConfig, rootReducer);
+
+// Create store
+const store = configureStore({
+  reducer: persistedReducer,
+  middleware: (getDefaultMiddleware) =>
+    getDefaultMiddleware({
+      serializableCheck: {
+        // Ignore these action types for serializability check
+        ignoredActions: [
+          "persist/PERSIST",
+          "persist/REHYDRATE",
+          "chat/setMessageSubscription",
+        ],
+        ignoredPaths: ["chat.messageSubscription"],
+      },
+    }),
+});
+
+// Export types for TypeScript
+export type RootState = ReturnType<typeof store.getState>;
+export type AppDispatch = typeof store.dispatch;
+
+// Create persistor
+export const persistor = persistStore(store);
+export default store;

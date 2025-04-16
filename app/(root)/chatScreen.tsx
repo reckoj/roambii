@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from "react";
+import React, { useEffect, useRef, useState, useCallback } from "react";
 import {
   View,
   Text,
@@ -12,21 +12,15 @@ import {
   ActivityIndicator,
   Alert,
   StyleSheet,
-  Animated,
   ImageBackground,
 } from "react-native";
 import { StatusBar } from "react-native";
 import { router, useLocalSearchParams, useFocusEffect } from "expo-router";
 import { ChevronLeft, Send } from "lucide-react-native";
 import {
-  getMessages,
-  sendMessage,
   subscribeToMessages,
-  markMessagesAsRead,
-  getChatRoomId,
-  FirebaseMessage,
   getConsistentRoomId,
-  sendMessageWithConsistentRoomId,
+  FirebaseMessage,
 } from "@/lib/chatService";
 import { useGlobalContext } from "@/lib/global-provider";
 import images from "@/constants/images";
@@ -34,43 +28,304 @@ import { databases, config } from "@/lib/appwrite";
 import { Query } from "react-native-appwrite";
 import ChatBubble from "@/components/ChatBubble";
 
+// Redux imports
+import { useDispatch, useSelector } from "react-redux";
+import {
+  setCurrentRoom,
+  setCurrentPartner,
+  fetchMessagesAsync,
+  sendMessageAsync,
+  markMessagesAsReadAsync,
+  updateMessages,
+  updateUserProfiles,
+} from "@/lib/redux/slices/chatSlice";
+import { RootState, AppDispatch } from "@/lib/store/store";
+import ShimmerEffect from "@/components/LoadingShimmer";
+
 const ChatScreen = () => {
   // Get route parameters
   const params = useLocalSearchParams();
   const receivedAgentId = params.agentId as string;
   const previousScreen = (params.from as string) || ""; // Track where we came from
 
+  // Redux
+  const dispatch = useDispatch<AppDispatch>();
+  const {
+    currentRoom,
+    currentMessages,
+    currentPartner,
+    loading: reduxLoading,
+    error: reduxError,
+    userProfiles: savedUserProfiles,
+    messageCache,
+  } = useSelector((state: RootState) => state.chat);
+
   // Get authenticated user
   const { rawUser } = useGlobalContext();
   const currentUserId = rawUser?.$id;
 
   // State
-  const [messages, setMessages] = useState<FirebaseMessage[]>([]);
   const [newMessage, setNewMessage] = useState("");
   const [loading, setLoading] = useState(true);
+  const [messagesLoading, setMessagesLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [partnerProfile, setPartnerProfile] = useState<any>(null);
-  const [chatRoomId, setChatRoomId] = useState<string | null>(null);
+  const [partnerLoading, setPartnerLoading] = useState(true);
   const flatListRef = useRef<FlatList<FirebaseMessage>>(null);
+  const roomIdRef = useRef<string | null>(null);
+  const hasSetupRef = useRef(false);
+  const subscriptionRef = useRef<(() => void) | null>(null);
 
-  // Debug logs for parameters
+  // Fetch partner profile from Redux cache first, then Appwrite
+  const fetchPartnerProfile = useCallback(async () => {
+    if (!receivedAgentId) return;
+
+    try {
+      // First check if we already have this profile in Redux cache
+      if (savedUserProfiles && savedUserProfiles[receivedAgentId]) {
+        console.log(`Using cached profile for partner: ${receivedAgentId}`);
+        dispatch(setCurrentPartner(savedUserProfiles[receivedAgentId]));
+        setPartnerLoading(false);
+        return;
+      }
+
+      console.log("Fetching partner profile for:", receivedAgentId);
+      setPartnerLoading(true);
+
+      // Fetch the profile...
+      let foundProfile = null;
+
+      // 1. Try to fetch from users collection first
+      if (config.usersCollectionId) {
+        try {
+          const userProfile = await databases
+            .getDocument(
+              config.databaseId!,
+              config.usersCollectionId,
+              receivedAgentId
+            )
+            .catch(() => null);
+
+          if (userProfile) {
+            console.log("Found partner in users collection:", userProfile.$id);
+            foundProfile = userProfile;
+          }
+        } catch (err) {
+          console.warn("Could not find user in main users collection");
+        }
+      }
+
+      // 2. Try agents collection if needed
+      if (!foundProfile && config.agentsCollectionId) {
+        try {
+          const agentProfile = await databases
+            .getDocument(
+              config.databaseId!,
+              config.agentsCollectionId,
+              receivedAgentId
+            )
+            .catch(() => null);
+
+          if (agentProfile) {
+            console.log(
+              "Found partner in agents collection:",
+              agentProfile.$id
+            );
+            foundProfile = agentProfile;
+          }
+        } catch (err) {
+          console.warn("Could not find user in agents collection");
+        }
+      }
+
+      // 3. Try searching users by equality if ID lookup failed
+      if (!foundProfile && config.usersCollectionId) {
+        try {
+          // Try to find by userId field if it's an agent ID
+          const userDocs = await databases.listDocuments(
+            config.databaseId!,
+            config.usersCollectionId,
+            [Query.equal("userId", receivedAgentId)]
+          );
+
+          if (userDocs.documents.length > 0) {
+            console.log(
+              "Found partner through userId query:",
+              userDocs.documents[0].$id
+            );
+            foundProfile = userDocs.documents[0];
+          }
+        } catch (err) {
+          console.warn("Query for user by userId failed");
+        }
+      }
+
+      // Set partner profile in Redux
+      if (foundProfile) {
+        dispatch(setCurrentPartner(foundProfile));
+
+        // Also update the userProfiles cache in Redux
+        if (savedUserProfiles) {
+          dispatch(
+            updateUserProfiles({
+              ...savedUserProfiles,
+              [receivedAgentId]: foundProfile,
+            })
+          );
+        } else {
+          dispatch(
+            updateUserProfiles({
+              [receivedAgentId]: foundProfile,
+            })
+          );
+        }
+      }
+
+      setPartnerLoading(false);
+    } catch (error) {
+      console.error("Error in profile resolution:", error);
+      setPartnerLoading(false);
+    }
+  }, [receivedAgentId, dispatch, savedUserProfiles]);
+
+  // Fetch profile on mount
   useEffect(() => {
-    console.log("ChatScreen initialized with:", {
-      currentUserId,
-      receivedAgentId,
-      previousScreen,
-    });
-  }, [currentUserId, receivedAgentId, previousScreen]);
+    fetchPartnerProfile();
+  }, [fetchPartnerProfile]);
 
-  // Add useFocusEffect to mark messages as read when screen is focused
+  // Setup chat room once
+  const setupChatRoom = useCallback(async () => {
+    // Skip if already set up
+    if (hasSetupRef.current || !currentUserId || !receivedAgentId) return;
+
+    hasSetupRef.current = true;
+
+    try {
+      setLoading(true);
+      setMessagesLoading(true);
+
+      // Generate room ID
+      const roomId = await getConsistentRoomId(currentUserId, receivedAgentId);
+
+      if (!roomId) {
+        setError("Could not generate a valid room ID");
+        setLoading(false);
+        setMessagesLoading(false);
+        return;
+      }
+
+      // Store in ref for stable reference
+      roomIdRef.current = roomId;
+
+      // Store in Redux
+      dispatch(setCurrentRoom(roomId));
+      console.log("Using consistent room ID:", roomId);
+
+      // Check if we have cached messages
+      if (
+        messageCache &&
+        messageCache[roomId] &&
+        messageCache[roomId].length > 0
+      ) {
+        console.log(
+          `Using ${messageCache[roomId].length} cached messages while fetching fresh data`
+        );
+        setMessagesLoading(false);
+      }
+
+      // Fetch messages
+      console.log("Loading initial messages for room:", roomId);
+      await dispatch(fetchMessagesAsync(roomId)).unwrap();
+
+      // Mark messages as read
+      await dispatch(
+        markMessagesAsReadAsync({
+          roomId,
+          userId: currentUserId,
+        })
+      ).unwrap();
+
+      setLoading(false);
+      setMessagesLoading(false);
+    } catch (error: any) {
+      console.error("Error setting up chat room:", error);
+      setError(error.message || "Failed to load messages. Please try again.");
+      setLoading(false);
+      setMessagesLoading(false);
+      hasSetupRef.current = false; // Reset so we can try again
+    }
+  }, [currentUserId, receivedAgentId, dispatch, messageCache]);
+
+  // Setup subscription separately
+  const setupSubscription = useCallback(() => {
+    // Only set up subscription if we have a room and don't already have one
+    if (!roomIdRef.current || subscriptionRef.current || !currentUserId) {
+      return;
+    }
+
+    console.log("Setting up message subscription for:", roomIdRef.current);
+
+    try {
+      // Create a subscription and store in ref
+      subscriptionRef.current = subscribeToMessages(
+        roomIdRef.current,
+        (updatedMessages) => {
+          console.log(
+            `Received ${updatedMessages.length} messages from subscription`
+          );
+          dispatch(updateMessages(updatedMessages));
+        }
+      );
+    } catch (error) {
+      console.error("Error setting up subscription:", error);
+    }
+  }, [currentUserId, dispatch]);
+
+  // Initialize chat room and setup subscription
+  useEffect(() => {
+    if (!currentUserId || !receivedAgentId) {
+      setError(
+        !currentUserId
+          ? "Please log in to continue"
+          : "Missing recipient information"
+      );
+      setLoading(false);
+      return;
+    }
+
+    // Setup chat room
+    setupChatRoom();
+
+    // Clean up function
+    return () => {
+      // Only clean up subscription when component unmounts completely
+      if (subscriptionRef.current) {
+        console.log("Component unmounting, cleaning up subscription");
+        subscriptionRef.current();
+        subscriptionRef.current = null;
+      }
+    };
+  }, [currentUserId, receivedAgentId, setupChatRoom]);
+
+  // Setup subscription after room is set up
+  useEffect(() => {
+    if (roomIdRef.current && !subscriptionRef.current) {
+      setupSubscription();
+    }
+  }, [roomIdRef.current, setupSubscription]);
+
+  // Mark messages as read when focused
   useFocusEffect(
-    React.useCallback(() => {
-      console.log("ChatScreen is focused");
-
-      // Mark messages as read whenever the screen comes into focus
-      if (chatRoomId && currentUserId && messages.length > 0) {
+    useCallback(() => {
+      // Make sure we have a room ID and messages before attempting to mark as read
+      if (roomIdRef.current && currentUserId && currentMessages.length > 0) {
         console.log("Screen focused, marking messages as read");
-        markMessagesAsRead(chatRoomId, currentUserId)
+        dispatch(
+          markMessagesAsReadAsync({
+            roomId: roomIdRef.current,
+            userId: currentUserId,
+          })
+        )
+          .unwrap()
           .then(() => console.log("Messages marked as read on screen focus"))
           .catch((err) =>
             console.error("Error marking messages as read on focus:", err)
@@ -80,195 +335,19 @@ const ChatScreen = () => {
       return () => {
         console.log("ChatScreen lost focus");
       };
-    }, [chatRoomId, currentUserId, messages.length])
+    }, [currentUserId, currentMessages.length, dispatch])
   );
-
-  // Fetch partner profile from Appwrite
-  useEffect(() => {
-    const fetchPartnerProfile = async () => {
-      if (!receivedAgentId) return;
-
-      try {
-        console.log("Fetching partner profile for:", receivedAgentId);
-
-        // We'll try multiple approaches to find the profile
-        let foundProfile = null;
-
-        // 1. Try to fetch from users collection first
-        if (config.usersCollectionId) {
-          try {
-            const userProfile = await databases
-              .getDocument(
-                config.databaseId!,
-                config.usersCollectionId,
-                receivedAgentId
-              )
-              .catch(() => null);
-
-            if (userProfile) {
-              console.log(
-                "Found partner in users collection:",
-                userProfile.$id
-              );
-              foundProfile = userProfile;
-            }
-          } catch (err) {
-            console.warn("Could not find user in main users collection");
-          }
-        }
-
-        // 2. Try agents collection if needed
-        if (!foundProfile && config.agentsCollectionId) {
-          try {
-            const agentProfile = await databases
-              .getDocument(
-                config.databaseId!,
-                config.agentsCollectionId,
-                receivedAgentId
-              )
-              .catch(() => null);
-
-            if (agentProfile) {
-              console.log(
-                "Found partner in agents collection:",
-                agentProfile.$id
-              );
-              foundProfile = agentProfile;
-            }
-          } catch (err) {
-            console.warn("Could not find user in agents collection");
-          }
-        }
-
-        // 3. Try searching users by equality if ID lookup failed
-        if (!foundProfile && config.usersCollectionId) {
-          try {
-            // Try to find by userId field if it's an agent ID
-            const userDocs = await databases.listDocuments(
-              config.databaseId!,
-              config.usersCollectionId,
-              [Query.equal("userId", receivedAgentId)]
-            );
-
-            if (userDocs.documents.length > 0) {
-              console.log(
-                "Found partner through userId query:",
-                userDocs.documents[0].$id
-              );
-              foundProfile = userDocs.documents[0];
-            }
-          } catch (err) {
-            console.warn("Query for user by userId failed");
-          }
-        }
-
-        // Set whatever we found, or create fallback
-        if (foundProfile) {
-          setPartnerProfile(foundProfile);
-        }
-      } catch (error) {
-        console.error("Error in profile resolution:", error);
-      }
-    };
-
-    fetchPartnerProfile();
-  }, [receivedAgentId]);
-
-  // Set up chat room and messages with consistent room ID handling
-  useEffect(() => {
-    if (!currentUserId || !receivedAgentId) {
-      setError(
-        !currentUserId
-          ? "Please log in to continue"
-          : "Missing recipient information"
-      );
-      setLoading(false);
-      return () => {};
-    }
-
-    // Generate consistent roomId using our enhanced function
-    const setupChatRoom = async () => {
-      try {
-        // Use the enhanced function that handles agent/user relationships
-        const roomId = await getConsistentRoomId(
-          currentUserId,
-          receivedAgentId
-        );
-        setChatRoomId(roomId);
-        console.log("Using consistent room ID:", roomId);
-
-        if (!roomId) {
-          setError("Could not generate a valid room ID");
-          setLoading(false);
-          return;
-        }
-
-        // Load initial messages
-        console.log("Loading initial messages for room:", roomId);
-        const initialMessages = await getMessages(roomId);
-
-        console.log(`Loaded ${initialMessages.length} messages`);
-        setMessages(initialMessages);
-
-        // Mark messages as read immediately when entering chat screen
-        if (initialMessages.length > 0) {
-          console.log("Marking initial messages as read");
-          await markMessagesAsRead(roomId, currentUserId);
-        }
-
-        setLoading(false);
-
-        // Subscribe to new messages
-        const unsubscribe = subscribeToMessages(roomId, (updatedMessages) => {
-          console.log(
-            `Received ${updatedMessages.length} messages from subscription`
-          );
-          setMessages(updatedMessages);
-
-          // Mark messages as read automatically if they're for the current user
-          const hasUnreadMessages = updatedMessages.some(
-            (msg) => msg.receiver_id === currentUserId && !msg.read
-          );
-
-          if (hasUnreadMessages) {
-            console.log("New unread messages detected, marking as read");
-            markMessagesAsRead(roomId, currentUserId)
-              .then(() => console.log("New messages marked as read"))
-              .catch((err) =>
-                console.error("Error marking new messages as read:", err)
-              );
-          }
-        });
-
-        return unsubscribe;
-      } catch (error) {
-        console.error("Error setting up chat room:", error);
-        setError("Failed to load messages. Please try again.");
-        setLoading(false);
-        return () => {};
-      }
-    };
-
-    // Call the async setup function and store the returned unsubscribe function
-    let unsubscribe = () => {};
-    setupChatRoom().then((unsub) => {
-      if (unsub) unsubscribe = unsub;
-    });
-
-    // Return the unsubscribe function for cleanup
-    return () => unsubscribe();
-  }, [receivedAgentId, currentUserId]);
 
   // Scroll to bottom when messages change
   useEffect(() => {
-    if (messages.length > 0) {
+    if (currentMessages.length > 0) {
       setTimeout(() => {
         flatListRef.current?.scrollToEnd({ animated: true });
       }, 100);
     }
-  }, [messages]);
+  }, [currentMessages]);
 
-  // Use the new consistent room ID function for sending messages
+  // Use Redux to send messages
   const handleSendMessage = async () => {
     if (!newMessage.trim() || !currentUserId || !receivedAgentId) {
       if (!currentUserId) {
@@ -284,12 +363,14 @@ const ChatScreen = () => {
 
       console.log("Sending message to:", receivedAgentId);
 
-      // Use the enhanced function that ensures consistent room ID
-      await sendMessageWithConsistentRoomId(
-        currentUserId,
-        receivedAgentId,
-        messageToSend
-      );
+      // Use Redux action to send message
+      await dispatch(
+        sendMessageAsync({
+          senderId: currentUserId,
+          receiverId: receivedAgentId,
+          content: messageToSend,
+        })
+      ).unwrap();
 
       // No need to manually update messages array as subscription will handle it
       console.log("Message sent successfully");
@@ -302,77 +383,85 @@ const ChatScreen = () => {
     }
   };
 
-  if (loading) {
+  // Check if a partner name is just an ID (no proper name found)
+  const isIdOnly = (partnerName: string, partnerId: string): boolean => {
+    // Check if the name matches the ID pattern or is close to the ID
     return (
-      <SafeAreaView className="flex-1 bg-white">
-        <View className="flex-1 items-center justify-center">
-          <ActivityIndicator size="large" color="#1ABC9C" />
-          <Text className="mt-4 text-gray-500">Loading messages...</Text>
-        </View>
-      </SafeAreaView>
+      partnerName === partnerId ||
+      partnerName === "Unknown" ||
+      (!partnerName.includes(" ") && partnerName.length > 20)
     );
-  }
+  };
 
-  if (error) {
+  // Get display name, only if it's not just the ID
+  const getDisplayName = (): string => {
+    if (!currentPartner) return "Chat";
+
+    const rawPartnerName =
+      currentPartner?.name || currentPartner?.email || "Unknown";
+    return !isIdOnly(rawPartnerName, receivedAgentId) ? rawPartnerName : "Chat";
+  };
+
+  // Generate initials for avatar fallback
+  const getInitials = (name?: string): string => {
+    if (!name || name === "Chat") return "?";
+    return name
+      .split(" ")
+      .map((n) => n[0])
+      .join("")
+      .toUpperCase()
+      .substring(0, 2);
+  };
+
+  // Use both local and Redux loading/error states
+  const isLoadingState = loading || reduxLoading;
+  const errorState = error || reduxError;
+
+  // Handle navigation back
+  const handleNavigateBack = () => {
+    // Don't clean up subscription when navigating
+    if (previousScreen === "chatlist") {
+      router.push("/chat");
+    } else if (previousScreen === "agentprofile") {
+      router.back(); // This works correctly for agent profile
+    } else {
+      // Try to determine if we should go to chatlist based on navigation history
+      if (router.canGoBack()) {
+        router.back();
+      } else {
+        // Default to chatlist if we can't determine
+        router.push("/chat");
+      }
+    }
+  };
+
+  if (errorState) {
     return (
       <SafeAreaView className="flex-1 bg-white">
         <View className="flex-row items-center p-4 border-b border-gray-200">
-          <TouchableOpacity
-            onPress={() => {
-              if (previousScreen === "chatlist") {
-                router.push("/chat");
-              } else if (previousScreen === "agentprofile") {
-                router.back(); // This works correctly for agent profile
-              } else {
-                // Try to determine if we should go to chatlist based on navigation history
-                if (router.canGoBack()) {
-                  router.back();
-                } else {
-                  // Default to chatlist if we can't determine
-                  router.push("/chat");
-                }
-              }
-            }}
-            className="mr-3"
-          >
+          <TouchableOpacity onPress={handleNavigateBack} className="mr-3">
             <ChevronLeft size={24} color="#000" />
           </TouchableOpacity>
           <Text className="text-lg font-semibold">Chat</Text>
         </View>
         <View className="flex-1 items-center justify-center p-4">
-          <Text className="text-red-500 text-lg mb-4">{error}</Text>
+          <Text className="text-red-500 text-lg mb-4">{errorState}</Text>
           <TouchableOpacity
             className="bg-primary-200 px-4 py-2 rounded-lg"
             onPress={() => {
+              // Reset state to try again
               setError(null);
               setLoading(true);
-              if (currentUserId && receivedAgentId) {
-                // Use enhanced function for retry too
-                getConsistentRoomId(currentUserId, receivedAgentId)
-                  .then((roomId) => {
-                    if (!roomId) {
-                      setError("Could not generate a valid room ID");
-                      setLoading(false);
-                      return;
-                    }
-                    setChatRoomId(roomId);
-                    return getMessages(roomId);
-                  })
-                  .then((msgs) => {
-                    if (msgs) {
-                      setMessages(msgs);
-                      setLoading(false);
-                    }
-                  })
-                  .catch((err) => {
-                    console.error(err);
-                    setError("Failed to load messages");
-                    setLoading(false);
-                  });
-              } else {
-                setError("Missing user or recipient information");
-                setLoading(false);
+              setMessagesLoading(true);
+              hasSetupRef.current = false;
+
+              // Clean up existing subscription
+              if (subscriptionRef.current) {
+                subscriptionRef.current();
+                subscriptionRef.current = null;
               }
+
+              setupChatRoom();
             }}
           >
             <Text className="text-white font-semibold">Try Again</Text>
@@ -382,48 +471,38 @@ const ChatScreen = () => {
     );
   }
 
+  const displayName = getDisplayName();
+
   return (
     <SafeAreaView className="flex-1 bg-white">
       <StatusBar backgroundColor="#f8f9fa" barStyle="dark-content" />
 
       {/* Header */}
       <View className="flex-row items-center p-4 border-b border-primary-300">
-        <TouchableOpacity
-          onPress={() => {
-            if (previousScreen === "chatlist") {
-              router.push("/chat");
-            } else if (previousScreen === "agentprofile") {
-              router.back(); // This works correctly for agent profile
-            } else {
-              // Try to determine if we should go to chatlist based on navigation history
-              if (router.canGoBack()) {
-                router.back();
-              } else {
-                // Default to chatlist if we can't determine
-                router.push("/chat");
-              }
-            }
-          }}
-          className="mr-3"
-        >
+        <TouchableOpacity onPress={handleNavigateBack} className="mr-3">
           <ChevronLeft size={24} color="#000" />
         </TouchableOpacity>
 
-        {partnerProfile?.avatar ? (
+        {/* Profile picture with shimmer loading effect */}
+        {partnerLoading ? (
+          <ShimmerEffect width={48} height={48} style={styles.avatarShimmer} />
+        ) : currentPartner?.avatar ? (
           <Image
-            source={{ uri: partnerProfile.avatar }}
+            source={{ uri: currentPartner.avatar }}
             className="w-12 h-12 rounded-full mr-3"
           />
         ) : (
-          <View className="w-12 h-12 rounded-full mr-3 bg-gray-200" />
+          <View style={styles.avatarFallback}>
+            <Text style={styles.avatarText}>{getInitials(displayName)}</Text>
+          </View>
         )}
 
-        <Text className="text-lg font-semibold flex-1">
-          {partnerProfile?.name ||
-            partnerProfile?.email ||
-            receivedAgentId ||
-            "Chat"}
-        </Text>
+        {/* Partner name with shimmer loading effect */}
+        {partnerLoading ? (
+          <ShimmerEffect width={120} height={24} style={styles.nameShimmer} />
+        ) : (
+          <Text className="text-lg font-semibold flex-1">{displayName}</Text>
+        )}
       </View>
 
       {/* Messages with Background Image */}
@@ -439,7 +518,12 @@ const ChatScreen = () => {
           <View style={styles.overlayLight} />
 
           {/* Messages Content */}
-          {messages.length === 0 ? (
+          {/* {isLoadingState && currentMessages.length === 0 ? (
+            <View style={styles.loadingContainer}>
+              <ActivityIndicator size="large" color="#1ABC9C" />
+              <Text style={styles.loadingText}>Loading messages...</Text>
+            </View>
+          ) : currentMessages.length === 0 ? (
             <View className="flex-1 items-center justify-center">
               <View style={styles.emptyStateContainer}>
                 <Text className="text-gray-500">No messages yet</Text>
@@ -448,30 +532,38 @@ const ChatScreen = () => {
                 </Text>
               </View>
             </View>
-          ) : (
-            <FlatList
-              ref={flatListRef}
-              data={messages}
-              keyExtractor={(item) =>
-                item.id || `${item.timestamp}-${item.sender_id}`
-              }
-              contentContainerStyle={{ padding: 16 }}
-              renderItem={({ item, index }) => {
-                // Determine if this message is from the same sender as the previous one
-                const isConsecutive =
-                  index > 0 && messages[index - 1].sender_id === item.sender_id;
-                const isFromCurrentUser = item.sender_id === currentUserId;
+          ) : ( */}
+          <FlatList
+            ref={flatListRef}
+            data={currentMessages}
+            keyExtractor={(item) =>
+              item.id || `${item.timestamp}-${item.sender_id}`
+            }
+            contentContainerStyle={{ padding: 16 }}
+            // ListFooterComponent={
+            //   messagesLoading ? (
+            //     <View style={styles.inlineLoadingContainer}>
+            //       <ActivityIndicator size="small" color="#1ABC9C" />
+            //     </View>
+            //   ) : null
+            // }
+            renderItem={({ item, index }) => {
+              // Determine if this message is from the same sender as the previous one
+              const isConsecutive =
+                index > 0 &&
+                currentMessages[index - 1].sender_id === item.sender_id;
+              const isFromCurrentUser = item.sender_id === currentUserId;
 
-                return (
-                  <ChatBubble
-                    message={item}
-                    isFromCurrentUser={isFromCurrentUser}
-                    isConsecutive={isConsecutive}
-                  />
-                );
-              }}
-            />
-          )}
+              return (
+                <ChatBubble
+                  message={item}
+                  isFromCurrentUser={isFromCurrentUser}
+                  isConsecutive={isConsecutive}
+                />
+              );
+            }}
+          />
+          {/* )} */}
         </ImageBackground>
       </View>
 
@@ -485,6 +577,8 @@ const ChatScreen = () => {
             style={styles.textInput}
             value={newMessage}
             onChangeText={setNewMessage}
+            placeholder="Type a message..."
+            placeholderTextColor="#979797"
             multiline
           />
           <TouchableOpacity
@@ -505,6 +599,48 @@ const ChatScreen = () => {
 
 // Define styles for the component
 const styles = StyleSheet.create({
+  // Added shimmer styles for avatar and name
+  avatarShimmer: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    marginRight: 12,
+  },
+  nameShimmer: {
+    height: 24,
+    borderRadius: 4,
+    flex: 1,
+  },
+  // Loading indicators
+  loadingContainer: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
+    backgroundColor: "rgba(255, 255, 255, 0.7)",
+  },
+  loadingText: {
+    marginTop: 10,
+    color: "#666666",
+  },
+  inlineLoadingContainer: {
+    padding: 10,
+    alignItems: "center",
+  },
+  // Avatar fallback
+  avatarFallback: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    backgroundColor: "#E0E0E0",
+    justifyContent: "center",
+    alignItems: "center",
+    marginRight: 12,
+  },
+  avatarText: {
+    fontSize: 18,
+    fontWeight: "600",
+    color: "#666666",
+  },
   // Added background image style
   chatContainer: {
     flex: 1,

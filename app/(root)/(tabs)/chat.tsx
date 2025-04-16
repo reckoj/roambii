@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useCallback, useMemo } from "react";
+import React, { useEffect, useState, useCallback } from "react";
 import {
   View,
   Text,
@@ -15,15 +15,25 @@ import {
 } from "react-native";
 import { StatusBar } from "react-native";
 import { router, useFocusEffect } from "expo-router";
-import { getChatPartner, checkIsAgent, deleteChat } from "@/lib/chatService";
+import { getChatPartner } from "@/lib/chatService";
 import { useGlobalContext } from "@/lib/global-provider";
-import { databases, config } from "@/lib/appwrite";
-import { Query } from "react-native-appwrite";
-import { ref, onValue, get } from "firebase/database";
-import { firebaseDb } from "@/lib/firebase";
 import { LinearGradient } from "expo-linear-gradient";
 import { MessageSquare, MoreVertical } from "lucide-react-native";
 import images from "@/constants/images";
+
+// Redux imports
+import { useDispatch, useSelector } from "react-redux";
+import {
+  fetchChatRoomsAsync,
+  checkIsAgentAsync,
+  deleteChatAsync,
+  clearCurrentChat,
+  updateUserProfiles,
+} from "@/lib/redux/slices/chatSlice";
+import { RootState, AppDispatch } from "@/lib/store/store";
+import { config, databases } from "@/lib/appwrite";
+import { Query } from "react-native-appwrite";
+import ShimmerEffect from "@/components/LoadingShimmer";
 
 // Define theme colors
 const COLORS = {
@@ -46,46 +56,82 @@ const COLORS = {
 
 const { width } = Dimensions.get("window");
 
-interface ChatRoom {
-  id: string;
-  participants: string[];
-  last_message: string;
-  last_updated: number;
-  unread_count: number;
-}
-
 const ChatListScreen: React.FC = () => {
   const { rawUser } = useGlobalContext();
-  const [chatRooms, setChatRooms] = useState<ChatRoom[]>([]);
+  const dispatch = useDispatch<AppDispatch>();
+
+  // Redux state
+  const {
+    chatRooms,
+    loading: isLoadingRedux,
+    isAgent,
+    agentUserId,
+    unreadCount,
+    userProfiles: savedUserProfiles,
+  } = useSelector((state: RootState) => state.chat);
+
   const [isLoading, setIsLoading] = useState<boolean>(true);
-  const [userProfiles, setUserProfiles] = useState<{ [key: string]: any }>({});
-  const [isAgent, setIsAgent] = useState<boolean>(false);
-  const [agentUserId, setAgentUserId] = useState<string | null>(null);
+  const [loadingProfiles, setLoadingProfiles] = useState<
+    Record<string, boolean>
+  >({});
+  const [loadingAvatars, setLoadingAvatars] = useState<Record<string, boolean>>(
+    {}
+  );
 
-  // Check if current user is an agent
+  // Check if current user is an agent using Redux
   useEffect(() => {
-    const checkIfAgent = async () => {
-      if (!rawUser?.$id) return;
+    if (!rawUser?.$id) return;
 
-      try {
-        const result = await checkIsAgent(rawUser.$id);
-        console.log("Agent check result:", result);
-
-        setIsAgent(result.isAgent);
-        setAgentUserId(result.agentId);
-      } catch (error) {
+    dispatch(checkIsAgentAsync(rawUser.$id))
+      .unwrap()
+      .catch((error) => {
         console.error("Error checking if user is agent:", error);
-      }
-    };
+      });
+  }, [rawUser, dispatch]);
 
-    checkIfAgent();
-  }, [rawUser]);
+  // Fetch chat rooms using Redux
+  useEffect(() => {
+    if (!rawUser?.$id) {
+      console.log("No user ID found, cannot fetch chat rooms");
+      setIsLoading(false);
+      return;
+    }
+
+    // Use the correct ID to fetch rooms (agent ID if an agent, user ID otherwise)
+    const userId = isAgent && agentUserId ? agentUserId : rawUser.$id;
+    console.log("Fetching chat rooms for:", userId);
+
+    setIsLoading(true);
+    dispatch(fetchChatRoomsAsync(userId))
+      .unwrap()
+      .then(() => {
+        fetchMissingPartnerProfiles();
+      })
+      .catch((error) => {
+        console.error("Error fetching chat rooms:", error);
+      })
+      .finally(() => {
+        setIsLoading(false);
+      });
+  }, [rawUser, isAgent, agentUserId, dispatch]);
 
   // Fetch partner profile - using ChatScreen's approach
   const fetchPartnerProfile = async (partnerId: string) => {
     if (!partnerId) return null;
 
+    // Check if we already have this profile saved in Redux store
+    if (savedUserProfiles && savedUserProfiles[partnerId]) {
+      console.log(`Using cached profile for partner: ${partnerId}`);
+      setLoadingProfiles((prev) => ({ ...prev, [partnerId]: false }));
+      setLoadingAvatars((prev) => ({ ...prev, [partnerId]: false }));
+      return savedUserProfiles[partnerId];
+    }
+
     console.log("Fetching profile for partner:", partnerId);
+
+    // Mark this profile as loading
+    setLoadingProfiles((prev) => ({ ...prev, [partnerId]: true }));
+    setLoadingAvatars((prev) => ({ ...prev, [partnerId]: true }));
 
     // We'll try multiple approaches to find the profile
     let foundProfile = null;
@@ -140,199 +186,107 @@ const ChatListScreen: React.FC = () => {
       }
     }
 
+    // Mark profile loading as complete
+    setLoadingProfiles((prev) => ({ ...prev, [partnerId]: false }));
+    setLoadingAvatars((prev) => ({ ...prev, [partnerId]: false }));
+
     // Return the found profile or null
     return foundProfile;
   };
 
-  // Fetch profiles for all partners
-  const fetchAllPartnerProfiles = async (partnerIds: string[]) => {
-    const profiles: { [key: string]: any } = {};
+  // Fetch profiles for partners that are missing from the Redux store
+  const fetchMissingPartnerProfiles = async () => {
+    if (!rawUser?.$id || chatRooms.length === 0) return;
 
-    for (const partnerId of partnerIds) {
-      profiles[partnerId] = await fetchPartnerProfile(partnerId);
+    const userId = isAgent && agentUserId ? agentUserId : rawUser.$id;
+    const partnerIds = chatRooms
+      .map((room) => getChatPartner(room.participants, userId))
+      .filter(Boolean);
+
+    // Initialize loading states for all missing partners
+    const initialLoadingState: Record<string, boolean> = {};
+    const missingPartnerIds: string[] = [];
+
+    partnerIds.forEach((id) => {
+      if (!savedUserProfiles || !savedUserProfiles[id]) {
+        initialLoadingState[id] = true;
+        missingPartnerIds.push(id);
+      } else {
+        initialLoadingState[id] = false;
+      }
+    });
+
+    setLoadingProfiles(initialLoadingState);
+    setLoadingAvatars(initialLoadingState);
+
+    // If there are no missing profiles, we're done
+    if (missingPartnerIds.length === 0) {
+      console.log("All partner profiles already cached");
+      return;
     }
 
-    return profiles;
+    console.log(
+      `Fetching profiles for ${missingPartnerIds.length} missing partners`
+    );
+    const newProfiles: Record<string, any> = { ...savedUserProfiles };
+
+    for (const partnerId of missingPartnerIds) {
+      const profile = await fetchPartnerProfile(partnerId);
+      if (profile) {
+        newProfiles[partnerId] = profile;
+      }
+    }
+
+    // Save the updated profiles to Redux
+    dispatch(updateUserProfiles(newProfiles));
   };
 
-  // Setup real-time listener for chat rooms
-  useEffect(() => {
-    if (!rawUser?.$id) {
-      console.log("No user ID found, cannot setup real-time listener");
-      setIsLoading(false);
-      return () => {};
-    }
-
-    // Use the correct ID to fetch rooms (agent ID if an agent, user ID otherwise)
-    const userId = isAgent && agentUserId ? agentUserId : rawUser.$id;
-
-    console.log("Setting up real-time listener for chat rooms:", userId);
-    setIsLoading(true);
-
-    // Create reference to the chat_rooms node
-    const roomsRef = ref(firebaseDb, "chat_rooms");
-
-    // Set up an onValue listener
-    const unsubscribe = onValue(
-      roomsRef,
-      async (snapshot) => {
-        console.log("Real-time update received for chat rooms");
-
-        if (!snapshot.exists()) {
-          console.log("No chat rooms found");
-          setChatRooms([]);
-          setIsLoading(false);
-          return;
-        }
-
-        const rooms: ChatRoom[] = [];
-
-        snapshot.forEach((roomSnapshot) => {
-          const roomData = roomSnapshot.val();
-
-          // Check if participants is an array or an object
-          if (roomData.participants) {
-            // If it's an array, check if user is in it
-            if (Array.isArray(roomData.participants)) {
-              if (roomData.participants.includes(userId)) {
-                rooms.push({
-                  id: roomSnapshot.key || "",
-                  participants: roomData.participants || [],
-                  last_message: roomData.last_message || "",
-                  last_updated: roomData.last_updated || Date.now(),
-                  unread_count: roomData.unread_count?.[userId] || 0,
-                });
-              }
-            }
-            // If it's an object, check if user is a value
-            else if (typeof roomData.participants === "object") {
-              const participantIds = Object.values(roomData.participants);
-              if (participantIds.includes(userId)) {
-                rooms.push({
-                  id: roomSnapshot.key || "",
-                  participants: participantIds as string[],
-                  last_message: roomData.last_message || "",
-                  last_updated: roomData.last_updated || Date.now(),
-                  unread_count: roomData.unread_count?.[userId] || 0,
-                });
-              }
-            }
-          }
-
-          // Also check for rooms with older format
-          if (
-            (roomData.user_id === userId || roomData.agent_id === userId) &&
-            !rooms.some((r) => r.id === roomSnapshot.key)
-          ) {
-            rooms.push({
-              id: roomSnapshot.key || "",
-              participants: [roomData.user_id, roomData.agent_id].filter(
-                Boolean
-              ),
-              last_message: roomData.last_message || "",
-              last_updated: roomData.last_updated || Date.now(),
-              unread_count: roomData.unread_count?.[userId] || 0,
-            });
-          }
-        });
-
-        // Sort by last updated timestamp
-        rooms.sort((a, b) => {
-          const timeA =
-            typeof a.last_updated === "number" ? a.last_updated : Date.now();
-          const timeB =
-            typeof b.last_updated === "number" ? b.last_updated : Date.now();
-          return timeB - timeA;
-        });
-
-        console.log(`Real-time update: Found ${rooms.length} chat rooms`);
-        setChatRooms(rooms);
-
-        // Once we have the rooms, fetch profiles for all partners
-        if (rooms.length > 0) {
-          try {
-            const partnerIds = rooms
-              .map((room) => getChatPartner(room.participants, userId || ""))
-              .filter(Boolean);
-
-            const profiles = await fetchAllPartnerProfiles(partnerIds);
-            console.log(
-              `Fetched ${Object.keys(profiles).length} partner profiles`
-            );
-            setUserProfiles(profiles);
-          } catch (error) {
-            console.error("Error fetching partner profiles:", error);
-          }
-        }
-
-        setIsLoading(false);
-      },
-      (error) => {
-        console.error("Error setting up real-time listener:", error);
-        setIsLoading(false);
-      }
-    );
-
-    // Clean up listener on unmount
-    return () => {
-      console.log("Cleaning up real-time listener");
-      unsubscribe();
-    };
-  }, [rawUser, isAgent, agentUserId]);
-
-  // Add useFocusEffect to refresh UI when screen comes into focus
+  // Add useFocusEffect to refresh data when screen comes into focus
   useFocusEffect(
     useCallback(() => {
-      let isMounted = true;
-      console.log("ChatListScreen is now focused");
+      if (!rawUser?.$id) return;
 
-      // Use a one-time flag to prevent infinite loops
-      if (isMounted) {
-        // Flag to prevent triggering on every render
-        isMounted = false;
+      // Clear current chat when navigating to the chat list
+      dispatch(clearCurrentChat());
 
-        // Manual timeout instead of state change to prevent re-renders
-        // This refreshes data without setting loading state
-        const timer = setTimeout(() => {
-          if (rawUser?.$id) {
-            // Re-fetch the latest data by triggering the firebase listener
-            const roomsRef = ref(firebaseDb, "chat_rooms");
-            get(roomsRef).then(() => {
-              // The onValue listener will handle the response
-              console.log("Refreshed data on focus");
-            });
-          }
-        }, 300);
+      // Refresh chat rooms
+      const userId = isAgent && agentUserId ? agentUserId : rawUser.$id;
+      dispatch(fetchChatRoomsAsync(userId))
+        .unwrap()
+        .then(() => {
+          fetchMissingPartnerProfiles();
+        })
+        .catch((error) => {
+          console.error("Error refreshing chat rooms:", error);
+        });
 
-        return () => {
-          clearTimeout(timer);
-          console.log("ChatListScreen lost focus");
-        };
-      }
-    }, [rawUser])
+      return () => {
+        // Cleanup when screen loses focus
+      };
+    }, [rawUser, isAgent, agentUserId, dispatch])
   );
 
   // Update onRefresh to trigger data refresh
   const onRefresh = useCallback(() => {
-    setIsLoading(true);
+    if (!rawUser?.$id) return;
 
-    // Refresh the data
-    if (rawUser?.$id) {
-      const roomsRef = ref(firebaseDb, "chat_rooms");
-      get(roomsRef)
-        .then(() => {
-          // Give some visual feedback before stopping the loading indicator
-          setTimeout(() => {
-            setIsLoading(false);
-          }, 800);
-        })
-        .catch(() => {
+    setIsLoading(true);
+    const userId = isAgent && agentUserId ? agentUserId : rawUser.$id;
+
+    dispatch(fetchChatRoomsAsync(userId))
+      .unwrap()
+      .then(() => {
+        fetchMissingPartnerProfiles();
+      })
+      .catch((error) => {
+        console.error("Error refreshing chat rooms:", error);
+      })
+      .finally(() => {
+        setTimeout(() => {
           setIsLoading(false);
-        });
-    } else {
-      setIsLoading(false);
-    }
-  }, [rawUser]);
+        }, 500);
+      });
+  }, [rawUser, isAgent, agentUserId, dispatch]);
 
   const formatTimestamp = (timestamp: any) => {
     if (!timestamp) return "";
@@ -374,9 +328,10 @@ const ChatListScreen: React.FC = () => {
 
   // Handle long press on a chat item to delete
   const handleLongPress = (roomId: string, partnerId: string) => {
-    const partnerProfile = userProfiles[partnerId];
+    // Get display name for the partner
+    const partnerProfile = savedUserProfiles?.[partnerId];
     const partnerName =
-      partnerProfile?.name || partnerProfile?.email || partnerId || "Unknown";
+      partnerProfile?.name || partnerProfile?.email || "this conversation";
 
     Alert.alert(
       "Delete Chat",
@@ -395,35 +350,40 @@ const ChatListScreen: React.FC = () => {
     );
   };
 
-  // Delete a chat conversation
+  // Delete a chat conversation using Redux
   const deleteConversation = async (roomId: string) => {
-    try {
-      setIsLoading(true);
-
-      // Implement deleteChat function in chatService.ts
-      await deleteChat(roomId);
-
-      // No need to manually update local state as the real-time listener will handle it
-      console.log(`Chat room ${roomId} deleted successfully`);
-    } catch (error) {
-      console.error("Error deleting chat:", error);
-      Alert.alert(
-        "Error",
-        "Failed to delete the conversation. Please try again."
-      );
-      setIsLoading(false);
-    }
+    setIsLoading(true);
+    dispatch(deleteChatAsync(roomId))
+      .unwrap()
+      .then(() => {
+        console.log(`Chat room ${roomId} deleted successfully`);
+      })
+      .catch((error: any) => {
+        console.error("Error deleting chat:", error);
+        Alert.alert(
+          "Error",
+          "Failed to delete the conversation. Please try again."
+        );
+      })
+      .finally(() => {
+        setIsLoading(false);
+      });
   };
 
   // Generate initials for avatar fallback
   const getInitials = (name?: string): string => {
-    if (!name) return "?";
+    if (!name) return "";
     return name
       .split(" ")
       .map((n) => n[0])
       .join("")
       .toUpperCase()
       .substring(0, 2);
+  };
+
+  // Handle avatar load complete
+  const handleAvatarLoad = (partnerId: string) => {
+    setLoadingAvatars((prev) => ({ ...prev, [partnerId]: false }));
   };
 
   // Custom header component
@@ -440,6 +400,11 @@ const ChatListScreen: React.FC = () => {
             <MessageSquare size={24} color={COLORS.white} />
             <Text style={styles.headerText}>Messages</Text>
           </View>
+          {unreadCount > 0 && (
+            <View style={styles.headerBadge}>
+              <Text style={styles.headerBadgeText}>{unreadCount}</Text>
+            </View>
+          )}
         </View>
       </SafeAreaView>
     </LinearGradient>
@@ -467,13 +432,26 @@ const ChatListScreen: React.FC = () => {
     </View>
   );
 
+  // Check if a partner name is just an ID (no proper name found)
+  const isIdOnly = (partnerName: string, partnerId: string): boolean => {
+    // Check if the name matches the ID pattern or is close to the ID
+    return (
+      partnerName === partnerId ||
+      partnerName === "Unknown" ||
+      (!partnerName.includes(" ") && partnerName.length > 20)
+    );
+  };
+
+  // Use both local and Redux loading states
+  const showLoading = isLoading || isLoadingRedux;
+
   return (
     <View style={styles.container}>
       <StatusBar barStyle="light-content" />
       <CustomHeader />
 
       <View style={styles.chatListContainer}>
-        {isLoading && chatRooms.length === 0 ? (
+        {showLoading && chatRooms.length === 0 ? (
           <View style={styles.loaderContent}>
             <ActivityIndicator size="large" color={COLORS.primary} />
           </View>
@@ -485,7 +463,7 @@ const ChatListScreen: React.FC = () => {
             keyExtractor={(item) => item.id || Math.random().toString()}
             refreshControl={
               <RefreshControl
-                refreshing={isLoading}
+                refreshing={showLoading}
                 onRefresh={onRefresh}
                 colors={[COLORS.primary]}
                 tintColor={COLORS.primary}
@@ -498,13 +476,17 @@ const ChatListScreen: React.FC = () => {
                 isAgent && agentUserId ? agentUserId : rawUser?.$id;
               const partnerId = getChatPartner(item.participants, userId || "");
 
-              const partnerProfile = userProfiles[partnerId];
-              const partnerName =
-                partnerProfile?.name ||
-                partnerProfile?.email ||
-                partnerId ||
-                "Unknown";
-              const hasUnread = item.unread_count > 0;
+              const partnerProfile = savedUserProfiles?.[partnerId];
+              const isProfileLoading = loadingProfiles[partnerId];
+              const isAvatarLoading = loadingAvatars[partnerId];
+
+              // Get display name, but ONLY if it's not just the ID
+              const rawPartnerName =
+                partnerProfile?.name || partnerProfile?.email || "Unknown";
+              const showName =
+                !isProfileLoading && !isIdOnly(rawPartnerName, partnerId);
+
+              const hasUnread = (item.unread_count?.[userId || ""] || 0) > 0;
 
               return (
                 <Pressable
@@ -518,30 +500,48 @@ const ChatListScreen: React.FC = () => {
                   delayLongPress={500} // Adjust timing for long press
                 >
                   <View style={styles.chatItemContent}>
-                    {partnerProfile?.avatar ? (
+                    {/* Avatar with shimmer loading effect */}
+                    {isAvatarLoading ? (
+                      <ShimmerEffect
+                        width={56}
+                        height={56}
+                        style={styles.avatar}
+                      />
+                    ) : partnerProfile?.avatar ? (
                       <Image
                         source={{ uri: partnerProfile.avatar }}
                         style={styles.avatar}
+                        onLoad={() => handleAvatarLoad(partnerId)}
+                        onError={() => handleAvatarLoad(partnerId)}
                       />
                     ) : (
                       <View style={styles.avatarFallback}>
                         <Text style={styles.avatarText}>
-                          {getInitials(partnerName)}
+                          {getInitials(showName ? rawPartnerName : "")}
                         </Text>
                       </View>
                     )}
 
                     <View style={styles.chatDetails}>
                       <View style={styles.chatHeader}>
-                        <Text
-                          style={[
-                            styles.chatName,
-                            hasUnread ? styles.boldText : null,
-                          ]}
-                          numberOfLines={1}
-                        >
-                          {partnerName}
-                        </Text>
+                        {/* Name with shimmer loading effect */}
+                        {isProfileLoading || !showName ? (
+                          <ShimmerEffect
+                            width={120}
+                            height={20}
+                            style={styles.nameShimmer}
+                          />
+                        ) : (
+                          <Text
+                            style={[
+                              styles.chatName,
+                              hasUnread ? styles.boldText : null,
+                            ]}
+                            numberOfLines={1}
+                          >
+                            {rawPartnerName}
+                          </Text>
+                        )}
                         <Text style={styles.timeStamp}>
                           {formatTimestamp(item.last_updated)}
                         </Text>
@@ -568,9 +568,9 @@ const ChatListScreen: React.FC = () => {
                         {hasUnread && (
                           <View style={styles.unreadBadge}>
                             <Text style={styles.unreadCount}>
-                              {item.unread_count > 99
+                              {item.unread_count?.[userId || ""] > 99
                                 ? "99+"
-                                : item.unread_count}
+                                : item.unread_count?.[userId || ""]}
                             </Text>
                           </View>
                         )}
@@ -618,6 +618,20 @@ const styles = StyleSheet.create({
     fontWeight: "700",
     color: COLORS.white,
     marginLeft: 10,
+  },
+  headerBadge: {
+    backgroundColor: COLORS.white,
+    minWidth: 24,
+    height: 24,
+    borderRadius: 12,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  headerBadgeText: {
+    color: COLORS.primary,
+    fontSize: 12,
+    fontWeight: "700",
+    paddingHorizontal: 6,
   },
   chatListContainer: {
     flex: 1,
@@ -696,6 +710,12 @@ const styles = StyleSheet.create({
     color: COLORS.text,
     flex: 1,
   },
+  nameShimmer: {
+    flex: 1,
+    height: 20,
+    borderRadius: 4,
+    marginRight: 8,
+  },
   timeStamp: {
     fontSize: 12,
     color: COLORS.textLight,
@@ -745,6 +765,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     paddingHorizontal: 30,
+    backgroundColor: COLORS.white,
   },
   noMessagesImage: {
     width: width * 0.6,

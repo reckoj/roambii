@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useEffect } from "react";
 import { SafeAreaView } from "react-native-safe-area-context";
 import {
   Alert,
@@ -7,39 +7,57 @@ import {
   Text,
   TouchableOpacity,
   View,
+  ActivityIndicator,
 } from "react-native";
+import { useRouter } from "expo-router";
+import { useDispatch, useSelector } from "react-redux";
 
-import { loginWGoogle } from "@/lib/appwrite";
-import { Redirect, router } from "expo-router";
-import { useGlobalContext } from "@/lib/global-provider";
+import { loginWithGoogleAsync } from "@/lib/redux/slices/authSlice";
+import { RootState, AppDispatch } from "@/lib/store/store";
 import icons from "@/constants/icons";
 import images from "@/constants/images";
 
 const PreAuth = () => {
-  const { refetch, loading, isLogged } = useGlobalContext();
+  const dispatch = useDispatch<AppDispatch>();
+  const router = useRouter();
+  const { isLoading, isAuthenticated, user } = useSelector(
+    (state: RootState) => state.auth
+  );
 
-  //   if (!loading && !isLogged) return <Redirect href="/login" />;
-  if (!loading && isLogged) return <Redirect href="/" />;
+  // Use useEffect for navigation instead of conditional rendering with Redirect
+  useEffect(() => {
+    // Only redirect if authenticated and not already loading
+    if (isAuthenticated && user && !isLoading) {
+      router.replace("/");
+    }
+  }, [isAuthenticated, user, isLoading, router]);
 
-  const handleLogin = async () => {
-    const result = await loginWGoogle();
-    if (result) {
-      refetch();
-    } else {
-      Alert.alert("Error", "Failed to login");
+  const handleGoogleLogin = async () => {
+    try {
+      await dispatch(loginWithGoogleAsync());
+      // Navigation will be handled by the useEffect
+    } catch (error) {
+      console.error("Google login error:", error);
+      Alert.alert("Error", "Failed to login with Google");
     }
   };
 
-  //   const handlePress = () => {
-  //     router.push("/login"); // Navigate to the Login screen
-  //   };
+  // Show loading indicator if still checking auth
+  if (isLoading) {
+    return (
+      <SafeAreaView className="flex-1 items-center justify-center bg-white">
+        <ActivityIndicator size="large" color="#1ABC9C" />
+        <Text className="mt-4 text-gray-600">Checking login status...</Text>
+      </SafeAreaView>
+    );
+  }
 
   return (
     <SafeAreaView className="bg-white h-full">
       <ScrollView
         contentContainerStyle={{
           height: "100%",
-          paddingBottom: 45
+          paddingBottom: 45,
         }}
       >
         <Image
@@ -51,7 +69,7 @@ const PreAuth = () => {
         <View className="px-10">
           <Text className="text-3xl text-center font-rubik text-black-200">
             roamb
-            <Text className="text-3xl text-center font-rubik  text-primary-300">
+            <Text className="text-3xl text-center font-rubik text-primary-300">
               ii
             </Text>
           </Text>
@@ -63,11 +81,12 @@ const PreAuth = () => {
           <TouchableOpacity
             onPress={() => router.push("/login")}
             className="border border-gray-300 rounded-md w-full py-4 mt-5"
+            disabled={isLoading}
           >
             <View className="flex flex-row items-center justify-center">
               <Image
                 source={icons.email1}
-                className="w-5 h-5 "
+                className="w-5 h-5"
                 resizeMode="contain"
               />
               <Text className="text-lg font-rubik-medium text-black-300 ml-2">
@@ -77,8 +96,9 @@ const PreAuth = () => {
           </TouchableOpacity>
 
           <TouchableOpacity
-            onPress={handleLogin}
+            onPress={handleGoogleLogin}
             className="border border-gray-300 rounded-md w-full py-4 mt-5"
+            disabled={isLoading}
           >
             <View className="flex flex-row items-center justify-center">
               <Image
@@ -92,11 +112,14 @@ const PreAuth = () => {
             </View>
           </TouchableOpacity>
 
-          <TouchableOpacity className="border border-gray-300 rounded-md w-full py-4 mt-5">
+          <TouchableOpacity
+            className="border border-gray-300 rounded-md w-full py-4 mt-5"
+            disabled={isLoading}
+          >
             <View className="flex flex-row items-center justify-center">
               <Image
                 source={icons.apple}
-                className="w-5 h-5 "
+                className="w-5 h-5"
                 resizeMode="contain"
               />
               <Text className="text-lg font-rubik-medium text-black-300 ml-2">

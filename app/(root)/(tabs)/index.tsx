@@ -352,7 +352,7 @@ const Home = () => {
               >
                 <Text style={styles.greeting}>{greeting}</Text>
                 <Text style={styles.userName}>
-                  {rawUser?.name?.split(" ")[0] || "User"}
+                  {rawUser?.name?.split(" ")[0] || ""}
                 </Text>
               </Animated.View>
             </View>

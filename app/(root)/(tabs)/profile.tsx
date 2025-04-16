@@ -39,6 +39,10 @@ import { router } from "expo-router";
 import { handleAvtarImagePicked } from "@/lib/storage";
 import { Query } from "react-native-appwrite";
 import { LinearGradient } from "expo-linear-gradient";
+import { useAppDispatch } from "@/lib/redux/hooks";
+import { useDispatch } from "react-redux";
+import { logoutAsync } from "@/lib/redux/slices/authSlice";
+import { AppDispatch } from "@/lib/store/store";
 
 // Define theme colors
 const COLORS = {
@@ -108,6 +112,7 @@ const SettingsItem: React.FC<SettingsItemProps> = ({
 
 const Profile: React.FC = () => {
   const { rawUser, refetch, isAgent, toggleAgentView } = useGlobalContext();
+  const dispatch = useDispatch<AppDispatch>();
   const [loading, setLoading] = useState<boolean>(false);
   const [avatarUrl, setAvatarUrl] = useState<string | null>(
     rawUser?.avatar || null
@@ -210,10 +215,17 @@ const Profile: React.FC = () => {
       {
         text: "Sign Out",
         onPress: async () => {
-          const result = await logout();
-          if (result) {
+          try {
+            // Use the Redux logout action to properly update auth state
+            await dispatch(logoutAsync());
+
+            // Also refresh your global context if needed
             refetch();
-          } else {
+
+            // Explicitly navigate to login as a fallback
+            router.replace("/login");
+          } catch (error) {
+            console.error("Logout error:", error);
             Alert.alert("Error", "Failed to logout");
           }
         },

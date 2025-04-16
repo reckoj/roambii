@@ -12,7 +12,7 @@ import * as Linking from "expo-linking";
 import { openAuthSessionAsync } from "expo-web-browser";
 import { PackageFormData } from "./packageFormData";
 import images from "@/constants/images";
-import { Alert } from "react-native";
+import { Alert, Platform } from "react-native";
 import { useGlobalContext } from "./global-provider";
 import { Activity, DayPlan, Itinerary, ItineraryWithDetails } from "./models";
 
@@ -89,14 +89,18 @@ async function checkEmailExists(email: string) {
 // }
 
 // ✅ Register User with Validations
-export async function registerUser(
+
+/**
+ * Register a new user
+ */
+export const registerUser = async (
   name: string,
   email: string,
   password: string,
   isAgent: boolean,
   cPassword: string,
   niche: string
-) {
+) => {
   try {
     const trimmedName = name.trim();
     if (trimmedName.length < 1 || trimmedName.length > 128)
@@ -114,8 +118,15 @@ export async function registerUser(
     }
 
     // Check if email is already registered
-    if (await checkEmailExists(email))
+    const existingUser = await databases.listDocuments(
+      config.databaseId!,
+      config.usersCollectionId!,
+      [Query.equal("email", email)]
+    );
+
+    if (existingUser.documents.length > 0) {
       throw new Error("An account with this email already exists.");
+    }
 
     // Create user in Appwrite Authentication
     const user = await account.create(
@@ -124,10 +135,8 @@ export async function registerUser(
       password,
       trimmedName
     );
-    if (!user) throw new Error("Failed to create user account");
-    // console.log("User created:", user.$id); // ✅ Debugging user creation
 
-    // Store user in users collection
+    // Store user in users collection with verification status
     const newUser = await databases.createDocument(
       config.databaseId!,
       config.usersCollectionId!,
@@ -137,17 +146,14 @@ export async function registerUser(
         email,
         password,
         isAgent,
-        userId: user.$id, // ✅ Store the correct user ID
+        userId: user.$id,
+        isEmailVerified: false, // Initially not verified
       }
     );
 
-    if (!newUser) throw new Error("Failed to add user to collection");
-
-    // console.log("User added to users collection:", newUser);
-
-    if (isAgent) {
+    if (isAgent && niche) {
       // Store agent in agent collection
-      const agent = await databases.createDocument(
+      await databases.createDocument(
         config.databaseId!,
         config.agentsCollectionId!,
         ID.unique(),
@@ -156,53 +162,77 @@ export async function registerUser(
           email,
           password,
           isAgent,
-          userId: user.$id, // ✅ Store the correct user ID
+          userId: user.$id,
           niche,
+          isEmailVerified: false, // Initially not verified
         }
       );
-      if (!agent) throw new Error("Failed to add agent to collection");
     }
 
-    return { success: true, message: "Registration successful!" };
+    // Create a session for the user to be able to send verification email
+    await account.createEmailPasswordSession(email, password);
+
+    // Send verification email
+    const redirectUrl =
+      Platform.OS === "web"
+        ? Linking.createURL("verify-email")
+        : `${Linking.createURL("verify-email")}`;
+
+    await account.createVerification(redirectUrl);
+
+    return {
+      success: true,
+      message:
+        "Registration successful! Please check your email to verify your account.",
+      userId: user.$id,
+    };
   } catch (error: any) {
     return { success: false, message: error.message };
   }
-}
+};
 
-// ✅ Login User with Error Handling
-export async function loginUser(email: string, password: string) {
+export const loginUser = async (email: string, password: string) => {
   try {
-    // Validate email format
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    if (!emailRegex.test(email)) throw new Error("Invalid email format.");
+    // Create session for authentication
+    const session = await account.createEmailPasswordSession(email, password);
 
-    // Fetch user from the database
-    const userQuery = await databases.listDocuments(
+    // Check if user exists in database and if their email is verified
+    const userDocs = await databases.listDocuments(
       config.databaseId!,
       config.usersCollectionId!,
       [Query.equal("email", email)]
     );
 
-    if (userQuery.documents.length === 0) {
-      throw new Error("User not found. Please register.");
+    if (userDocs.total === 0) {
+      // User not found in database
+      await account.deleteSession("current");
+      return { success: false, message: "User not found in database" };
     }
 
-    const user = userQuery.documents[0];
+    const user = userDocs.documents[0];
 
-    // Create Appwrite session
-    const session = await account.createEmailPasswordSession(email, password);
-    if (!session) throw new Error("Failed to create session");
+    // Check if email is verified
+    if (!user.isEmailVerified) {
+      // Delete the session since email isn't verified
+      await account.deleteSession("current");
+      return {
+        success: false,
+        message:
+          "Please verify your email before logging in. userId: " + user.userId,
+        requiresVerification: true,
+        userId: user.userId,
+      };
+    }
 
-    // console.log("User session updated:", user);
-
-    return { success: true, message: "Login successful!" };
+    return { success: true, message: "Login successful" };
   } catch (error: any) {
-    // throw new Error("Login error:", error.message);
-
     return { success: false, message: error.message };
   }
-}
-export async function loginWGoogle() {
+};
+/**
+ * Login with Google
+ */
+export const loginWGoogle = async (): Promise<boolean> => {
   let createdSession = null;
 
   try {
@@ -218,7 +248,6 @@ export async function loginWGoogle() {
     }
 
     // Step 2: Open authentication browser session
-
     const browserResult = await openAuthSessionAsync(
       response.toString(),
       redirectUri
@@ -240,7 +269,6 @@ export async function loginWGoogle() {
     }
 
     // Step 4: Create user session
-
     const session = await account.createSession(userId, secret);
 
     if (!session) {
@@ -251,11 +279,9 @@ export async function loginWGoogle() {
     createdSession = session.$id;
 
     // Step 5: Fetch user details and create database record
-
     const authUser = await account.get();
 
     // Check if user already exists in database
-
     const existingUser = await databases.listDocuments(
       config.databaseId!,
       config.usersCollectionId!,
@@ -277,6 +303,7 @@ export async function loginWGoogle() {
             isAgent: false,
             isAgentTemp: false,
             avatar: null,
+            isEmailVerified: true, // Google OAuth users are considered verified
           }
         );
       } catch (dbError) {
@@ -310,17 +337,20 @@ export async function loginWGoogle() {
 
     return false;
   }
-}
+};
 
-export async function logout() {
+/**
+ * Logout the current user
+ */
+export const logout = async (): Promise<boolean> => {
   try {
-    const result = await account.deleteSession("current");
-    return result;
+    await account.deleteSession("current");
+    return true;
   } catch (error) {
-    // console.error(error);
+    console.error("Logout error:", error);
     return false;
   }
-}
+};
 
 export async function updateUserPassword(
   currentPassword: string,
@@ -762,22 +792,77 @@ export async function getPackageById(packageId: string) {
  * @param userId - The Appwrite User ID
  * @param updates - The fields to update
  */
-export async function updateUser(userId: string, updates: Partial<User>) {
+
+/**
+ * Update user data
+ */
+export const updateUser = async (
+  userId: string,
+  updates: Partial<User>
+): Promise<Partial<User>> => {
   try {
-    const updatedUser = await databases.updateDocument(
+    // Find user document in database
+    const userDocs = await databases.listDocuments(
       config.databaseId!,
-      config.usersCollectionId!, // ✅ Ensure you have the correct collection ID
-      userId,
-      updates
+      config.usersCollectionId!,
+      [Query.equal("userId", userId)]
     );
 
-    console.log("[User Updated] ==> ", updatedUser);
-    return updatedUser;
-  } catch (error) {
-    console.error("[Error Updating User] ==> ", error);
-    throw new Error("Failed to update user.");
+    if (userDocs.total === 0) {
+      throw new Error("User not found in database");
+    }
+
+    const userDocId = userDocs.documents[0].$id;
+
+    // Remove $id from updates as it's a system field
+    const { $id, ...validUpdates } = updates;
+
+    // Update user in database
+    await databases.updateDocument(
+      config.databaseId!,
+      config.usersCollectionId!,
+      userDocId,
+      validUpdates
+    );
+
+    // If user is an agent, also update agent record
+    if (updates.isAgent || userDocs.documents[0].isAgent) {
+      const agentDocs = await databases.listDocuments(
+        config.databaseId!,
+        config.agentsCollectionId!,
+        [Query.equal("userId", userId)]
+      );
+
+      if (agentDocs.total > 0) {
+        const agentDocId = agentDocs.documents[0].$id;
+        await databases.updateDocument(
+          config.databaseId!,
+          config.agentsCollectionId!,
+          agentDocId,
+          validUpdates
+        );
+      }
+    }
+
+    // If name or email is updated, also update in Appwrite auth
+    if (updates.name || updates.email) {
+      const updateData: { name?: string; email?: string } = {};
+      if (updates.name) updateData.name = updates.name;
+      if (updates.email) updateData.email = updates.email;
+
+      await account.updateName(updateData.name || "");
+      if (updateData.email) {
+        // Email change requires verification
+        // Implement as needed
+      }
+    }
+
+    return updates;
+  } catch (error: any) {
+    console.error("Update user error:", error);
+    throw new Error(error.message || "Failed to update user");
   }
-}
+};
 
 export { ID };
 /**

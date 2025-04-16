@@ -1,3 +1,4 @@
+// app/login.tsx
 import images from "@/constants/images";
 import React, { useEffect, useState } from "react";
 import {
@@ -14,26 +15,53 @@ import {
   Keyboard,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
+import { useDispatch, useSelector } from "react-redux";
+import { useRouter, Redirect } from "expo-router";
+import { EyeClosedIcon, EyeIcon } from "lucide-react-native";
 
 import icons from "@/constants/icons";
-import { useGlobalContext } from "@/lib/global-provider";
-import { router } from "expo-router";
-import { EyeClosedIcon, EyeIcon } from "lucide-react-native";
-import { loginUserWithVerification } from "@/lib/auth-service";
-import { loginWithGoogle } from "@/lib/google-auth";
+import {
+  loginUserAsync,
+  loginWithGoogleAsync,
+  clearAuthError,
+} from "@/lib/redux/slices/authSlice";
+import { RootState, AppDispatch } from "@/lib/store/store";
 
-const SignIn = () => {
-  const { refetch, loading, isLogged } = useGlobalContext();
+export default function Login() {
+  const dispatch = useDispatch<AppDispatch>();
+  const router = useRouter();
+  const { isLoading, isAuthenticated, error } = useSelector(
+    (state: RootState) => state.auth
+  );
+
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
-  const [isLoading, setIsLoading] = useState(false);
 
+  if (isAuthenticated) {
+    // Use useEffect for imperative navigation instead of Redirect
+    useEffect(() => {
+      if (isAuthenticated) {
+        router.replace("/(root)/(tabs)");
+      }
+    }, [isAuthenticated, router]);
+
+    // Return a loading screen while redirecting
+    return (
+      <View className="flex-1 justify-center items-center bg-white">
+        <ActivityIndicator size="large" color="#1ABC9C" />
+        <Text className="mt-4 text-gray-600">Redirecting...</Text>
+      </View>
+    );
+  }
+
+  // Show error alerts when they occur
   useEffect(() => {
-    if (!loading && isLogged) {
-      router.replace("/");
+    if (error) {
+      Alert.alert("Login Failed", error);
+      dispatch(clearAuthError());
     }
-  }, [loading, isLogged, router]);
+  }, [error, dispatch]);
 
   const handleLogin = async () => {
     if (!email || !password) {
@@ -41,52 +69,52 @@ const SignIn = () => {
       return;
     }
 
-    setIsLoading(true);
     try {
-      const res = await loginUserWithVerification(email, password);
+      const resultAction = await dispatch(loginUserAsync({ email, password }));
 
-      if (res.success) {
-        await refetch(); // Wait for the refetch to complete
-      } else if (res.requiresVerification) {
-        // Navigate to verification screen if email is not verified
-        router.push({
-          pathname: "/verificationScreen", // Remove the leading slash
-          params: {
-            email: email,
-            userId: res.userId || "",
-          },
-        });
-      } else {
-        Alert.alert("Login Failed", res.message);
+      // Check if we have a rejected action with verification requirement
+      if (
+        loginUserAsync.rejected.match(resultAction) &&
+        resultAction.payload &&
+        typeof resultAction.payload === "string" &&
+        resultAction.payload.includes("verify your email")
+      ) {
+        // Extract userId if available in the error message
+        const userId = extractUserIdFromError(resultAction.payload);
+
+        if (userId) {
+          router.push({
+            pathname: "/verificationScreen",
+            params: {
+              email: email,
+              userId: userId,
+            },
+          });
+        } else {
+          Alert.alert(
+            "Verification Required",
+            "Please verify your email before logging in. Check your inbox for the verification link."
+          );
+        }
       }
-    } catch (error: any) {
-      Alert.alert("Login Failed", error.message);
-    } finally {
-      setIsLoading(false);
+    } catch (error) {
+      console.error("Login error:", error);
     }
   };
 
   const handleLoginGoogle = async () => {
-    setIsLoading(true);
     try {
-      const result = await loginWithGoogle();
-
-      if (result.success) {
-        await refetch();
-      } else {
-        // More detailed error handling
-        console.error("[Login] Google auth failed:", result);
-        Alert.alert(
-          "Google Login Failed",
-          result.message || "Failed to log in with Google"
-        );
-      }
-    } catch (error: any) {
-      console.error("[Login] Google auth error:", error);
-      Alert.alert("Login Failed", error.message || "Google login failed");
-    } finally {
-      setIsLoading(false);
+      await dispatch(loginWithGoogleAsync());
+      // Redirect will handle navigation
+    } catch (error) {
+      console.error("Google login error:", error);
     }
+  };
+
+  // Helper function to extract userId from error messages
+  const extractUserIdFromError = (errorMsg: string): string | null => {
+    const match = errorMsg.match(/userId:\s*([a-zA-Z0-9]+)/);
+    return match ? match[1] : null;
   };
 
   return (
@@ -208,6 +236,4 @@ const SignIn = () => {
       </TouchableWithoutFeedback>
     </KeyboardAvoidingView>
   );
-};
-
-export default SignIn;
+}
