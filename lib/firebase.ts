@@ -1,5 +1,6 @@
 // firebase.ts
 import { initializeApp } from "firebase/app";
+import { initializeAuth } from "firebase/auth";
 import { getDatabase } from "firebase/database";
 import { getStorage } from "firebase/storage";
 
@@ -21,3 +22,4 @@ const firebaseDb = getDatabase(firebaseApp);
 const firebaseStorage = getStorage(firebaseApp);
 
 export { firebaseApp, firebaseDb, firebaseStorage };
+export const auth = initializeAuth(firebaseApp);

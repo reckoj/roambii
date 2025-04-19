@@ -1,19 +1,17 @@
-// lib/redux/slices/itinerarySlice.ts
-import { createSlice, createAsyncThunk } from "@reduxjs/toolkit";
 import {
-  getUserItineraries,
-  getItineraryWithDetails,
-  createItinerary,
-  updateItinerary,
-  saveActivity,
-  deleteItinerary,
-} from "../../itineraryService";
-import {
-  Itinerary,
-  DayPlan,
   Activity,
+  DayPlan,
+  Itinerary,
   ItineraryWithDetails,
-} from "../../models";
+} from "@/lib/firebase/models";
+import {
+  createItinerary,
+  deleteItinerary,
+  getItineraryWithDetails,
+  getUserItineraries,
+  saveActivity,
+  updateItinerary,
+} from "@/lib/itinerary-service"; // Updated import path to use firebase services
 
 interface ItineraryState {
   itineraries: Itinerary[];
@@ -37,7 +35,7 @@ export const fetchUserItinerariesAsync = createAsyncThunk(
   async (userId: string, { rejectWithValue }) => {
     try {
       const itineraries = await getUserItineraries(userId);
-      return itineraries;
+      return itineraries; // This should always return an array, even if empty
     } catch (error: any) {
       return rejectWithValue(error.message);
     }
@@ -49,6 +47,11 @@ export const fetchItineraryWithDetailsAsync = createAsyncThunk(
   async (itineraryId: string, { rejectWithValue }) => {
     try {
       const itineraryDetails = await getItineraryWithDetails(itineraryId);
+
+      if (!itineraryDetails) {
+        return rejectWithValue("Itinerary not found");
+      }
+
       return itineraryDetails;
     } catch (error: any) {
       return rejectWithValue(error.message);
@@ -64,9 +67,17 @@ export const createItineraryAsync = createAsyncThunk(
       dayPlans,
       activities,
     }: {
-      itinerary: Itinerary;
-      dayPlans?: Omit<DayPlan, "itineraries_Id">[];
-      activities?: { [dayPlanIndex: number]: Omit<Activity, "dayPlansId">[] };
+      itinerary: Omit<Itinerary, "id" | "createdAt" | "updatedAt">;
+      dayPlans?: Omit<
+        DayPlan,
+        "id" | "itineraryId" | "createdAt" | "updatedAt"
+      >[];
+      activities?: {
+        [dayPlanIndex: number]: Omit<
+          Activity,
+          "id" | "dayPlanId" | "createdAt" | "updatedAt"
+        >[];
+      };
     },
     { rejectWithValue }
   ) => {
@@ -76,6 +87,11 @@ export const createItineraryAsync = createAsyncThunk(
         dayPlans,
         activities
       );
+
+      if (!createdItinerary) {
+        return rejectWithValue("Failed to create itinerary");
+      }
+
       return createdItinerary;
     } catch (error: any) {
       return rejectWithValue(error.message);
@@ -91,12 +107,17 @@ export const updateItineraryAsync = createAsyncThunk(
       updatedData,
     }: {
       itineraryId: string;
-      updatedData: Partial<Omit<Itinerary, "$id" | "createdAt">>;
+      updatedData: Partial<Omit<Itinerary, "id" | "createdAt" | "updatedAt">>;
     },
     { rejectWithValue }
   ) => {
     try {
       const updatedItinerary = await updateItinerary(itineraryId, updatedData);
+
+      if (!updatedItinerary) {
+        return rejectWithValue("Failed to update itinerary");
+      }
+
       return updatedItinerary;
     } catch (error: any) {
       return rejectWithValue(error.message);
@@ -106,9 +127,17 @@ export const updateItineraryAsync = createAsyncThunk(
 
 export const saveActivityAsync = createAsyncThunk(
   "itineraries/saveActivity",
-  async (activity: Activity, { rejectWithValue }) => {
+  async (
+    activity: Omit<Activity, "createdAt" | "updatedAt"> & { id?: string },
+    { rejectWithValue }
+  ) => {
     try {
       const savedActivity = await saveActivity(activity);
+
+      if (!savedActivity) {
+        return rejectWithValue("Failed to save activity");
+      }
+
       return savedActivity;
     } catch (error: any) {
       return rejectWithValue(error.message);
@@ -120,7 +149,12 @@ export const deleteItineraryAsync = createAsyncThunk(
   "itineraries/deleteItinerary",
   async (itineraryId: string, { rejectWithValue }) => {
     try {
-      await deleteItinerary(itineraryId);
+      const success = await deleteItinerary(itineraryId);
+
+      if (!success) {
+        return rejectWithValue("Failed to delete itinerary");
+      }
+
       return itineraryId;
     } catch (error: any) {
       return rejectWithValue(error.message);
@@ -129,6 +163,8 @@ export const deleteItineraryAsync = createAsyncThunk(
 );
 
 // Create itinerary slice
+import { createAsyncThunk, createSlice } from "@reduxjs/toolkit";
+
 const itinerarySlice = createSlice({
   name: "itineraries",
   initialState,
@@ -196,13 +232,13 @@ const itinerarySlice = createSlice({
 
         // Update in itineraries array
         state.itineraries = state.itineraries.map((itinerary) =>
-          itinerary.$id === updatedItinerary.$id ? updatedItinerary : itinerary
+          itinerary.id === updatedItinerary.id ? updatedItinerary : itinerary
         );
 
         // Update currentItinerary if it's the one that was updated
         if (
           state.currentItinerary &&
-          state.currentItinerary.itinerary.$id === updatedItinerary.$id
+          state.currentItinerary.itinerary.id === updatedItinerary.id
         ) {
           state.currentItinerary = {
             ...state.currentItinerary,
@@ -220,7 +256,7 @@ const itinerarySlice = createSlice({
         state.loading = true;
         state.error = null;
       })
-      .addCase(saveActivityAsync.fulfilled, (state, action) => {
+      .addCase(saveActivityAsync.fulfilled, (state) => {
         state.loading = false;
         // If current itinerary is loaded, we need to refresh it
         // This will be handled by re-fetching the itinerary with details
@@ -238,11 +274,11 @@ const itinerarySlice = createSlice({
       .addCase(deleteItineraryAsync.fulfilled, (state, action) => {
         state.loading = false;
         state.itineraries = state.itineraries.filter(
-          (itinerary) => itinerary.$id !== action.payload
+          (itinerary) => itinerary.id !== action.payload
         );
         if (
           state.currentItinerary &&
-          state.currentItinerary.itinerary.$id === action.payload
+          state.currentItinerary.itinerary.id === action.payload
         ) {
           state.currentItinerary = null;
         }

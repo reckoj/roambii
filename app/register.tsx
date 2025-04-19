@@ -19,10 +19,14 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 
 import icons from "@/constants/icons";
-import { useGlobalContext } from "@/lib/global-provider";
 import { router } from "expo-router";
 import { EyeClosedIcon, EyeIcon } from "lucide-react-native";
-import { registerUserWithVerification } from "@/lib/auth-service";
+import { useDispatch, useSelector } from "react-redux";
+import {
+  registerUserAsync,
+  clearAuthError,
+} from "@/lib/redux/slices/authSlice";
+import { AppDispatch, RootState } from "@/lib/store/store";
 
 // Define niche options
 const NICHE_OPTIONS = [
@@ -35,16 +39,26 @@ const NICHE_OPTIONS = [
 ];
 
 const Register = () => {
-  const { refetch } = useGlobalContext();
+  const dispatch = useDispatch<AppDispatch>();
+  const { isLoading, error } = useSelector((state: RootState) => state.auth);
+
   const [email, setEmail] = useState("");
   const [name, setName] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [showCPassword, setShowCPassword] = useState(false);
-  const [loading, setLoading] = useState(false);
   const [isAgent, setIsAgent] = useState(false);
   const [selectedNiche, setSelectedNiche] = useState<string>("");
+  const [licenseNumber, setLicenseNumber] = useState("");
+
+  // Clear any auth errors when component mounts or unmounts
+  React.useEffect(() => {
+    dispatch(clearAuthError());
+    return () => {
+      dispatch(clearAuthError());
+    };
+  }, [dispatch]);
 
   const handleRegister = async () => {
     if (!name || !email || !password || !confirmPassword) {
@@ -62,37 +76,41 @@ const Register = () => {
       return;
     }
 
-    setLoading(true);
     try {
-      // Register the user with verification
-      const registrationResult = await registerUserWithVerification(
-        name,
-        email,
-        password,
-        isAgent,
-        confirmPassword,
-        selectedNiche
-      );
+      // Register using Redux thunk
+      const resultAction = await dispatch(
+        registerUserAsync({
+          name,
+          email,
+          password,
+          isAgent,
+          cPassword: confirmPassword,
+          niche: selectedNiche,
+        })
+      )
+        .unwrap()
+        .catch((error) => {
+          Alert.alert(
+            "Registration Failed",
+            error || "An unknown error occurred."
+          );
+          return null;
+        });
 
-      if (registrationResult.success) {
-        // Navigate to verification screen instead of logging in
+      if (resultAction) {
+        // Registration was successful, navigate to verification screen
         router.push({
           pathname: "/verificationScreen",
           params: {
             email: email,
-            userId: registrationResult.userId || "",
           },
         });
-      } else {
-        Alert.alert("Registration Failed", registrationResult.message);
       }
     } catch (error: any) {
       Alert.alert(
         "Registration Failed",
         error.message || "An unknown error occurred."
       );
-    } finally {
-      setLoading(false);
     }
   };
 
@@ -125,7 +143,6 @@ const Register = () => {
                   onChangeText={setName}
                   keyboardType="default"
                   autoCapitalize="words" // Changed to capitalize words
-                  // placeholder="Enter your full name (first and last)"
                 />
 
                 <Text className="text-text font-rubik-medium">Email</Text>
@@ -135,7 +152,6 @@ const Register = () => {
                   onChangeText={setEmail}
                   keyboardType="email-address"
                   autoCapitalize="none"
-                  // placeholder="Enter your email address"
                 />
 
                 <View className="relative mb-4">
@@ -145,7 +161,6 @@ const Register = () => {
                     value={password}
                     onChangeText={setPassword}
                     secureTextEntry={!showPassword}
-                    // placeholder="8-20 characters required"
                   />
                   <TouchableOpacity
                     className="absolute right-4 top-8"
@@ -168,7 +183,6 @@ const Register = () => {
                     value={confirmPassword}
                     onChangeText={setConfirmPassword}
                     secureTextEntry={!showCPassword}
-                    // placeholder="Re-enter your password"
                   />
                   <TouchableOpacity
                     className="absolute right-4 top-8"
@@ -193,11 +207,10 @@ const Register = () => {
                         </Text>
                         <TextInput
                           className="h-12 px-4 mb-4 border border-gray-300 rounded-md"
-                          value={name}
-                          onChangeText={setName}
+                          value={licenseNumber}
+                          onChangeText={setLicenseNumber}
                           keyboardType="default"
-                          autoCapitalize="words" // Changed to capitalize words
-                          // placeholder="Enter your full name (first and last)"
+                          autoCapitalize="characters"
                         />
                         <Text className="text-danger">
                           You will be required to verify your agent status
@@ -245,13 +258,18 @@ const Register = () => {
                 </View>
               )}
 
+              {/* Display error from Redux state if any */}
+              {error && (
+                <Text className="text-red-500 mb-4 text-center">{error}</Text>
+              )}
+
               {/* Register Button */}
               <TouchableOpacity
                 className="h-12 mb-4 bg-primary-300 rounded-md items-center justify-center"
                 onPress={handleRegister}
-                disabled={loading}
+                disabled={isLoading}
               >
-                {loading ? (
+                {isLoading ? (
                   <ActivityIndicator color="#ffffff" size="small" />
                 ) : (
                   <Text className="text-lg font-rubik-bold text-white">

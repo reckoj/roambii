@@ -14,7 +14,12 @@ import { PackageFormData } from "./packageFormData";
 import images from "@/constants/images";
 import { Alert, Platform } from "react-native";
 import { useGlobalContext } from "./global-provider";
-import { Activity, DayPlan, Itinerary, ItineraryWithDetails } from "./models";
+import {
+  Activity,
+  DayPlan,
+  Itinerary,
+  ItineraryWithDetails,
+} from "./firebase/models";
 
 export const config = {
   platform: "com.bysprk.roambii",

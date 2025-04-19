@@ -1,22 +1,33 @@
 // lib/redux/slices/authSlice.ts
-import { createSlice, createAsyncThunk } from "@reduxjs/toolkit";
 import {
-  loginUser,
-  registerUser,
   getCurrentUser,
+  loginUser,
+  loginWithGoogle,
   logout,
-  loginWGoogle,
+  registerUser,
   updateUser,
-} from "../../appwrite";
+} from "@/lib/auth-service";
+import { User as FirebaseUser } from "@/lib/firebase/models"; // Import the Firebase User type
+import { createSlice, createAsyncThunk } from "@reduxjs/toolkit";
 
-// Define interfaces for state
+// Define interfaces for Redux state
+// Make sure it's compatible with Firebase User model
 interface User {
-  $id: string;
+  id: string;
   name: string;
   email: string;
   avatar?: string;
   isAgent: boolean;
   isAgentTemp?: boolean;
+  // Add any additional fields needed for the UI
+}
+
+// Define interface for registration response
+interface RegistrationResponse {
+  registrationComplete: boolean;
+  requiresVerification: boolean;
+  userId?: string;
+  email: string;
 }
 
 interface AuthState {
@@ -34,8 +45,23 @@ const initialState: AuthState = {
   error: null,
 };
 
+// Helper function to convert Firebase User to Redux User
+const convertFirebaseUserToReduxUser = (
+  firebaseUser: FirebaseUser | null
+): User | null => {
+  if (!firebaseUser) return null;
+
+  return {
+    id: firebaseUser.id,
+    name: firebaseUser.name,
+    email: firebaseUser.email,
+    avatar: firebaseUser.avatar,
+    isAgent: firebaseUser.isAgent || false,
+    isAgentTemp: firebaseUser.isAgentTemp || false,
+  };
+};
+
 // Async thunks for authentication
-// In lib/redux/slices/authSlice.ts, update the loginUserAsync function
 export const loginUserAsync = createAsyncThunk(
   "auth/login",
   async (
@@ -49,14 +75,15 @@ export const loginUserAsync = createAsyncThunk(
       if (response.success) {
         console.log("Auth Slice: Login successful, fetching user data");
 
-        // Add a small delay to ensure the Appwrite session is fully established
+        // Add a small delay to ensure the Firebase auth session is fully established
         await new Promise((resolve) => setTimeout(resolve, 300));
 
         // Fetch complete user data
         const userData = await getCurrentUser();
         console.log("Auth Slice: User data fetched", userData);
 
-        return userData;
+        // Convert to Redux user format
+        return convertFirebaseUserToReduxUser(userData);
       }
 
       console.log("Auth Slice: Login failed", response.message);
@@ -68,24 +95,21 @@ export const loginUserAsync = createAsyncThunk(
   }
 );
 
-export const registerUserAsync = createAsyncThunk(
+export const registerUserAsync = createAsyncThunk<
+  RegistrationResponse, // Define return type explicitly
+  {
+    name: string;
+    email: string;
+    password: string;
+    isAgent: boolean;
+    cPassword: string;
+    niche?: string;
+  },
+  { rejectValue: string }
+>(
   "auth/register",
   async (
-    {
-      name,
-      email,
-      password,
-      isAgent,
-      cPassword,
-      niche,
-    }: {
-      name: string;
-      email: string;
-      password: string;
-      isAgent: boolean;
-      cPassword: string;
-      niche: string;
-    },
+    { name, email, password, isAgent, cPassword, niche },
     { rejectWithValue }
   ) => {
     try {
@@ -95,19 +119,20 @@ export const registerUserAsync = createAsyncThunk(
         email,
         password,
         isAgent,
-        cPassword,
         niche
       );
 
       if (response.success) {
-        console.log("Auth Slice: Registration successful, logging in");
-        // If registration is successful, login
-        const loginResponse = await loginUser(email, password);
-        if (loginResponse.success) {
-          const userData = await getCurrentUser();
-          return userData;
-        }
-        return rejectWithValue(loginResponse.message);
+        console.log(
+          "Auth Slice: Registration successful, returning userId for verification"
+        );
+        // Instead of trying to login, just return the userId and email for verification
+        return {
+          registrationComplete: true,
+          requiresVerification: true,
+          userId: response.userId,
+          email: email,
+        };
       }
 
       console.log("Auth Slice: Registration failed", response.message);
@@ -124,17 +149,17 @@ export const loginWithGoogleAsync = createAsyncThunk(
   async (_, { rejectWithValue }) => {
     try {
       console.log("Auth Slice: Attempting Google login");
-      const success = await loginWGoogle();
+      const response = await loginWithGoogle();
 
-      if (success) {
+      if (response.success) {
         console.log("Auth Slice: Google login successful, fetching user data");
         const userData = await getCurrentUser();
         console.log("Auth Slice: User data fetched", userData);
-        return userData;
+        return convertFirebaseUserToReduxUser(userData);
       }
 
       console.log("Auth Slice: Google login failed");
-      return rejectWithValue("Google login failed");
+      return rejectWithValue(response.message || "Google login failed");
     } catch (error: any) {
       console.error("Auth Slice: Google login error", error.message);
       return rejectWithValue(error.message);
@@ -164,7 +189,7 @@ export const fetchCurrentUserAsync = createAsyncThunk(
       console.log("Auth Slice: Fetching current user");
       const userData = await getCurrentUser();
       console.log("Auth Slice: Current user data", userData);
-      return userData;
+      return convertFirebaseUserToReduxUser(userData);
     } catch (error: any) {
       console.error("Auth Slice: Fetch current user error", error.message);
       return rejectWithValue(error.message);
@@ -180,9 +205,22 @@ export const updateUserAsync = createAsyncThunk(
   ) => {
     try {
       console.log("Auth Slice: Updating user", userId);
-      const response = await updateUser(userId, updates);
-      console.log("Auth Slice: User update successful");
-      return response;
+
+      // Convert Redux user format to Firebase user format
+      const firebaseUpdates: Partial<FirebaseUser> = {
+        ...updates,
+        // Make sure to handle any type conversions here
+      };
+
+      const success = await updateUser(userId, firebaseUpdates);
+
+      if (success) {
+        console.log("Auth Slice: User update successful");
+        return updates;
+      } else {
+        console.log("Auth Slice: User update failed");
+        return rejectWithValue("Failed to update user");
+      }
     } catch (error: any) {
       console.error("Auth Slice: User update error", error.message);
       return rejectWithValue(error.message);
@@ -230,13 +268,25 @@ const authSlice = createSlice({
       })
       .addCase(registerUserAsync.fulfilled, (state, action) => {
         state.isLoading = false;
-        state.user = action.payload;
-        state.isAuthenticated = !!action.payload;
-        state.error = null;
-        console.log(
-          "Auth Slice Reducer: Registration successful, authenticated:",
-          !!action.payload
-        );
+
+        // Check if this is a registration that requires verification
+        if (action.payload && action.payload.requiresVerification) {
+          // Don't set the user as authenticated yet
+          state.user = null;
+          state.isAuthenticated = false;
+          state.error = null;
+          console.log(
+            "Auth Slice Reducer: Registration successful, verification required"
+          );
+        } else if (action.payload && !action.payload.requiresVerification) {
+          // This is a theoretical case where verification might not be required
+          // and we have a user object in the payload
+          state.isAuthenticated = true;
+          state.error = null;
+          console.log(
+            "Auth Slice Reducer: Registration successful, authenticated immediately"
+          );
+        }
       })
       .addCase(registerUserAsync.rejected, (state, action) => {
         state.isLoading = false;
@@ -316,7 +366,19 @@ const authSlice = createSlice({
       .addCase(updateUserAsync.fulfilled, (state, action) => {
         state.isLoading = false;
         if (state.user) {
-          state.user = { ...state.user, ...action.payload } as User;
+          // Create a new user object with the updates
+          state.user = {
+            ...state.user,
+            ...action.payload,
+            // Ensure required properties aren't overwritten with undefined
+            id: state.user.id,
+            name: action.payload.name || state.user.name,
+            email: action.payload.email || state.user.email,
+            isAgent:
+              action.payload.isAgent !== undefined
+                ? action.payload.isAgent
+                : state.user.isAgent,
+          };
         }
         console.log("Auth Slice Reducer: User updated", action.payload);
       })

@@ -1,36 +1,13 @@
-// lib/redux/slices/packageSlice.ts
-import { createSlice, createAsyncThunk } from "@reduxjs/toolkit";
 import {
-  getAllPackages,
-  featuredPackages,
-  getPackageById,
   deletePackage,
+  getFeaturedPackages,
+  getPackageById,
+  searchPackages,
   updatePackage,
-} from "../../appwrite";
+} from "@/lib/package-service"; // Updated import path to use new firebase services
 
-// Define interfaces for Package data structure
-interface Package {
-  $id: string;
-  name?: string;
-  type?: string;
-  image?: string;
-  imageUrl?: string | null;
-  price?: number;
-  bedrooms?: number;
-  bathrooms?: number;
-  guestAmount?: number;
-  rating?: number;
-  description?: string;
-  agent?: any;
-  checkInDate?: string;
-  checkOutDate?: string;
-  checkInTime?: string;
-  checkOutTime?: string;
-  amenities?: string[];
-  allinclusive?: boolean;
-  roomType?: string;
-  [key: string]: any;
-}
+import { createSlice, createAsyncThunk } from "@reduxjs/toolkit";
+import { Package } from "@/lib/firebase/models"; // Import the Package type from Firebase models
 
 interface PackageState {
   packages: Package[];
@@ -79,8 +56,21 @@ export const fetchPackagesAsync = createAsyncThunk(
     { rejectWithValue }
   ) => {
     try {
-      const packages = await getAllPackages({ filter, query, limit, offset });
-      return { packages, reset, hasMore: packages.length === limit };
+      const result = await searchPackages(
+        query || "",
+        filter || "All",
+        limit.toString()
+      );
+
+      if (!result || !Array.isArray(result)) {
+        return { packages: [], reset, hasMore: false };
+      }
+
+      return {
+        packages: result,
+        reset,
+        hasMore: result.length === limit,
+      };
     } catch (error: any) {
       return rejectWithValue(error.message);
     }
@@ -91,7 +81,13 @@ export const fetchFeaturedPackagesAsync = createAsyncThunk(
   "packages/fetchFeaturedPackages",
   async (_, { rejectWithValue }) => {
     try {
-      return await featuredPackages();
+      const result = await getFeaturedPackages();
+
+      if (!result || !Array.isArray(result)) {
+        return [];
+      }
+
+      return result;
     } catch (error: any) {
       return rejectWithValue(error.message);
     }
@@ -102,7 +98,13 @@ export const fetchPackageByIdAsync = createAsyncThunk(
   "packages/fetchPackageById",
   async (id: string, { rejectWithValue }) => {
     try {
-      return await getPackageById(id);
+      const result = await getPackageById(id);
+
+      if (!result) {
+        return rejectWithValue("Package not found");
+      }
+
+      return result;
     } catch (error: any) {
       return rejectWithValue(error.message);
     }
@@ -126,13 +128,23 @@ export const deletePackageAsync = createAsyncThunk(
 
 export const updatePackageAsync = createAsyncThunk(
   "packages/updatePackage",
-  async ({ id, data }: { id: string; data: any }, { rejectWithValue }) => {
+  async (
+    {
+      id,
+      data,
+      newImageUri,
+    }: { id: string; data: Partial<Package>; newImageUri?: string },
+    { rejectWithValue }
+  ) => {
     try {
-      const response = await updatePackage(id, data);
-      if (response) {
-        return response;
+      const result = await updatePackage(id, data, newImageUri);
+
+      if (!result) {
+        return rejectWithValue("Failed to update package");
       }
-      return rejectWithValue("Failed to update package");
+
+      // Return the updated package
+      return result;
     } catch (error: any) {
       return rejectWithValue(error.message);
     }
@@ -185,7 +197,7 @@ const packageSlice = createSlice({
           // Filter out duplicates when adding more packages
           const newPackages = packages.filter(
             (pkg) =>
-              !state.packages.some((existingPkg) => existingPkg.$id === pkg.$id)
+              !state.packages.some((existingPkg) => existingPkg.id === pkg.id)
           );
           state.packages = [...state.packages, ...newPackages];
           state.offset += packages.length;
@@ -234,14 +246,14 @@ const packageSlice = createSlice({
       .addCase(deletePackageAsync.fulfilled, (state, action) => {
         state.loading = false;
         state.packages = state.packages.filter(
-          (pkg) => pkg.$id !== action.payload
+          (pkg) => pkg.id !== action.payload
         );
         state.featuredPackages = state.featuredPackages.filter(
-          (pkg) => pkg.$id !== action.payload
+          (pkg) => pkg.id !== action.payload
         );
         if (
           state.currentPackage &&
-          state.currentPackage.$id === action.payload
+          state.currentPackage.id === action.payload
         ) {
           state.currentPackage = null;
         }
@@ -262,18 +274,18 @@ const packageSlice = createSlice({
 
         // Update in packages array
         state.packages = state.packages.map((pkg) =>
-          pkg.$id === updatedPackage.$id ? updatedPackage : pkg
+          pkg.id === updatedPackage.id ? updatedPackage : pkg
         );
 
         // Update in featured packages if present
         state.featuredPackages = state.featuredPackages.map((pkg) =>
-          pkg.$id === updatedPackage.$id ? updatedPackage : pkg
+          pkg.id === updatedPackage.id ? updatedPackage : pkg
         );
 
         // Update current package if it's the one that was updated
         if (
           state.currentPackage &&
-          state.currentPackage.$id === updatedPackage.$id
+          state.currentPackage.id === updatedPackage.id
         ) {
           state.currentPackage = updatedPackage;
         }

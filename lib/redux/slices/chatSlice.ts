@@ -1,38 +1,40 @@
-import { createSlice, createAsyncThunk } from "@reduxjs/toolkit";
 import {
+  checkIsAgent,
   getChatRooms,
   getMessages,
-  sendMessageWithConsistentRoomId,
   markMessagesAsRead,
   deleteChat,
   getChatPartner,
-  checkIsAgent,
-  FirebaseMessage,
+  sendMessage,
   ChatRoom,
-} from "../../chatService";
+  ChatMessage,
+} from "@/lib/chat-service"; // Updated import path
+import { getUserProfile } from "@/lib/user-service"; // Updated import path
+
+import { createSlice, createAsyncThunk } from "@reduxjs/toolkit";
 
 interface UserProfile {
-  $id?: string;
-  name?: string;
-  email?: string;
-  avatar?: string | null;
+  id: string;
+  name: string;
+  email: string;
+  avatar?: string;
   [key: string]: any;
 }
 
 interface ChatState {
   chatRooms: ChatRoom[];
   currentRoom: string | null;
-  currentMessages: FirebaseMessage[];
+  currentMessages: ChatMessage[];
   currentPartner: UserProfile | null;
   unreadCount: number;
-  lastMessageSent: FirebaseMessage | null;
+  lastMessageSent: ChatMessage | null;
   loading: boolean;
   error: string | null;
   isAgent: boolean;
   agentUserId: string | null;
   messageSubscription: any | null;
   userProfiles: Record<string, UserProfile>;
-  messageCache: Record<string, FirebaseMessage[]>; // Add message cache by roomId
+  messageCache: Record<string, ChatMessage[]>; // Add message cache by roomId
   lastUpdated: Record<string, number>; // Track when each room's messages were last updated
 }
 
@@ -81,7 +83,7 @@ export const fetchMessagesAsync = createAsyncThunk(
       if (cachedMessages.length > 0 && cacheAge < 5 * 60 * 1000) {
         // Still fetch fresh messages but don't wait for them to return something
         getMessages(roomId).then((freshMessages) => {
-          // This will update the cache in a separate action
+          // Return the fresh messages, but this won't be handled by the thunk
           return { roomId, messages: freshMessages, freshData: true };
         });
 
@@ -113,11 +115,7 @@ export const sendMessageAsync = createAsyncThunk(
     { rejectWithValue }
   ) => {
     try {
-      const message = await sendMessageWithConsistentRoomId(
-        senderId,
-        receiverId,
-        content
-      );
+      const message = await sendMessage(senderId, receiverId, content);
       return message;
     } catch (error: any) {
       return rejectWithValue(error.message);
@@ -173,6 +171,41 @@ export const checkIsAgentAsync = createAsyncThunk(
   }
 );
 
+export const fetchChatPartnerProfileAsync = createAsyncThunk(
+  "chat/fetchChatPartnerProfile",
+  async (
+    {
+      participants,
+      currentUserId,
+    }: {
+      participants: string[];
+      currentUserId: string;
+    },
+    { rejectWithValue, dispatch }
+  ) => {
+    try {
+      const partnerId = getChatPartner(participants, currentUserId);
+      if (!partnerId) return null;
+
+      // First check if we already have this user's profile in the state
+      const profile = await getUserProfile(partnerId);
+
+      if (profile) {
+        // Also update our user profiles record
+        dispatch(
+          updateUserProfiles({
+            [partnerId]: profile,
+          })
+        );
+      }
+
+      return profile;
+    } catch (error: any) {
+      return rejectWithValue(error.message);
+    }
+  }
+);
+
 // Create chat slice
 const chatSlice = createSlice({
   name: "chat",
@@ -197,7 +230,7 @@ const chatSlice = createSlice({
     },
     addMessage: (state, action) => {
       // This is for real-time updates via Firebase listeners
-      const message = action.payload;
+      const message = action.payload as ChatMessage;
       const roomId = state.currentRoom;
 
       if (message && roomId) {
@@ -222,7 +255,7 @@ const chatSlice = createSlice({
     },
     updateMessages: (state, action) => {
       // This is for real-time updates via Firebase listeners
-      const messages = action.payload;
+      const messages = action.payload as ChatMessage[];
       const roomId = state.currentRoom;
 
       if (messages && messages.length > 0 && roomId) {
@@ -250,19 +283,19 @@ const chatSlice = createSlice({
         if (room.id === roomId) {
           return {
             ...room,
-            last_message: message,
-            last_updated: timestamp || Date.now(),
+            lastMessage: message,
+            lastUpdated: timestamp || Date.now(),
           };
         }
         return room;
       });
 
-      // Re-sort rooms by last_updated
+      // Re-sort rooms by lastUpdated
       state.chatRooms.sort((a, b) => {
         const timeA =
-          typeof a.last_updated === "number" ? a.last_updated : Date.now();
+          typeof a.lastUpdated === "number" ? a.lastUpdated : Date.now();
         const timeB =
-          typeof b.last_updated === "number" ? b.last_updated : Date.now();
+          typeof b.lastUpdated === "number" ? b.lastUpdated : Date.now();
         return timeB - timeA;
       });
     },
@@ -313,8 +346,8 @@ const chatSlice = createSlice({
         // Calculate total unread count using the current user ID from payload
         const currentUserId = action.payload.userId;
         state.unreadCount = action.payload.chatRooms.reduce((total, room) => {
-          // Access the unread_count object and get the count for the current user
-          const count = room.unread_count?.[currentUserId] || 0;
+          // Access the unreadCount object and get the count for the current user
+          const count = room.unreadCount?.[currentUserId] || 0;
           return total + count;
         }, 0);
       })
@@ -386,22 +419,21 @@ const chatSlice = createSlice({
             (room) => room.id === roomId
           );
           if (roomIndex !== -1) {
-            state.chatRooms[roomIndex].last_message = action.payload.content;
-            state.chatRooms[roomIndex].last_updated =
-              typeof action.payload.timestamp === "number"
-                ? action.payload.timestamp
-                : Date.now();
+            state.chatRooms[roomIndex] = {
+              ...state.chatRooms[roomIndex],
+              lastMessage: action.payload.content,
+              lastUpdated:
+                typeof action.payload.timestamp === "number"
+                  ? action.payload.timestamp
+                  : Date.now(),
+            };
 
             // Re-sort rooms by last_updated
             state.chatRooms.sort((a, b) => {
               const timeA =
-                typeof a.last_updated === "number"
-                  ? a.last_updated
-                  : Date.now();
+                typeof a.lastUpdated === "number" ? a.lastUpdated : Date.now();
               const timeB =
-                typeof b.last_updated === "number"
-                  ? b.last_updated
-                  : Date.now();
+                typeof b.lastUpdated === "number" ? b.lastUpdated : Date.now();
               return timeB - timeA;
             });
           }
@@ -419,13 +451,13 @@ const chatSlice = createSlice({
         // Update unread count for this room
         state.chatRooms = state.chatRooms.map((room) => {
           if (room.id === roomId) {
-            // Create a new unread_count object with the user's count set to 0
-            const updatedUnreadCount = { ...room.unread_count };
+            // Create a new unreadCount object with the user's count set to 0
+            const updatedUnreadCount = { ...room.unreadCount };
             updatedUnreadCount[userId] = 0;
 
             return {
               ...room,
-              unread_count: updatedUnreadCount,
+              unreadCount: updatedUnreadCount,
             };
           }
           return room;
@@ -434,7 +466,7 @@ const chatSlice = createSlice({
         // Update read status for current messages if we're in this room
         if (state.currentRoom === roomId) {
           state.currentMessages = state.currentMessages.map((message) => {
-            if (message.receiver_id === userId && !message.read) {
+            if (message.receiverId === userId && !message.read) {
               return { ...message, read: true };
             }
             return message;
@@ -448,7 +480,7 @@ const chatSlice = createSlice({
         // Recalculate total unread count
         state.unreadCount = state.chatRooms.reduce((total, room) => {
           // Get the unread count for this user specifically
-          const userUnreadCount = room.unread_count?.[userId] || 0;
+          const userUnreadCount = room.unreadCount?.[userId] || 0;
           return total + userUnreadCount;
         }, 0);
       })
@@ -488,13 +520,13 @@ const chatSlice = createSlice({
         // Recalculate total unread count (without the deleted room)
         if (state.chatRooms.length > 0) {
           // We need the userId to correctly calculate remaining unread messages
-          // Get a sample userId from the first chatRoom's unread_count
+          // Get a sample userId from the first chatRoom's unreadCount
           const sampleRoom = state.chatRooms[0];
-          if (sampleRoom && sampleRoom.unread_count) {
-            const userId = Object.keys(sampleRoom.unread_count)[0];
+          if (sampleRoom && sampleRoom.unreadCount) {
+            const userId = Object.keys(sampleRoom.unreadCount)[0];
             if (userId) {
               state.unreadCount = state.chatRooms.reduce(
-                (total, room) => total + (room.unread_count?.[userId] || 0),
+                (total, room) => total + (room.unreadCount?.[userId] || 0),
                 0
               );
             }
@@ -505,6 +537,19 @@ const chatSlice = createSlice({
       })
       .addCase(deleteChatAsync.rejected, (state, action) => {
         state.loading = false;
+        state.error = action.payload as string;
+      })
+
+      // Fetch chat partner profile cases
+      .addCase(fetchChatPartnerProfileAsync.pending, (state) => {
+        // We don't set loading to true here to avoid UI flicker
+      })
+      .addCase(fetchChatPartnerProfileAsync.fulfilled, (state, action) => {
+        if (action.payload) {
+          state.currentPartner = action.payload;
+        }
+      })
+      .addCase(fetchChatPartnerProfileAsync.rejected, (state, action) => {
         state.error = action.payload as string;
       });
   },
@@ -524,4 +569,5 @@ export const {
   updateUserProfiles,
   clearMessageCache,
 } = chatSlice.actions;
+
 export default chatSlice.reducer;

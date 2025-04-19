@@ -1,257 +1,138 @@
-import { account, databases, config, client } from "./appwrite-config"; // Import from your existing config file
-import { ID, Query } from "react-native-appwrite";
+// lib/firebase/authService.ts
+import {
+  createUserWithEmailAndPassword,
+  signInWithEmailAndPassword,
+  signOut,
+  GoogleAuthProvider,
+  signInWithPopup,
+  sendEmailVerification,
+  updateProfile,
+  sendPasswordResetEmail,
+  applyActionCode,
+  checkActionCode,
+  User as FirebaseUser,
+  AuthError,
+  OAuthProvider,
+  signInWithRedirect,
+  getRedirectResult,
+  signInWithCredential,
+} from "firebase/auth";
+import {
+  doc,
+  setDoc,
+  getDoc,
+  updateDoc,
+  query,
+  collection,
+  where,
+  getDocs,
+} from "firebase/firestore";
+import { auth, firestore, COLLECTIONS } from "../lib/firebase/firebase-config";
 import * as Linking from "expo-linking";
 import { Platform } from "react-native";
+import { Agent, User } from "./firebase/models";
 
-// Status of email verification
-export enum VerificationStatus {
-  VERIFIED = "verified",
-  PENDING = "pending",
-  FAILED = "failed",
-}
-
-// Interfaces
-export interface VerificationResult {
+// Interface for auth responses
+interface AuthResponse {
   success: boolean;
   message: string;
-  status?: VerificationStatus;
+  userId?: string;
+  requiresVerification?: boolean;
 }
 
 /**
- * Send verification email to the user after registration
+ * Register a new user with email and password
  */
-export const sendVerificationEmail = async (): Promise<VerificationResult> => {
-  try {
-    // Get the redirect URL for your app
-    // Using both app scheme and web URL formats for better compatibility
-    const redirectUrl =
-      Platform.OS === "web"
-        ? Linking.createURL("verify-email")
-        : `${Linking.createURL("verify-email")}`;
-
-    console.log("Verification redirect URL:", redirectUrl);
-
-    // Send verification email
-    await account.createVerification(redirectUrl);
-
-    return {
-      success: true,
-      message: "Verification email sent successfully!",
-      status: VerificationStatus.PENDING,
-    };
-  } catch (error: any) {
-    console.error("Error sending verification email:", error);
-    return {
-      success: false,
-      message: error.message || "Failed to send verification email",
-      status: VerificationStatus.FAILED,
-    };
-  }
-};
-
-/**
- * Complete email verification process with the token from the URL
- */
-export const completeEmailVerification = async (
-  userId: string,
-  secret: string
-): Promise<VerificationResult> => {
-  try {
-    // Complete verification using Appwrite
-    await account.updateVerification(userId, secret);
-
-    // Update user's verification status in the database
-    const userDocs = await databases.listDocuments(
-      config.databaseId!,
-      config.usersCollectionId!,
-      [Query.equal("userId", userId)]
-    );
-
-    if (userDocs.total > 0) {
-      const userDocId = userDocs.documents[0].$id;
-      await databases.updateDocument(
-        config.databaseId!,
-        config.usersCollectionId!,
-        userDocId,
-        { isEmailVerified: true }
-      );
-    }
-
-    return {
-      success: true,
-      message: "Email verification completed successfully!",
-      status: VerificationStatus.VERIFIED,
-    };
-  } catch (error: any) {
-    console.error("Error completing verification:", error);
-    return {
-      success: false,
-      message: error.message || "Failed to verify email",
-      status: VerificationStatus.FAILED,
-    };
-  }
-};
-
-/**
- * Check if user's email is verified
- */
-export const checkEmailVerificationStatus = async (
-  userId: string
-): Promise<boolean> => {
-  try {
-    // First check in Appwrite auth (if the email is verified at Appwrite level)
-    const user = await account.get();
-
-    // Then check our database record
-    const userDocs = await databases.listDocuments(
-      config.databaseId!,
-      config.usersCollectionId!,
-      [Query.equal("userId", userId)]
-    );
-
-    if (userDocs.total === 0) return false;
-
-    return !!userDocs.documents[0].isEmailVerified;
-  } catch (error) {
-    console.error("Error checking verification status:", error);
-    return false;
-  }
-};
-
-/**
- * Resend verification email
- */
-export const resendVerificationEmail =
-  async (): Promise<VerificationResult> => {
-    return sendVerificationEmail();
-  };
-
-/**
- * Handle deep link for email verification
- */
-export const handleVerificationDeepLink = async (
-  url: string
-): Promise<VerificationResult> => {
-  try {
-    const parsedUrl = new URL(url);
-    const userId = parsedUrl.searchParams.get("userId");
-    const secret = parsedUrl.searchParams.get("secret");
-
-    if (!userId || !secret) {
-      throw new Error("Invalid verification link");
-    }
-
-    return await completeEmailVerification(userId, secret);
-  } catch (error: any) {
-    console.error("Error handling verification deep link:", error);
-    return {
-      success: false,
-      message: error.message || "Failed to process verification link",
-      status: VerificationStatus.FAILED,
-    };
-  }
-};
-
-/**
- * Modified registration function that includes email verification
- */
-export const registerUserWithVerification = async (
+export const registerUser = async (
   name: string,
   email: string,
   password: string,
   isAgent: boolean,
-  cPassword: string,
-  niche: string
-): Promise<{
-  success: boolean;
-  message: string;
-  verificationSent?: boolean;
-  userId?: string;
-}> => {
+  niche?: string
+): Promise<AuthResponse> => {
   try {
+    // Validate user inputs
     const trimmedName = name.trim();
-    if (trimmedName.length < 1 || trimmedName.length > 128)
+    if (trimmedName.length < 1 || trimmedName.length > 128) {
       throw new Error("Full name must be between 1 and 128 characters.");
-    if (!trimmedName.includes(" "))
+    }
+    if (!trimmedName.includes(" ")) {
       throw new Error("Please enter your full name (first and last).");
-
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    if (!emailRegex.test(email)) throw new Error("Invalid email format.");
-
-    if (password.length < 8 || password.length > 20)
-      throw new Error("Password must be between 8 and 20 characters.");
-    if (cPassword != password) {
-      throw new Error("Password must match.");
     }
 
-    // Check if email is already registered
-    const existingUser = await databases.listDocuments(
-      config.databaseId!,
-      config.usersCollectionId!,
-      [Query.equal("email", email)]
-    );
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(email)) {
+      throw new Error("Invalid email format.");
+    }
 
-    if (existingUser.documents.length > 0) {
+    if (password.length < 8 || password.length > 20) {
+      throw new Error("Password must be between 8 and 20 characters.");
+    }
+
+    // Check if email already exists in Firestore
+    const usersRef = collection(firestore, COLLECTIONS.USERS);
+    const emailQuery = query(usersRef, where("email", "==", email));
+    const emailExists = await getDocs(emailQuery);
+
+    if (!emailExists.empty) {
       throw new Error("An account with this email already exists.");
     }
 
-    // Create user in Appwrite Authentication
-    const user = await account.create(
-      ID.unique(),
+    // Create user in Firebase Authentication
+    const userCredential = await createUserWithEmailAndPassword(
+      auth,
       email,
-      password,
-      trimmedName
+      password
     );
-    if (!user) throw new Error("Failed to create user account");
+    const firebaseUser = userCredential.user;
 
-    // Store user in users collection with verification status
-    const newUser = await databases.createDocument(
-      config.databaseId!,
-      config.usersCollectionId!,
-      ID.unique(),
-      {
-        name: trimmedName,
-        email,
-        password,
-        isAgent,
-        userId: user.$id,
-        isEmailVerified: false, // Initially not verified
-      }
-    );
+    // Update profile with name
+    await updateProfile(firebaseUser, { displayName: trimmedName });
 
-    if (!newUser) throw new Error("Failed to add user to collection");
+    // Create user document in Firestore
+    const userData: Omit<User, "id"> = {
+      name: trimmedName,
+      email,
+      isAgent,
+      isEmailVerified: false,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+      $id: "",
+    };
 
+    await setDoc(doc(firestore, COLLECTIONS.USERS, firebaseUser.uid), userData);
+
+    // If user is an agent, create agent document
     if (isAgent) {
-      // Store agent in agent collection
-      const agent = await databases.createDocument(
-        config.databaseId!,
-        config.agentsCollectionId!,
-        ID.unique(),
-        {
-          name: trimmedName,
-          email,
-          password,
-          isAgent,
-          userId: user.$id,
-          niche,
-          isEmailVerified: false, // Initially not verified
-        }
+      const agentData: Omit<Agent, "id"> = {
+        ...userData,
+        niche: niche || "",
+        rating: 0,
+        reviewCount: 0,
+      };
+
+      await setDoc(
+        doc(firestore, COLLECTIONS.AGENTS, firebaseUser.uid),
+        agentData
       );
-      if (!agent) throw new Error("Failed to add agent to collection");
     }
 
-    // Create a session for the user to be able to send verification email
-    await account.createEmailPasswordSession(email, password);
-
     // Send verification email
-    const verificationResult = await sendVerificationEmail();
+    const continuationUrl =
+      Platform.OS === "web"
+        ? `${window.location.origin}/verify-email`
+        : `https://${process.env.EXPO_PUBLIC_FIREBASE_PROJECT_ID}.firebaseapp.com/verify-email`;
+
+    await sendEmailVerification(firebaseUser, {
+      url: continuationUrl,
+      handleCodeInApp: true,
+    });
 
     return {
       success: true,
       message:
         "Registration successful! Please check your email to verify your account.",
-      verificationSent: verificationResult.success,
-      userId: user.$id, // Include the userId in the return object
+      userId: firebaseUser.uid,
     };
   } catch (error: any) {
     return { success: false, message: error.message };
@@ -259,55 +140,291 @@ export const registerUserWithVerification = async (
 };
 
 /**
- * Modified login function that checks email verification
+ * Login with email and password
  */
-export const loginUserWithVerification = async (
+export const loginUser = async (
   email: string,
   password: string
-): Promise<{
-  success: boolean;
-  message: string;
-  requiresVerification?: boolean;
-  userId?: string;
-}> => {
+): Promise<AuthResponse> => {
   try {
     // Validate email format
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    if (!emailRegex.test(email)) throw new Error("Invalid email format.");
-
-    // Create Appwrite session
-    const session = await account.createEmailPasswordSession(email, password);
-    if (!session) throw new Error("Failed to create session");
-
-    // Fetch user from the database
-    const userQuery = await databases.listDocuments(
-      config.databaseId!,
-      config.usersCollectionId!,
-      [Query.equal("email", email)]
-    );
-
-    if (userQuery.documents.length === 0) {
-      // This shouldn't normally happen if user was registered properly
-      await account.deleteSession("current"); // Delete the session
-      throw new Error("User not found in database. Please contact support.");
+    if (!emailRegex.test(email)) {
+      throw new Error("Invalid email format.");
     }
 
-    const user = userQuery.documents[0];
+    // Sign in with Firebase
+    const userCredential = await signInWithEmailAndPassword(
+      auth,
+      email,
+      password
+    );
+    const firebaseUser = userCredential.user;
 
-    // Check if email is verified
-    if (!user.isEmailVerified) {
-      // Delete the session since email isn't verified
-      await account.deleteSession("current");
+    // Check if email is verified directly from Firebase Auth
+    if (!firebaseUser.emailVerified) {
+      // Sign out since email isn't verified
+      await signOut(auth);
       return {
         success: false,
         message: "Please verify your email before logging in.",
         requiresVerification: true,
-        userId: user.userId,
+        userId: firebaseUser.uid,
       };
     }
+
+    // Update the last login time in the user document
+    const userRef = doc(firestore, COLLECTIONS.USERS, firebaseUser.uid);
+    await updateDoc(userRef, {
+      updatedAt: new Date(),
+    });
 
     return { success: true, message: "Login successful!" };
   } catch (error: any) {
     return { success: false, message: error.message };
+  }
+};
+
+/**
+ * Login with Google
+ */
+export const loginWithGoogle = async (): Promise<AuthResponse> => {
+  try {
+    const provider = new GoogleAuthProvider();
+
+    if (Platform.OS === "web") {
+      // Web implementation
+      const result = await signInWithPopup(auth, provider);
+      const firebaseUser = result.user;
+      await handleGoogleUserData(firebaseUser);
+      return { success: true, message: "Google login successful!" };
+    } else {
+      // Mobile implementation with redirect
+      await signInWithRedirect(auth, provider);
+      const result = await getRedirectResult(auth);
+
+      if (result && result.user) {
+        await handleGoogleUserData(result.user);
+        return { success: true, message: "Google login successful!" };
+      }
+
+      return {
+        success: false,
+        message: "Google login failed or was cancelled",
+      };
+    }
+  } catch (error: any) {
+    return { success: false, message: error.message };
+  }
+};
+
+/**
+ * Helper function to handle Google auth user data
+ */
+async function handleGoogleUserData(firebaseUser: FirebaseUser): Promise<void> {
+  // Check if user already exists in Firestore
+  const userRef = doc(firestore, COLLECTIONS.USERS, firebaseUser.uid);
+  const userDoc = await getDoc(userRef);
+
+  if (!userDoc.exists()) {
+    // Create new user document
+    const userData: Omit<User, "id"> = {
+      name: firebaseUser.displayName || "Google User",
+      email: firebaseUser.email || "",
+      avatar: firebaseUser.photoURL || undefined,
+      isAgent: false,
+      isEmailVerified: true, // Google OAuth users are pre-verified
+      createdAt: new Date(),
+      updatedAt: new Date(),
+      $id: "",
+    };
+
+    await setDoc(userRef, userData);
+  } else {
+    // Update last login time
+    await updateDoc(userRef, {
+      updatedAt: new Date(),
+    });
+  }
+}
+
+/**
+ * Logout current user
+ */
+export const logout = async (): Promise<boolean> => {
+  try {
+    await signOut(auth);
+    return true;
+  } catch (error) {
+    console.error("Logout error:", error);
+    return false;
+  }
+};
+
+/**
+ * Get current authenticated user with additional Firestore data
+ */
+export const getCurrentUser = async (): Promise<User | null> => {
+  try {
+    const firebaseUser = auth.currentUser;
+    if (!firebaseUser) return null;
+
+    const userRef = doc(firestore, COLLECTIONS.USERS, firebaseUser.uid);
+    const userDoc = await getDoc(userRef);
+
+    if (!userDoc.exists()) return null;
+
+    const userData = userDoc.data() as Omit<User, "id">;
+
+    return {
+      id: firebaseUser.uid,
+      $id: firebaseUser.uid,
+      name: userData.name || firebaseUser.displayName || "",
+      email: userData.email || firebaseUser.email || "",
+      avatar: userData.avatar || firebaseUser.photoURL || undefined,
+      isAgent: userData.isAgent || false,
+      isAgentTemp: userData.isAgentTemp || false,
+      isEmailVerified: firebaseUser.emailVerified, // Use Firebase Auth's property directly
+      createdAt: userData.createdAt,
+      updatedAt: userData.updatedAt,
+    };
+  } catch (error) {
+    console.error("Error getting current user:", error);
+    return null;
+  }
+};
+
+/**
+ * Update user profile
+ */
+export const updateUser = async (
+  userId: string,
+  updates: Partial<User>
+): Promise<boolean> => {
+  try {
+    // Update user document in Firestore
+    const userRef = doc(firestore, COLLECTIONS.USERS, userId);
+    await updateDoc(userRef, {
+      ...updates,
+      updatedAt: new Date(),
+    });
+
+    // If user is an agent, update agent document as well
+    const agentRef = doc(firestore, COLLECTIONS.AGENTS, userId);
+    const agentDoc = await getDoc(agentRef);
+
+    if (agentDoc.exists()) {
+      await updateDoc(agentRef, {
+        ...updates,
+        updatedAt: new Date(),
+      });
+    }
+
+    // Update Firebase Auth profile if name is being updated
+    if (updates.name && auth.currentUser) {
+      await updateProfile(auth.currentUser, {
+        displayName: updates.name,
+      });
+    }
+
+    return true;
+  } catch (error) {
+    console.error("Error updating user:", error);
+    return false;
+  }
+};
+
+/**
+ * Send password reset email
+ */
+export const sendResetPasswordEmail = async (
+  email: string
+): Promise<AuthResponse> => {
+  try {
+    await sendPasswordResetEmail(auth, email);
+    return {
+      success: true,
+      message: "Password reset email sent. Please check your inbox.",
+    };
+  } catch (error: any) {
+    return { success: false, message: error.message };
+  }
+};
+
+/**
+ * Send verification email to current user
+ */
+export const resendVerificationEmail = async (): Promise<AuthResponse> => {
+  try {
+    if (!auth.currentUser) {
+      return { success: false, message: "No user is currently signed in." };
+    }
+
+    await sendEmailVerification(auth.currentUser, {
+      url:
+        Platform.OS === "web"
+          ? Linking.createURL("verify-email")
+          : `${Linking.createURL("verify-email")}`,
+      handleCodeInApp: true,
+    });
+
+    return {
+      success: true,
+      message: "Verification email sent. Please check your inbox.",
+    };
+  } catch (error: any) {
+    return { success: false, message: error.message };
+  }
+};
+
+/**
+ * Verify email with action code from link
+ */
+export const verifyEmail = async (
+  actionCode: string
+): Promise<AuthResponse> => {
+  try {
+    // Check that the action code is valid
+    await checkActionCode(auth, actionCode);
+
+    // Apply the verification code
+    await applyActionCode(auth, actionCode);
+
+    // If user is signed in, update Firestore
+    if (auth.currentUser) {
+      const userRef = doc(firestore, COLLECTIONS.USERS, auth.currentUser.uid);
+      await updateDoc(userRef, {
+        isEmailVerified: true,
+        updatedAt: new Date(),
+      });
+    }
+
+    return {
+      success: true,
+      message: "Email successfully verified. You can now sign in.",
+    };
+  } catch (error: any) {
+    return { success: false, message: error.message };
+  }
+};
+
+/**
+ * Check if a user is an agent
+ */
+export const checkIsAgent = async (
+  userId: string
+): Promise<{ isAgent: boolean; agentId: string | null }> => {
+  try {
+    const agentRef = doc(firestore, COLLECTIONS.AGENTS, userId);
+    const agentDoc = await getDoc(agentRef);
+
+    if (agentDoc.exists()) {
+      return { isAgent: true, agentId: userId };
+    }
+
+    return { isAgent: false, agentId: null };
+  } catch (error) {
+    console.error("Error checking if user is agent:", error);
+    return { isAgent: false, agentId: null };
   }
 };

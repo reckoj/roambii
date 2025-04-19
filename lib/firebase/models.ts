@@ -1,0 +1,131 @@
+// lib/firebase/models.ts
+import { Timestamp, DocumentReference } from "firebase/firestore";
+
+// Common field interfaces
+export interface FirebaseTimestamps {
+  createdAt: Timestamp | Date;
+  updatedAt: Timestamp | Date;
+}
+
+export interface FirebaseDocument extends FirebaseTimestamps {
+  id: string;
+}
+
+// User models
+export interface User extends FirebaseDocument {
+  $id: string;
+  name: string;
+  email: string;
+  avatar?: string;
+  isAgent: boolean;
+  isAgentTemp?: boolean;
+  isEmailVerified: boolean;
+}
+
+export interface Agent extends User {
+  niche?: string;
+  bio?: string;
+  rating?: number;
+  reviewCount?: number;
+}
+
+// Package models
+export interface Package extends FirebaseDocument {
+  name: string;
+  description?: string;
+  price: number;
+  type: string;
+  image?: string;
+  rating?: number;
+  agent: {
+    id: string;
+    name: string;
+    avatar?: string;
+  };
+  allinclusive?: boolean;
+  roomType?: string;
+  amenities?: string[];
+  isFeatured?: boolean;
+  location?: {
+    address?: string;
+    city?: string;
+    country?: string;
+    coordinates?: {
+      latitude: number;
+      longitude: number;
+    };
+  };
+}
+
+// Booking models
+export interface Booking extends FirebaseDocument {
+  userId: string;
+  packageId: string;
+  packageDetails?: Package;
+  amount: number;
+  status: "confirmed" | "cancelled" | "pending";
+  bookingReference: string;
+  bookingDate: Timestamp | Date;
+  checkInDate: Timestamp | Date;
+  checkOutDate: Timestamp | Date;
+  guestCount: number;
+  transactionId: string;
+  paymentMethod: string;
+}
+
+// Review models
+export interface Review extends FirebaseDocument {
+  agentId: string;
+  userId: string;
+  rating: number;
+  comment: string;
+  author: string;
+  avatar?: string;
+}
+
+// Chat models
+export interface ChatMessage {
+  id: string;
+  senderId: string;
+  receiverId: string;
+  content: string;
+  timestamp: number;
+  read: boolean;
+}
+
+export interface ChatRoom {
+  id: string;
+  participants: string[];
+  lastMessage: string;
+  lastUpdated: number;
+  unreadCount: { [userId: string]: number };
+}
+
+// Itinerary models
+export interface Itinerary extends FirebaseDocument {
+  title: string;
+  userId: string;
+  startDate: Timestamp | Date;
+  endDate: Timestamp | Date;
+  destinations: string[];
+  sharedWith?: string[]; // Array of user IDs who can edit this itinerary
+}
+
+export interface DayPlan extends FirebaseDocument {
+  itineraryId: string;
+  day: number;
+  date: Timestamp | Date;
+}
+
+export interface Activity extends FirebaseDocument {
+  dayPlanId: string;
+  time: string; // Format like "09:00", "14:30", etc.
+  title: string;
+  type: string;
+  notes?: string;
+}
+
+export interface ItineraryWithDetails {
+  itinerary: Itinerary;
+  dayPlans: (DayPlan & { activities: Activity[] })[];
+}
