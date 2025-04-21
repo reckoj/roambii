@@ -16,6 +16,11 @@ import {
   signInWithRedirect,
   getRedirectResult,
   signInWithCredential,
+  onAuthStateChanged,
+  EmailAuthProvider,
+  reauthenticateWithCredential,
+  confirmPasswordReset as firebase_confirmPasswordReset,
+  updatePassword as firebase_updatePassword,
 } from "firebase/auth";
 import {
   doc,
@@ -31,6 +36,7 @@ import { auth, firestore, COLLECTIONS } from "../lib/firebase/firebase-config";
 import * as Linking from "expo-linking";
 import { Platform } from "react-native";
 import { Agent, User } from "./firebase/models";
+import { getUserProfile } from "./user-service";
 
 // Interface for auth responses
 interface AuthResponse {
@@ -266,9 +272,44 @@ export const logout = async (): Promise<boolean> => {
  */
 export const getCurrentUser = async (): Promise<User | null> => {
   try {
+    // First, check Firebase's current user
     const firebaseUser = auth.currentUser;
-    if (!firebaseUser) return null;
 
+    if (!firebaseUser) {
+      // Try to restore session via onAuthStateChanged
+      return await new Promise((resolve, reject) => {
+        const unsubscribe = onAuthStateChanged(
+          auth,
+          async (user) => {
+            unsubscribe(); // Immediately unsubscribe
+
+            if (user) {
+              try {
+                const userData = await getUserProfile(user.uid);
+                resolve(userData);
+              } catch (error) {
+                console.error("Error fetching user profile:", error);
+                resolve(null);
+              }
+            } else {
+              resolve(null);
+            }
+          },
+          (error) => {
+            console.error("Auth state change error:", error);
+            reject(error);
+          }
+        );
+
+        // Timeout if auth state doesn't resolve
+        setTimeout(() => {
+          unsubscribe();
+          resolve(null);
+        }, 5000);
+      });
+    }
+
+    // Existing logic for getting user details
     const userRef = doc(firestore, COLLECTIONS.USERS, firebaseUser.uid);
     const userDoc = await getDoc(userRef);
 
@@ -284,7 +325,7 @@ export const getCurrentUser = async (): Promise<User | null> => {
       avatar: userData.avatar || firebaseUser.photoURL || undefined,
       isAgent: userData.isAgent || false,
       isAgentTemp: userData.isAgentTemp || false,
-      isEmailVerified: firebaseUser.emailVerified, // Use Firebase Auth's property directly
+      isEmailVerified: firebaseUser.emailVerified,
       createdAt: userData.createdAt,
       updatedAt: userData.updatedAt,
     };
@@ -426,5 +467,99 @@ export const checkIsAgent = async (
   } catch (error) {
     console.error("Error checking if user is agent:", error);
     return { isAgent: false, agentId: null };
+  }
+};
+
+/**
+ * Update user password
+ */
+export const updatePassword = async (
+  currentPassword: string,
+  newPassword: string
+): Promise<AuthResponse> => {
+  try {
+    const user = auth.currentUser;
+    if (!user || !user.email) {
+      return {
+        success: false,
+        message: "No user is currently signed in or user has no email.",
+      };
+    }
+
+    // Validate new password
+    if (newPassword.length < 8 || newPassword.length > 20) {
+      return {
+        success: false,
+        message: "New password must be between 8 and 20 characters.",
+      };
+    }
+
+    // Re-authenticate user before changing password
+    const credential = EmailAuthProvider.credential(
+      user.email,
+      currentPassword
+    );
+
+    try {
+      await reauthenticateWithCredential(user, credential);
+    } catch (authError) {
+      return {
+        success: false,
+        message: "Current password is incorrect. Please try again.",
+      };
+    }
+
+    // Use the imported function from firebase/auth
+    await firebase_updatePassword(user, newPassword);
+
+    // Update user document with timestamp
+    const userRef = doc(firestore, COLLECTIONS.USERS, user.uid);
+    await updateDoc(userRef, {
+      updatedAt: new Date(),
+    });
+
+    return {
+      success: true,
+      message: "Password updated successfully.",
+    };
+  } catch (error: any) {
+    return {
+      success: false,
+      message: error.message || "Failed to update password.",
+    };
+  }
+};
+
+/**
+ * Confirm password reset with code
+ */
+export const confirmPasswordReset = async (
+  code: string,
+  newPassword: string
+): Promise<AuthResponse> => {
+  try {
+    // Validate password
+    if (newPassword.length < 8 || newPassword.length > 20) {
+      throw new Error("Password must be between 8 and 20 characters.");
+    }
+
+    // Check that the code is valid
+    await checkActionCode(auth, code);
+
+    // Apply the reset code - use the imported function instead of auth.confirmPasswordReset
+    await firebase_confirmPasswordReset(auth, code, newPassword);
+
+    return {
+      success: true,
+      message:
+        "Password has been reset successfully. You can now log in with your new password.",
+    };
+  } catch (error: any) {
+    return {
+      success: false,
+      message:
+        error.message ||
+        "Failed to reset password. The link may be invalid or expired.",
+    };
   }
 };

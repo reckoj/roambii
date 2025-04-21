@@ -1,18 +1,29 @@
 // lib/redux/store.ts
 import { configureStore, combineReducers } from "@reduxjs/toolkit";
-import { persistStore, persistReducer } from "redux-persist";
+import {
+  persistStore,
+  persistReducer,
+  FLUSH,
+  REHYDRATE,
+  PAUSE,
+  PERSIST,
+  PURGE,
+  REGISTER,
+} from "redux-persist";
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import authReducer from "../redux/slices/authSlice";
-import packageReducer from "../redux//slices/packageSlice";
-import itineraryReducer from "../redux//slices/itinerarySlice";
-import chatReducer from "../redux//slices/chatSlice";
-import bookingReducer from "../redux//slices/bookingSlice";
+import authReducer from "../slices/authSlice";
+import packageReducer from "../slices/packageSlice";
+import itineraryReducer from "../slices/itinerarySlice";
+import chatReducer from "../slices/chatSlice";
+import bookingReducer from "../slices/bookingSlice";
 
 // Configure Redux Persist
 const persistConfig = {
   key: "root",
+  version: 1,
   storage: AsyncStorage,
-  whitelist: ["auth"], // Only persist auth state to maintain user sessions
+  whitelist: ["auth"], // Only persist auth reducer
+  blacklist: [], // Optionally blacklist some reducers
 };
 
 // Specific config for chat reducer to persist user profiles and messages
@@ -43,6 +54,12 @@ const store = configureStore({
           "persist/PERSIST",
           "persist/REHYDRATE",
           "chat/setMessageSubscription",
+          FLUSH,
+          REHYDRATE,
+          PAUSE,
+          PERSIST,
+          PURGE,
+          REGISTER,
         ],
         ignoredPaths: ["chat.messageSubscription"],
       },

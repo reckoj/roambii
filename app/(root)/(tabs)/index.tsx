@@ -7,38 +7,32 @@ import {
   TouchableOpacity,
   View,
   RefreshControl,
-  ImageBackground,
-  StyleSheet,
   Animated,
   Dimensions,
   ActivityIndicator,
-  ScrollView,
+  StyleSheet,
 } from "react-native";
-import { router, useLocalSearchParams } from "expo-router";
+import { router } from "expo-router";
 import { SafeAreaView } from "react-native-safe-area-context";
 import images from "@/constants/images";
 import NoResults from "@/components/NoResults";
-import { Card, FeaturedCard } from "@/components/Cards";
-import { useAppwrite } from "@/lib/useAppwrite";
+import { FeaturedCard } from "@/components/Cards";
 import { useGlobalContext } from "@/lib/global-provider";
-import { featuredPackages, getAllPackages } from "@/lib/appwrite";
 import RecommendedAgents from "@/components/RecommendedAgents";
 import Bookings from "@/app/bookings";
-import Search from "@/components/Search";
-import {
-  Calendar,
-  ChevronRight,
-  SearchIcon,
-  MapPin,
-  Heart,
-  TrendingUp,
-  UserCheck,
-  Package,
-  MessageCircle,
-  Bell,
-} from "lucide-react-native";
+import { Calendar, Home, MapPin, Heart, SearchIcon } from "lucide-react-native";
 
-const { width, height } = Dimensions.get("window");
+// Redux imports
+import { useDispatch, useSelector } from "react-redux";
+import {
+  fetchFeaturedPackagesAsync,
+  fetchPackagesAsync,
+  setFilter,
+  setQuery,
+} from "@/lib/redux/slices/packageSlice";
+import { RootState, AppDispatch } from "@/lib/redux/store/store";
+
+const { width } = Dimensions.get("window");
 
 const HEADER_MAX_HEIGHT = 140;
 const HEADER_MIN_HEIGHT = 120;
@@ -51,114 +45,82 @@ const getGreeting = () => {
   return "Good Evening";
 };
 
-// Instead of using a strict Package interface, use a more general type that matches API response
-// This is more flexible and allows for additional properties from the API
-interface BasePackage {
-  $id: string;
-  // Include all system properties that might be in the API response
-  $collectionId?: string;
-  $databaseId?: string;
-  $createdAt?: string;
-  $updatedAt?: string;
-  $permissions?: string[];
+// Define theme colors
+const COLORS = {
+  primary: "#1ABC9C",
+  primaryLight: "#36d6ba",
+  secondary: "#D9D9D9",
+  background: "#FFFFFF",
+  cardBackground: "#F9FAFC",
+  text: "#333333",
+  textLight: "#8A8D9F",
+  white: "#FFFFFF",
+  divider: "#EEEEEE",
+};
 
-  // Package-specific properties
-  name?: string;
-  type?: string;
-  image?: string;
-  imageUrl?: string | null; // Some packages might have imageUrl instead of image
-  price?: number;
-  bedrooms?: number;
-  bathrooms?: number;
-  guestAmount?: number;
-  rating?: number;
-  [key: string]: any; // Allow for any additional properties
-}
-
-interface QuickActionProps {
-  icon: React.ReactNode;
-  title: string;
-  onPress: () => void;
-}
-
-interface SectionHeaderProps {
-  title: string;
-  onSeeAll?: () => void;
-}
-
-const Home = () => {
+const HomeScreen = () => {
   const { rawUser, isAgent } = useGlobalContext();
   const greeting = getGreeting();
-  const params = useLocalSearchParams<{ query?: string; filter?: string }>();
+  const dispatch = useDispatch<AppDispatch>();
 
-  const [packages, setPackages] = useState<BasePackage[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [loadingMore, setLoadingMore] = useState(false);
+  // Redux selectors
+  const {
+    packages,
+    featuredPackages,
+    loading,
+    loadingMore,
+    hasMore,
+    offset,
+    filter,
+    query,
+  } = useSelector((state: RootState) => state.packages);
+
   const [refreshing, setRefreshing] = useState(false);
-  const [offset, setOffset] = useState(0);
-  const [hasMore, setHasMore] = useState(true);
-
   const scrollY = useRef(new Animated.Value(0)).current;
-
-  const { data: featured } = useAppwrite({
-    fn: featuredPackages,
-  });
 
   // Initial Fetch
   useEffect(() => {
     if (packages.length === 0) {
-      fetchPackages(0, true);
-    }
-  }, []);
-
-  // Fetch Packages with Pagination
-  const fetchPackages = async (newOffset = 0, reset = false) => {
-    if (reset) {
-      setLoading(true);
-      setPackages([]);
-    } else {
-      setLoadingMore(true);
+      dispatch(fetchPackagesAsync({ limit: 6, offset: 0, reset: true }));
     }
 
-    try {
-      const newPackages = await getAllPackages({
-        filter: params.filter || "",
-        query: params.query || "",
-        limit: 6,
-        offset: newOffset,
-      });
-
-      if (newPackages.length < 6) setHasMore(false);
-
-      setPackages((prev) => {
-        const existingIds = new Set(prev.map((pkg) => pkg.$id));
-        const filteredNewPackages = newPackages.filter(
-          (pkg) => !existingIds.has(pkg.$id)
-        );
-
-        return reset ? newPackages : [...prev, ...filteredNewPackages];
-      });
-    } catch (error) {
-      console.error("Error fetching packages:", error);
-    } finally {
-      setOffset(newOffset + 6);
-      setLoading(false);
-      setLoadingMore(false);
-    }
-  };
+    // Fetch featured packages
+    dispatch(fetchFeaturedPackagesAsync());
+  }, [dispatch]);
 
   // Load More Data When Reaching Bottom
   const handleLoadMore = () => {
     if (!loadingMore && hasMore) {
-      fetchPackages(offset);
+      dispatch(
+        fetchPackagesAsync({
+          filter,
+          query,
+          limit: 6,
+          offset,
+          reset: false,
+        })
+      );
     }
   };
 
   // Pull-to-Refresh Function
   const handleRefresh = useCallback(() => {
     setRefreshing(true);
-    fetchPackages(0, true).then(() => setRefreshing(false));
-  }, []);
+
+    // Reset packages list
+    dispatch(
+      fetchPackagesAsync({
+        filter,
+        query,
+        limit: 6,
+        offset: 0,
+        reset: true,
+      })
+    ).finally(() => setRefreshing(false));
+
+    // Also refresh featured packages
+    dispatch(fetchFeaturedPackagesAsync());
+  }, [dispatch, filter, query]);
 
   const handleCardPress = (id: string) => router.push(`/properties/${id}`);
 
@@ -202,17 +164,11 @@ const Home = () => {
     index: number;
   }) => (
     <View style={styles.featuredCardContainer}>
-      <FeaturedCard item={item} onPress={() => handleCardPress(item.$id)} />
+      <FeaturedCard item={item} onPress={() => handleCardPress(item.id)} />
     </View>
   );
 
-  const renderPackageCard = ({
-    item,
-    index,
-  }: {
-    item: BasePackage;
-    index: number;
-  }) => (
+  const renderPackageCard = ({ item, index }: { item: any; index: number }) => (
     <Animated.View
       style={[
         styles.packageCardContainer,
@@ -222,15 +178,12 @@ const Home = () => {
       <TouchableOpacity
         style={styles.packageCard}
         activeOpacity={0.9}
-        onPress={() => handleCardPress(item.$id)}
+        onPress={() => handleCardPress(item.id)}
       >
         <View style={styles.cardImageContainer}>
           <Image
             source={{
-              uri:
-                item.image ||
-                item.imageUrl ||
-                "https://via.placeholder.com/300",
+              uri: item.image || "https://via.placeholder.com/300",
             }}
             style={styles.cardImage}
           />
@@ -283,7 +236,13 @@ const Home = () => {
     </Animated.View>
   );
 
-  const renderSectionHeader = ({ title, onSeeAll }: SectionHeaderProps) => (
+  const renderSectionHeader = ({
+    title,
+    onSeeAll,
+  }: {
+    title: string;
+    onSeeAll?: () => void;
+  }) => (
     <View style={styles.sectionHeader}>
       <Text style={styles.sectionTitle}>{title}</Text>
       {onSeeAll && (
@@ -294,7 +253,15 @@ const Home = () => {
     </View>
   );
 
-  const renderQuickAction = ({ icon, title, onPress }: QuickActionProps) => (
+  const renderQuickAction = ({
+    icon,
+    title,
+    onPress,
+  }: {
+    icon: React.ReactNode;
+    title: string;
+    onPress: () => void;
+  }) => (
     <TouchableOpacity style={styles.quickAction} onPress={onPress}>
       <View style={styles.quickActionIcon}>{icon}</View>
       <Text style={styles.quickActionText}>{title}</Text>
@@ -375,7 +342,7 @@ const Home = () => {
         data={packages}
         numColumns={2}
         renderItem={renderPackageCard}
-        keyExtractor={(item) => item.$id}
+        keyExtractor={(item) => item.id}
         contentContainerStyle={[
           styles.listContent,
           { paddingTop: HEADER_MAX_HEIGHT - 15 }, // Move content up slightly
@@ -406,16 +373,6 @@ const Home = () => {
                 title: "My Bookings",
                 onPress: () => router.push("/userBookings"),
               })}
-              {/* {renderQuickAction({
-                icon: <Heart size={18} color="#E74C3C" />,
-                title: "Wishlist",
-                onPress: () => router.push("/wishlist"),
-              })}
-              {renderQuickAction({
-                icon: <Heart size={18} color="#E74C3C" />,
-                title: "Wishlist",
-                onPress: () => router.push("/wishlist"),
-              })} */}
             </View>
 
             {/* Featured Section */}
@@ -425,19 +382,19 @@ const Home = () => {
             })}
 
             <View style={styles.featuredContainer}>
-              {loading ? (
+              {loading && featuredPackages.length === 0 ? (
                 <ActivityIndicator
                   size="large"
                   color="#1ABC9C"
                   style={styles.loader}
                 />
-              ) : featured?.length === 0 ? (
+              ) : featuredPackages.length === 0 ? (
                 <NoResults />
               ) : (
                 <FlatList
-                  data={featured}
+                  data={featuredPackages}
                   renderItem={renderFeaturedCard}
-                  keyExtractor={(item, index) => `${item.$id}-${index}`}
+                  keyExtractor={(item) => item.id}
                   horizontal
                   bounces={false}
                   showsHorizontalScrollIndicator={false}
@@ -474,7 +431,7 @@ const Home = () => {
   );
 };
 
-export default Home;
+export default HomeScreen;
 
 const styles = StyleSheet.create({
   container: {
@@ -631,7 +588,6 @@ const styles = StyleSheet.create({
     marginBottom: 24,
   },
   featuredList: {
-    // paddingLeft: 16, // Add left padding to align with section title
     paddingRight: 10,
   },
   featuredCardContainer: {

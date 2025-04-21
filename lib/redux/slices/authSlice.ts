@@ -1,11 +1,14 @@
 // lib/redux/slices/authSlice.ts
 import {
+  confirmPasswordReset,
   getCurrentUser,
   loginUser,
   loginWithGoogle,
   logout,
   registerUser,
+  sendResetPasswordEmail,
   updateUser,
+  updatePassword,
 } from "@/lib/auth-service";
 import { User as FirebaseUser } from "@/lib/firebase/models"; // Import the Firebase User type
 import { createSlice, createAsyncThunk } from "@reduxjs/toolkit";
@@ -35,6 +38,10 @@ interface AuthState {
   isLoading: boolean;
   isAuthenticated: boolean;
   error: string | null;
+  passwordResetSent: boolean;
+  passwordResetSuccess: boolean;
+  passwordResetError: string | null;
+  passwordResetLoading: boolean;
 }
 
 // Initial state
@@ -43,6 +50,10 @@ const initialState: AuthState = {
   isLoading: true, // Start with loading true to prevent flash of login screen
   isAuthenticated: false,
   error: null,
+  passwordResetSent: false,
+  passwordResetSuccess: false,
+  passwordResetError: null,
+  passwordResetLoading: false,
 };
 
 // Helper function to convert Firebase User to Redux User
@@ -186,12 +197,18 @@ export const fetchCurrentUserAsync = createAsyncThunk(
   "auth/fetchCurrentUser",
   async (_, { rejectWithValue }) => {
     try {
-      console.log("Auth Slice: Fetching current user");
+      // Wait a bit to ensure Firebase is fully initialized
+      await new Promise((resolve) => setTimeout(resolve, 300));
+
       const userData = await getCurrentUser();
-      console.log("Auth Slice: Current user data", userData);
+
+      if (!userData) {
+        return rejectWithValue("No authenticated user");
+      }
+
       return convertFirebaseUserToReduxUser(userData);
     } catch (error: any) {
-      console.error("Auth Slice: Fetch current user error", error.message);
+      console.error("Failed to fetch current user", error);
       return rejectWithValue(error.message);
     }
   }
@@ -228,6 +245,70 @@ export const updateUserAsync = createAsyncThunk(
   }
 );
 
+// New thunk for forgot password
+export const sendPasswordResetEmailAsync = createAsyncThunk(
+  "auth/sendPasswordResetEmail",
+  async (email: string, { rejectWithValue }) => {
+    try {
+      console.log("Auth Slice: Sending password reset email");
+      const response = await sendResetPasswordEmail(email);
+
+      return response;
+    } catch (error: any) {
+      console.error("Auth Slice: Password reset error", error.message);
+      return rejectWithValue(error.message);
+    }
+  }
+);
+
+export const updatePasswordAsync = createAsyncThunk(
+  "auth/updatePassword",
+  async (
+    {
+      currentPassword,
+      newPassword,
+    }: { currentPassword: string; newPassword: string },
+    { rejectWithValue }
+  ) => {
+    try {
+      console.log("Auth Slice: Updating password");
+      const response = await updatePassword(currentPassword, newPassword);
+
+      if (response.success) {
+        return response;
+      } else {
+        return rejectWithValue(response.message);
+      }
+    } catch (error: any) {
+      console.error("Auth Slice: Update password error", error.message);
+      return rejectWithValue(error.message);
+    }
+  }
+);
+
+// New thunk for confirming password reset
+export const confirmPasswordResetAsync = createAsyncThunk(
+  "auth/confirmPasswordReset",
+  async (
+    { code, newPassword }: { code: string; newPassword: string },
+    { rejectWithValue }
+  ) => {
+    try {
+      console.log("Auth Slice: Confirming password reset");
+      const response = await confirmPasswordReset(code, newPassword);
+
+      if (response.success) {
+        return response;
+      } else {
+        return rejectWithValue(response.message);
+      }
+    } catch (error: any) {
+      console.error("Auth Slice: Confirm password reset error", error.message);
+      return rejectWithValue(error.message);
+    }
+  }
+);
+
 // Create auth slice
 const authSlice = createSlice({
   name: "auth",
@@ -236,6 +317,11 @@ const authSlice = createSlice({
     // Any synchronous reducers go here
     clearAuthError: (state) => {
       state.error = null;
+    },
+    clearPasswordResetState: (state) => {
+      state.passwordResetSent = false;
+      state.passwordResetSuccess = false;
+      state.passwordResetError = null;
     },
   },
   extraReducers: (builder) => {
@@ -386,9 +472,40 @@ const authSlice = createSlice({
         state.isLoading = false;
         state.error = action.payload as string;
         console.log("Auth Slice Reducer: User update rejected", action.payload);
+      })
+      // Send password reset email cases
+      .addCase(sendPasswordResetEmailAsync.pending, (state) => {
+        state.passwordResetLoading = true;
+        state.passwordResetError = null;
+        state.passwordResetSent = false;
+      })
+      .addCase(sendPasswordResetEmailAsync.fulfilled, (state, action) => {
+        state.passwordResetLoading = false;
+        state.passwordResetSent = true;
+        state.passwordResetError = null;
+        console.log(
+          "Auth Slice Reducer: Password reset email sent successfully"
+        );
+      })
+      .addCase(updatePasswordAsync.pending, (state) => {
+        state.isLoading = true;
+        state.error = null;
+      })
+      .addCase(updatePasswordAsync.fulfilled, (state) => {
+        state.isLoading = false;
+        state.error = null;
+        console.log("Auth Slice Reducer: Password updated successfully");
+      })
+      .addCase(updatePasswordAsync.rejected, (state, action) => {
+        state.isLoading = false;
+        state.error = action.payload as string;
+        console.log(
+          "Auth Slice Reducer: Password update failed",
+          action.payload
+        );
       });
   },
 });
 
-export const { clearAuthError } = authSlice.actions;
+export const { clearAuthError, clearPasswordResetState } = authSlice.actions;
 export default authSlice.reducer;

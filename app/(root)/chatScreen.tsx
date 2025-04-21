@@ -20,8 +20,8 @@ import { ChevronLeft, Send } from "lucide-react-native";
 import {
   subscribeToMessages,
   getConsistentRoomId,
-  FirebaseMessage,
-} from "@/lib/chatService";
+  ChatMessage,
+} from "@/lib/chat-service";
 import { useGlobalContext } from "@/lib/global-provider";
 import images from "@/constants/images";
 import { databases, config } from "@/lib/appwrite";
@@ -39,7 +39,7 @@ import {
   updateMessages,
   updateUserProfiles,
 } from "@/lib/redux/slices/chatSlice";
-import { RootState, AppDispatch } from "@/lib/store/store";
+import { RootState, AppDispatch } from "@/lib/redux/store/store";
 import ShimmerEffect from "@/components/LoadingShimmer";
 
 const ChatScreen = () => {
@@ -62,7 +62,7 @@ const ChatScreen = () => {
 
   // Get authenticated user
   const { rawUser } = useGlobalContext();
-  const currentUserId = rawUser?.$id;
+  const currentUserId = rawUser?.id;
 
   // State
   const [newMessage, setNewMessage] = useState("");
@@ -70,7 +70,7 @@ const ChatScreen = () => {
   const [messagesLoading, setMessagesLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [partnerLoading, setPartnerLoading] = useState(true);
-  const flatListRef = useRef<FlatList<FirebaseMessage>>(null);
+  const flatListRef = useRef<FlatList<ChatMessage>>(null);
   const roomIdRef = useRef<string | null>(null);
   const hasSetupRef = useRef(false);
   const subscriptionRef = useRef<(() => void) | null>(null);
@@ -268,7 +268,7 @@ const ChatScreen = () => {
       // Create a subscription and store in ref
       subscriptionRef.current = subscribeToMessages(
         roomIdRef.current,
-        (updatedMessages) => {
+        (updatedMessages: string | any[]) => {
           console.log(
             `Received ${updatedMessages.length} messages from subscription`
           );
@@ -537,7 +537,7 @@ const ChatScreen = () => {
             ref={flatListRef}
             data={currentMessages}
             keyExtractor={(item) =>
-              item.id || `${item.timestamp}-${item.sender_id}`
+              item.id || `${item.timestamp}-${item.senderId}`
             }
             contentContainerStyle={{ padding: 16 }}
             // ListFooterComponent={
@@ -551,8 +551,8 @@ const ChatScreen = () => {
               // Determine if this message is from the same sender as the previous one
               const isConsecutive =
                 index > 0 &&
-                currentMessages[index - 1].sender_id === item.sender_id;
-              const isFromCurrentUser = item.sender_id === currentUserId;
+                currentMessages[index - 1].senderId === item.senderId;
+              const isFromCurrentUser = item.senderId === currentUserId;
 
               return (
                 <ChatBubble

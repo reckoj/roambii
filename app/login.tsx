@@ -25,7 +25,7 @@ import {
   loginWithGoogleAsync,
   clearAuthError,
 } from "@/lib/redux/slices/authSlice";
-import { RootState, AppDispatch } from "@/lib/store/store";
+import { RootState, AppDispatch } from "@/lib/redux/store/store";
 
 export default function Login() {
   const dispatch = useDispatch<AppDispatch>();

@@ -11,14 +11,6 @@ import {
   Switch,
   StyleSheet,
 } from "react-native";
-import {
-  logout,
-  storage,
-  config,
-  databases,
-  updateUser,
-  // deleteUserAccount,
-} from "@/lib/appwrite";
 import * as ImagePicker from "expo-image-picker";
 import { useGlobalContext } from "@/lib/global-provider";
 import images from "@/constants/images";
@@ -33,16 +25,15 @@ import {
   Camera,
   ChevronRight,
 } from "lucide-react-native";
-import icons from "@/constants/icons";
 import { InviteFriends } from "@/lib/invite-friends";
 import { router } from "expo-router";
-import { handleAvtarImagePicked } from "@/lib/storage";
-import { Query } from "react-native-appwrite";
 import { LinearGradient } from "expo-linear-gradient";
-import { useAppDispatch } from "@/lib/redux/hooks";
+
+// Redux imports
 import { useDispatch } from "react-redux";
-import { logoutAsync } from "@/lib/redux/slices/authSlice";
-import { AppDispatch } from "@/lib/store/store";
+import { AppDispatch } from "@/lib/redux/store/store";
+import { logoutAsync, updateUserAsync } from "@/lib/redux/slices/authSlice";
+import { uploadProfileImage } from "@/lib/storage-service";
 
 // Define theme colors
 const COLORS = {
@@ -111,7 +102,7 @@ const SettingsItem: React.FC<SettingsItemProps> = ({
 );
 
 const Profile: React.FC = () => {
-  const { rawUser, refetch, isAgent, toggleAgentView } = useGlobalContext();
+  const { rawUser, refetch, isAgent } = useGlobalContext();
   const dispatch = useDispatch<AppDispatch>();
   const [loading, setLoading] = useState<boolean>(false);
   const [avatarUrl, setAvatarUrl] = useState<string | null>(
@@ -120,7 +111,7 @@ const Profile: React.FC = () => {
 
   useEffect(() => {
     if (rawUser?.avatar) {
-      fetchAvatar(rawUser.avatar);
+      setAvatarUrl(rawUser.avatar);
     }
   }, [rawUser?.avatar]);
 
@@ -130,34 +121,21 @@ const Profile: React.FC = () => {
 
   const switchAgentView = async () => {
     try {
-      if (!rawUser?.$id) {
+      if (!rawUser?.id) {
         Alert.alert("Error", "User ID not found.");
         return;
       }
 
-      // Find user document
-      const userDocs = await databases.listDocuments(
-        config.databaseId!,
-        config.usersCollectionId!,
-        [Query.equal("userId", rawUser.$id)]
-      );
+      const newAgentView = !agentView;
+      setAgentView(newAgentView);
 
-      if (userDocs.total === 0) {
-        console.error("Error: User document not found.");
-        Alert.alert("Error", "User profile not found in the database.");
-        return;
-      }
-
-      const userDocId = userDocs.documents[0].$id;
-      const newAgentView = !rawUser.isAgentTemp;
-
-      // Update user document
-      await databases.updateDocument(
-        config.databaseId!,
-        config.usersCollectionId!,
-        userDocId,
-        { isAgentTemp: newAgentView }
-      );
+      // Use Redux to update user in Firestore
+      await dispatch(
+        updateUserAsync({
+          userId: rawUser.id,
+          updates: { isAgentTemp: newAgentView },
+        })
+      ).unwrap();
 
       console.log("[Agent View Toggled] ==> ", newAgentView);
 
@@ -166,22 +144,8 @@ const Profile: React.FC = () => {
     } catch (error) {
       console.error("[Error Updating User] ==> ", error);
       Alert.alert("Error", "Failed to update user.");
-    }
-  };
-
-  /**
-   * Fetch the avatar URL from Appwrite storage
-   */
-  const fetchAvatar = async (fileId: string) => {
-    try {
-      if (!fileId) return;
-      const fileUrl = storage
-        .getFileView(config.avatarBucket!, fileId)
-        .toString();
-      setAvatarUrl(fileUrl);
-    } catch (error) {
-      console.error("Failed to fetch avatar:", error);
-      throw new Error("Failed to fetch avatar:");
+      // Reset UI state on error
+      setAgentView(!agentView);
     }
   };
 
@@ -196,15 +160,43 @@ const Profile: React.FC = () => {
     });
 
     if (!pickerResult.canceled) {
-      setLoading(true);
-      await handleAvtarImagePicked(pickerResult.assets[0].uri, rawUser!.$id);
-      Alert.alert("Success", "Profile picture updated successfully! 🎉");
-      refetch();
+      try {
+        setLoading(true);
+
+        // Use Firebase storage service to upload the image
+        const avatarUrl = await uploadProfileImage(
+          rawUser!.id,
+          pickerResult.assets[0].uri
+        );
+
+        if (avatarUrl) {
+          // Update user profile with new avatar URL
+          await dispatch(
+            updateUserAsync({
+              userId: rawUser!.id,
+              updates: { avatar: avatarUrl },
+            })
+          ).unwrap();
+
+          Alert.alert("Success", "Profile picture updated successfully! 🎉");
+          refetch();
+        } else {
+          throw new Error("Failed to upload image");
+        }
+      } catch (error) {
+        console.error("Error uploading profile image:", error);
+        Alert.alert(
+          "Error",
+          "Failed to update profile picture. Please try again."
+        );
+      } finally {
+        setLoading(false);
+      }
     }
   };
 
   /**
-   * Handles user logout
+   * Handles user logout with Redux
    */
   const handleLogout = async () => {
     Alert.alert("Sign Out", "Are you sure you want to sign out?", [
@@ -216,13 +208,13 @@ const Profile: React.FC = () => {
         text: "Sign Out",
         onPress: async () => {
           try {
-            // Use the Redux logout action to properly update auth state
-            await dispatch(logoutAsync());
+            // Use the Redux logout action
+            await dispatch(logoutAsync()).unwrap();
 
-            // Also refresh your global context if needed
+            // Refresh global context
             refetch();
 
-            // Explicitly navigate to login as a fallback
+            // Navigate to login
             router.replace("/login");
           } catch (error) {
             console.error("Logout error:", error);
@@ -256,15 +248,18 @@ const Profile: React.FC = () => {
         <View style={styles.profileImageContainer}>
           {loading ? (
             <ActivityIndicator size="large" color="#1E90FF" />
-          ) : rawUser?.avatar ? ( // ✅ Display uploaded image if available
+          ) : rawUser?.avatar ? ( // Display uploaded image if available
             <Image
               source={{ uri: rawUser.avatar }}
               className="size-44 rounded-full border-2 border-slate-300"
+              style={styles.profileImage}
               onLoadEnd={() => setLoading(false)}
             />
           ) : (
-            <View className="border-2 rounded-full p-10 border-slate-300">
-              <User2 size={60} color={"#95A5A6"} />
+            <View style={styles.initialsContainer}>
+              <Text style={styles.initialsText}>
+                {getInitials(rawUser?.name)}
+              </Text>
             </View>
           )}
 
@@ -335,15 +330,6 @@ const Profile: React.FC = () => {
             onPress={handleLogout}
             iconBgColor="rgba(255, 76, 105, 0.1)"
           />
-
-          {/* <SettingsItem
-            icon={<Trash size={20} color={COLORS.danger} />}
-            title="Delete Account"
-            textStyle="text-danger"
-            showArrow={false}
-            onPress={() => deleteUserAccount(rawUser?.$id!)}
-            iconBgColor="rgba(255, 76, 105, 0.1)"
-          /> */}
         </View>
 
         <View style={styles.versionContainer}>
@@ -353,6 +339,8 @@ const Profile: React.FC = () => {
     </View>
   );
 };
+
+export default Profile;
 
 const styles = StyleSheet.create({
   container: {
@@ -503,5 +491,3 @@ const styles = StyleSheet.create({
     color: COLORS.textLight,
   },
 });
-
-export default Profile;

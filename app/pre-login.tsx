@@ -13,7 +13,7 @@ import { useRouter } from "expo-router";
 import { useDispatch, useSelector } from "react-redux";
 
 import { loginWithGoogleAsync } from "@/lib/redux/slices/authSlice";
-import { RootState, AppDispatch } from "@/lib/store/store";
+import { RootState, AppDispatch } from "@/lib/redux/store/store";
 import icons from "@/constants/icons";
 import images from "@/constants/images";
 

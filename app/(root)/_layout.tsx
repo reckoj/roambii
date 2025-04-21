@@ -4,7 +4,7 @@ import { ActivityIndicator, Text } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useSelector, useDispatch } from "react-redux";
 import { useEffect } from "react";
-import { RootState, AppDispatch } from "@/lib/store/store";
+import { RootState, AppDispatch } from "@/lib/redux/store/store";
 import { fetchCurrentUserAsync } from "@/lib/redux/slices/authSlice";
 
 export default function AppLayout() {

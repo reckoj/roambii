@@ -1,9 +1,9 @@
-// lib/firebase/config.ts
 import { initializeApp, getApps, getApp } from "firebase/app";
-import { getAuth } from "firebase/auth";
+import { getAuth, initializeAuth, Auth } from "firebase/auth";
 import { getFirestore } from "firebase/firestore";
 import { getDatabase } from "firebase/database";
 import { getStorage } from "firebase/storage";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 
 // Your Firebase configuration
 const firebaseConfig = {
@@ -16,14 +16,37 @@ const firebaseConfig = {
   databaseURL: process.env.EXPO_PUBLIC_FIREBASE_DATABASE_URL,
 };
 
+// Log Firebase config to debug environment variables
+console.log("Initializing Firebase with config:", {
+  ...firebaseConfig,
+  apiKey: firebaseConfig.apiKey ? "Present" : "Missing",
+});
+
 // Initialize Firebase
-const app = !getApps().length ? initializeApp(firebaseConfig) : getApp();
-const auth = getAuth(app);
+let app;
+try {
+  if (getApps().length === 0) {
+    app = initializeApp(firebaseConfig);
+    console.log("Firebase app initialized successfully!");
+  } else {
+    app = getApp();
+    console.log("Using existing Firebase app");
+  }
+} catch (error) {
+  console.error("Error initializing Firebase app:", error);
+  throw error;
+}
+
+// Initialize and export services
+const auth: Auth = getAuth(app);
+
 const firestore = getFirestore(app);
 const database = getDatabase(app);
 const storage = getStorage(app);
 
 export { app, auth, firestore, database, storage };
+
+// Rest of the file remains the same...
 
 // Add type definitions for collections to ensure type safety
 export const COLLECTIONS = {

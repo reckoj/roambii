@@ -26,7 +26,7 @@ import {
   registerUserAsync,
   clearAuthError,
 } from "@/lib/redux/slices/authSlice";
-import { AppDispatch, RootState } from "@/lib/store/store";
+import { AppDispatch, RootState } from "@/lib/redux/store/store";
 
 // Define niche options
 const NICHE_OPTIONS = [

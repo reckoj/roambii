@@ -15,7 +15,7 @@ import {
 } from "react-native";
 import { StatusBar } from "react-native";
 import { router, useFocusEffect } from "expo-router";
-import { getChatPartner } from "@/lib/chatService";
+import { getChatPartner } from "@/lib/chat-service";
 import { useGlobalContext } from "@/lib/global-provider";
 import { LinearGradient } from "expo-linear-gradient";
 import { MessageSquare, MoreVertical } from "lucide-react-native";
@@ -29,10 +29,9 @@ import {
   deleteChatAsync,
   clearCurrentChat,
   updateUserProfiles,
+  fetchChatPartnerProfileAsync,
 } from "@/lib/redux/slices/chatSlice";
-import { RootState, AppDispatch } from "@/lib/store/store";
-import { config, databases } from "@/lib/appwrite";
-import { Query } from "react-native-appwrite";
+import { RootState, AppDispatch } from "@/lib/redux/store/store";
 import ShimmerEffect from "@/components/LoadingShimmer";
 
 // Define theme colors
@@ -80,9 +79,11 @@ const ChatListScreen: React.FC = () => {
 
   // Check if current user is an agent using Redux
   useEffect(() => {
-    if (!rawUser?.$id) return;
+    // Handle both Firebase and Appwrite ID formats
+    const userId = rawUser?.id || rawUser?.id;
+    if (!userId) return;
 
-    dispatch(checkIsAgentAsync(rawUser.$id))
+    dispatch(checkIsAgentAsync(userId))
       .unwrap()
       .catch((error) => {
         console.error("Error checking if user is agent:", error);
@@ -91,14 +92,17 @@ const ChatListScreen: React.FC = () => {
 
   // Fetch chat rooms using Redux
   useEffect(() => {
-    if (!rawUser?.$id) {
+    // Handle both Firebase and Appwrite ID formats
+    const userIdRaw = rawUser?.id || rawUser?.id;
+
+    if (!userIdRaw) {
       console.log("No user ID found, cannot fetch chat rooms");
       setIsLoading(false);
       return;
     }
 
     // Use the correct ID to fetch rooms (agent ID if an agent, user ID otherwise)
-    const userId = isAgent && agentUserId ? agentUserId : rawUser.$id;
+    const userId = isAgent && agentUserId ? agentUserId : userIdRaw;
     console.log("Fetching chat rooms for:", userId);
 
     setIsLoading(true);
@@ -115,90 +119,11 @@ const ChatListScreen: React.FC = () => {
       });
   }, [rawUser, isAgent, agentUserId, dispatch]);
 
-  // Fetch partner profile - using ChatScreen's approach
-  const fetchPartnerProfile = async (partnerId: string) => {
-    if (!partnerId) return null;
-
-    // Check if we already have this profile saved in Redux store
-    if (savedUserProfiles && savedUserProfiles[partnerId]) {
-      console.log(`Using cached profile for partner: ${partnerId}`);
-      setLoadingProfiles((prev) => ({ ...prev, [partnerId]: false }));
-      setLoadingAvatars((prev) => ({ ...prev, [partnerId]: false }));
-      return savedUserProfiles[partnerId];
-    }
-
-    console.log("Fetching profile for partner:", partnerId);
-
-    // Mark this profile as loading
-    setLoadingProfiles((prev) => ({ ...prev, [partnerId]: true }));
-    setLoadingAvatars((prev) => ({ ...prev, [partnerId]: true }));
-
-    // We'll try multiple approaches to find the profile
-    let foundProfile = null;
-
-    // 1. Try to fetch from users collection first
-    if (config.usersCollectionId) {
-      try {
-        const userProfile = await databases
-          .getDocument(config.databaseId!, config.usersCollectionId, partnerId)
-          .catch(() => null);
-
-        if (userProfile) {
-          console.log(`Found partner ${partnerId} in users collection`);
-          foundProfile = userProfile;
-        }
-      } catch (err) {
-        console.log(`Partner ${partnerId} not in users collection`);
-      }
-    }
-
-    // 2. Try agents collection if needed
-    if (!foundProfile && config.agentsCollectionId) {
-      try {
-        const agentProfile = await databases
-          .getDocument(config.databaseId!, config.agentsCollectionId, partnerId)
-          .catch(() => null);
-
-        if (agentProfile) {
-          console.log(`Found partner ${partnerId} in agents collection`);
-          foundProfile = agentProfile;
-        }
-      } catch (err) {
-        console.log(`Partner ${partnerId} not in agents collection`);
-      }
-    }
-
-    // 3. Try searching users by userId field as a fallback
-    if (!foundProfile && config.usersCollectionId) {
-      try {
-        const userDocs = await databases.listDocuments(
-          config.databaseId!,
-          config.usersCollectionId,
-          [Query.equal("userId", partnerId)]
-        );
-
-        if (userDocs.documents.length > 0) {
-          console.log(`Found partner ${partnerId} through userId query`);
-          foundProfile = userDocs.documents[0];
-        }
-      } catch (err) {
-        console.log(`Query for user by userId failed for ${partnerId}`);
-      }
-    }
-
-    // Mark profile loading as complete
-    setLoadingProfiles((prev) => ({ ...prev, [partnerId]: false }));
-    setLoadingAvatars((prev) => ({ ...prev, [partnerId]: false }));
-
-    // Return the found profile or null
-    return foundProfile;
-  };
-
-  // Fetch profiles for partners that are missing from the Redux store
+  // Fetch missing partner profiles from Firestore
   const fetchMissingPartnerProfiles = async () => {
-    if (!rawUser?.$id || chatRooms.length === 0) return;
+    if (!rawUser?.id || chatRooms.length === 0) return;
 
-    const userId = isAgent && agentUserId ? agentUserId : rawUser.$id;
+    const userId = isAgent && agentUserId ? agentUserId : rawUser.id;
     const partnerIds = chatRooms
       .map((room) => getChatPartner(room.participants, userId))
       .filter(Boolean);
@@ -231,9 +156,25 @@ const ChatListScreen: React.FC = () => {
     const newProfiles: Record<string, any> = { ...savedUserProfiles };
 
     for (const partnerId of missingPartnerIds) {
-      const profile = await fetchPartnerProfile(partnerId);
-      if (profile) {
-        newProfiles[partnerId] = profile;
+      try {
+        // Use getUserProfile from Firebase service
+        const userProfile = await dispatch(
+          fetchChatPartnerProfileAsync({
+            participants: [partnerId, userId], // userId is the current user's ID
+            currentUserId: userId,
+          })
+        ).unwrap();
+
+        if (userProfile) {
+          newProfiles[partnerId] = userProfile;
+        }
+
+        setLoadingProfiles((prev) => ({ ...prev, [partnerId]: false }));
+        setLoadingAvatars((prev) => ({ ...prev, [partnerId]: false }));
+      } catch (error) {
+        console.error(`Error fetching profile for ${partnerId}:`, error);
+        setLoadingProfiles((prev) => ({ ...prev, [partnerId]: false }));
+        setLoadingAvatars((prev) => ({ ...prev, [partnerId]: false }));
       }
     }
 
@@ -244,13 +185,13 @@ const ChatListScreen: React.FC = () => {
   // Add useFocusEffect to refresh data when screen comes into focus
   useFocusEffect(
     useCallback(() => {
-      if (!rawUser?.$id) return;
+      if (!rawUser?.id) return;
 
       // Clear current chat when navigating to the chat list
       dispatch(clearCurrentChat());
 
       // Refresh chat rooms
-      const userId = isAgent && agentUserId ? agentUserId : rawUser.$id;
+      const userId = isAgent && agentUserId ? agentUserId : rawUser.id;
       dispatch(fetchChatRoomsAsync(userId))
         .unwrap()
         .then(() => {
@@ -268,10 +209,10 @@ const ChatListScreen: React.FC = () => {
 
   // Update onRefresh to trigger data refresh
   const onRefresh = useCallback(() => {
-    if (!rawUser?.$id) return;
+    if (!rawUser?.id) return;
 
     setIsLoading(true);
-    const userId = isAgent && agentUserId ? agentUserId : rawUser.$id;
+    const userId = isAgent && agentUserId ? agentUserId : rawUser.id;
 
     dispatch(fetchChatRoomsAsync(userId))
       .unwrap()
@@ -472,8 +413,7 @@ const ChatListScreen: React.FC = () => {
             contentContainerStyle={styles.chatList}
             renderItem={({ item }) => {
               // Determine the real ID to use
-              const userId =
-                isAgent && agentUserId ? agentUserId : rawUser?.$id;
+              const userId = isAgent && agentUserId ? agentUserId : rawUser?.id;
               const partnerId = getChatPartner(item.participants, userId || "");
 
               const partnerProfile = savedUserProfiles?.[partnerId];
@@ -486,7 +426,7 @@ const ChatListScreen: React.FC = () => {
               const showName =
                 !isProfileLoading && !isIdOnly(rawPartnerName, partnerId);
 
-              const hasUnread = (item.unread_count?.[userId || ""] || 0) > 0;
+              const hasUnread = (item.unreadCount?.[userId || ""] || 0) > 0;
 
               return (
                 <Pressable
@@ -543,7 +483,7 @@ const ChatListScreen: React.FC = () => {
                           </Text>
                         )}
                         <Text style={styles.timeStamp}>
-                          {formatTimestamp(item.last_updated)}
+                          {formatTimestamp(item.lastUpdated)}
                         </Text>
                         <TouchableOpacity
                           style={styles.optionsButton}
@@ -562,15 +502,15 @@ const ChatListScreen: React.FC = () => {
                           numberOfLines={1}
                           ellipsizeMode="tail"
                         >
-                          {item.last_message || "No messages yet"}
+                          {item.lastMessage || "No messages yet"}
                         </Text>
 
                         {hasUnread && (
                           <View style={styles.unreadBadge}>
                             <Text style={styles.unreadCount}>
-                              {item.unread_count?.[userId || ""] > 99
+                              {item.unreadCount?.[userId || ""] > 99
                                 ? "99+"
-                                : item.unread_count?.[userId || ""]}
+                                : item.unreadCount?.[userId || ""]}
                             </Text>
                           </View>
                         )}
