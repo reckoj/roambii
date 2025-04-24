@@ -11,6 +11,8 @@ import {
   orderBy,
   limit,
   Timestamp,
+  deleteDoc,
+  DocumentData,
 } from "firebase/firestore";
 import { ref, get, update } from "firebase/database";
 import {
@@ -285,5 +287,83 @@ export const getAgentsByNiche = async (niche: string): Promise<Agent[]> => {
   } catch (error) {
     console.error("Error fetching agents by niche:", error);
     return [];
+  }
+};
+
+/**
+ * Get all packages created by a specific agent
+ */
+export const getAgentPackages = async (
+  agentId: string
+): Promise<DocumentData[]> => {
+  try {
+    console.log("Fetching packages for agent ID:", agentId);
+
+    // Get the agent reference
+    const agentRef = doc(firestore, COLLECTIONS.AGENTS, agentId);
+
+    // Query packages where agent field points to this agent
+    const packagesRef = collection(firestore, COLLECTIONS.PACKAGES);
+    const q = query(packagesRef, where("agent", "==", agentRef));
+
+    const querySnapshot = await getDocs(q);
+    console.log(`Found ${querySnapshot.size} packages for this agent`);
+
+    const packages: DocumentData[] = [];
+
+    for (const doc of querySnapshot.docs) {
+      const packageData = doc.data();
+
+      // Format data to match the expected format in the UI
+      packages.push({
+        $id: doc.id,
+        name: packageData.name,
+        type: packageData.type,
+        price: packageData.price,
+        image: packageData.banner_image,
+        rating: packageData.rating,
+        bedrooms: packageData.beds,
+        bathrooms: packageData.baths,
+        guestAmount: packageData.guest_amount,
+        checkInDate: packageData.check_in_date?.toDate?.(),
+        checkOutDate: packageData.check_out_date?.toDate?.(),
+        is_all_inclusive: packageData.is_all_inclusive,
+        description: packageData.description,
+        room_type: packageData.room_type,
+        amenities: packageData.amenities,
+      });
+    }
+
+    return packages;
+  } catch (error) {
+    console.error("Error fetching agent packages:", error);
+    return [];
+  }
+};
+
+/**
+ * Delete a package by ID
+ */
+export const deletePackage = async (packageId: string): Promise<boolean> => {
+  try {
+    const packageRef = doc(firestore, COLLECTIONS.PACKAGES, packageId);
+    const packageDoc = await getDoc(packageRef);
+
+    if (packageDoc.exists()) {
+      const packageData = packageDoc.data();
+
+      // Delete flight info if it exists
+      if (packageData.flight_info) {
+        await deleteDoc(packageData.flight_info);
+      }
+
+      // Delete package
+      await deleteDoc(packageRef);
+    }
+
+    return true;
+  } catch (error) {
+    console.error("Error deleting package:", error);
+    return false;
   }
 };

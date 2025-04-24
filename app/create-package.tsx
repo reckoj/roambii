@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import {
   View,
   Text,
@@ -10,33 +10,85 @@ import {
   ScrollView,
   Switch,
   Alert,
+  ActivityIndicator,
 } from "react-native";
 import { Picker } from "@react-native-picker/picker";
 import * as ImagePicker from "expo-image-picker";
 import DateTimePicker from "@react-native-community/datetimepicker";
+import { useRouter } from "expo-router";
 
-import {
-  account,
-  config,
-  databases,
-  storage,
-  uploadPimage,
-} from "../lib/appwrite";
-import { ID, Query } from "react-native-appwrite";
-import { useGlobalContext } from "@/lib/global-provider";
-import icons from "@/constants/icons";
-import { router } from "expo-router";
+// Components
 import CustomInput from "@/components/CustomInput";
 import AuthButton from "@/components/AuthButton";
-import { handlePackageImagePicked } from "@/lib/storage";
-
-import FlightInformation from "./FlightInfo";
-import { ArrowLeft } from "lucide-react-native";
-import CustomHeader from "@/components/HeaderComponent";
 import AmenitySelection from "@/components/AmenitySelection";
 
+// Firebase
+import { createPackage, getCurrentUserAgent } from "@/lib/package-service";
+import { auth, COLLECTIONS, firestore } from "@/lib/firebase/firebase-config";
+import CustomHeader from "@/components/HeaderComponent";
+import FlightInformation from "./FlightInfo";
+import { collection, getDocs } from "firebase/firestore";
+
 const CreatePackageScreen = () => {
-  const { rawUser, isLogged, isAgent, refetch } = useGlobalContext();
+  const router = useRouter();
+  const [isAgent, setIsAgent] = useState(false);
+  const [agentId, setAgentId] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [initializing, setInitializing] = useState(true);
+
+  // In CreatePackageScreen.tsx, add this debugging code
+  const user = auth.currentUser;
+
+  useEffect(() => {
+    const checkAgentStatus = async () => {
+      if (!user) {
+        Alert.alert(
+          "Authentication Error",
+          "You must be logged in to create a package"
+        );
+        router.back();
+        return;
+      }
+
+      console.log("Current user ID:", user.uid);
+      console.log("Current user email:", user.email);
+
+      // Debug: Directly check the agents collection
+      try {
+        const agentsRef = collection(firestore, COLLECTIONS.AGENTS);
+        const allAgentsSnapshot = await getDocs(agentsRef);
+        console.log("Total agents in database:", allAgentsSnapshot.size);
+
+        allAgentsSnapshot.forEach((doc) => {
+          console.log("Agent doc ID:", doc.id);
+          console.log("Agent data:", doc.data());
+        });
+      } catch (error) {
+        console.error("Error listing all agents:", error);
+      }
+
+      try {
+        const agentData = await getCurrentUserAgent(user.uid);
+        console.log("Agent data returned:", agentData);
+
+        if (agentData) {
+          setIsAgent(true);
+          setAgentId(agentData.id);
+        } else {
+          Alert.alert("Access Denied", "Only agents can create packages");
+          router.back();
+        }
+      } catch (error) {
+        console.error("Error checking agent status:", error);
+        Alert.alert("Error", "Failed to verify agent status");
+        router.back();
+      } finally {
+        setInitializing(false);
+      }
+    };
+
+    checkAgentStatus();
+  }, [user, router]);
 
   // Set default times for check-in and check-out
   const defaultCheckInTime = new Date();
@@ -71,25 +123,13 @@ const CreatePackageScreen = () => {
     rating: "",
     amenities: [],
     image: "",
-    geolocation: "",
-    agent: "",
-    gallery: "",
-    reviews: "",
-    checkInTime: defaultCheckInTime.toISOString(),
-    checkOutTime: defaultCheckOutTime.toISOString(),
-    checkInDate: defaultCheckInDate.toISOString(),
-    checkOutDate: defaultCheckOutDate.toISOString(),
     guestAmount: "",
     allinclusive: false,
-    roomType: "standard", // Default enum
-    flightInfo: {
-      departingFrom: "",
-      arrivingTo: "",
-      returningFrom: "",
-      returningTo: "",
-      departureDate: "",
-      returnDate: "",
-    },
+    roomType: "Standard Room", // Default enum
+    checkInDate: defaultCheckInDate.toISOString(),
+    checkOutDate: defaultCheckOutDate.toISOString(),
+    checkInTime: defaultCheckInTime.toISOString(),
+    checkOutTime: defaultCheckOutTime.toISOString(),
   });
 
   // Date picker states
@@ -143,124 +183,50 @@ const CreatePackageScreen = () => {
   };
 
   const handleSubmit = async () => {
+    if (!isAgent || !agentId) {
+      Alert.alert("Error", "Only agents can create packages");
+      return;
+    }
+
+    if (!formData.name || !formData.price || !formData.departingFrom) {
+      Alert.alert(
+        "Error",
+        "Please fill in required fields (name, price, and departure location)"
+      );
+      return;
+    }
+
     try {
-      const userId = (await account.get()).$id;
-      if (!isAgent || !rawUser || !rawUser.$id) {
-        alert("You must be logged in to create a package");
-        return;
-      }
+      setLoading(true);
 
-      const agentData = await databases.listDocuments(
-        config.databaseId!,
-        config.agentsCollectionId!,
-        [Query.equal("userId", userId)]
-      );
-      const agentId = agentData.documents[0].$id;
+      // Create package in Firebase
+      await createPackage(formData, agentId, formData.image);
 
-      if (agentData.total === 0) {
-        alert("Only agents can create packages.");
-        return;
-      }
-
-      if (!formData.name || !formData.price || !formData.departingFrom) {
-        alert("Please fill in required fields");
-        return;
-      }
-
-      if (!isAgent || !rawUser || !rawUser.$id) {
-        alert("You must be logged in to create a package");
-        return;
-      }
-
-      const flightInfo = await databases.createDocument(
-        config.databaseId!,
-        config.flightInfoCollectionId!,
-        ID.unique(),
+      Alert.alert("Success", "Package created successfully!", [
         {
-          departingFrom: formData.departingFrom,
-          arrivingTo: formData.arrivingTo,
-          returningFrom: formData.returningFrom,
-          returningTo: formData.returningTo,
-          departingTime: formData.departingTime,
-          arrivingToTime: formData.arrivingToTime,
-          returningFromTime: formData.returningFromTime,
-          returningToTime: formData.returningToTime,
-          departureDate: formData.departureDate,
-          returnDate: formData.returnDate,
-        }
-      );
-      const uploadedFileId = await handlePackageImagePicked(
-        formData.image,
-        rawUser.$id
-      );
-
-      const packageData = await databases.createDocument(
-        config.databaseId!,
-        config.packagesCollectionId!,
-        ID.unique(),
-        {
-          name: formData.name,
-          type: formData.type,
-          description: formData.description,
-          price: parseInt(formData.price),
-          bedrooms: parseInt(formData.bedrooms),
-          bathrooms: parseInt(formData.bathrooms),
-          rating: parseFloat(formData.rating),
-          amenities: formData.amenities,
-          image: uploadedFileId,
-          agent: agentId,
-          gallery: [],
-          reviews: formData.reviews || null,
-          allinclusive: formData.allinclusive,
-          roomType: formData.roomType,
-          flightInfo: flightInfo.$id,
-          checkInTime: formData.checkInTime,
-          checkOutTime: formData.checkOutTime,
-          checkInDate: formData.checkInDate,
-          checkOutDate: formData.checkOutDate,
-          guestAmount: parseInt(formData.guestAmount),
-        }
-      );
-
-      console.log("[Image Before Saving] ==> ", formData.image);
-
-      // Step 3: Add Images to Gallery and Link to Package
-      if (formData.gallery && formData.gallery.length > 0) {
-        const galleryIds = [];
-
-        for (const image of formData.gallery) {
-          const galleryItem = await databases.createDocument(
-            config.databaseId!,
-            config.galleriesCollectionId!,
-            ID.unique(),
-            {
-              package: packageData.$id,
-              imageUrl: image,
-            }
-          );
-          galleryIds.push(galleryItem.$id);
-        }
-
-        // Step 4: Update Package with Gallery References
-        await databases.updateDocument(
-          config.databaseId!,
-          config.packagesCollectionId!,
-          packageData.$id,
-          {
-            gallery: galleryIds,
-          }
-        );
-      }
-
-      refetch();
-      alert("Package created successfully!");
-      router.back();
-      console.log("[Refetching Data After Submit]...");
+          text: "OK",
+          onPress: () => router.back(),
+        },
+      ]);
     } catch (error) {
-      console.log(error);
-      alert(`Failed to create package: ${error}`);
+      console.error("Error creating package:", error);
+      Alert.alert("Error", "Failed to create package. Please try again.");
+    } finally {
+      setLoading(false);
     }
   };
+
+  if (initializing) {
+    return (
+      <View style={styles.loadingContainer}>
+        <ActivityIndicator size="large" color="#1ABC9C" />
+      </View>
+    );
+  }
+
+  if (!isAgent) {
+    return null; // Don't render anything if not an agent
+  }
 
   return (
     <KeyboardAvoidingView
@@ -318,6 +284,7 @@ const CreatePackageScreen = () => {
             </View>
           </View>
           <View>
+            {/* Name and Price */}
             <View style={styles.row}>
               <View style={styles.column}>
                 <Text style={styles.label}>Name</Text>
@@ -337,6 +304,7 @@ const CreatePackageScreen = () => {
               </View>
             </View>
 
+            {/* Bedrooms, Bathrooms, Rating */}
             <View style={styles.row}>
               <View style={styles.column}>
                 <Text style={styles.label}>Bedrooms</Text>
@@ -475,12 +443,13 @@ const CreatePackageScreen = () => {
               </View>
             </View>
 
-            <Text style={styles.label}>Travlers</Text>
+            <Text style={styles.label}>Travelers</Text>
             <View className="w-14">
               <CustomInput
                 height={30}
                 value={formData.guestAmount}
                 onChangeText={(text) => handleChange("guestAmount", text)}
+                keyboardType="numeric"
               />
             </View>
 
@@ -489,6 +458,8 @@ const CreatePackageScreen = () => {
               height={120}
               value={formData.description}
               onChangeText={(text) => handleChange("description", text)}
+              multiline={true}
+              textAlignVertical="top"
             />
           </View>
 
@@ -497,7 +468,7 @@ const CreatePackageScreen = () => {
           <Text className="mt-5" style={styles.label}>
             Room Type
           </Text>
-          <View className="border border-gray-300 rounded-lg  px-3">
+          <View className="border border-gray-300 rounded-lg px-3">
             <Picker
               selectedValue={formData.roomType}
               onValueChange={(value) => handleChange("roomType", value)}
@@ -524,16 +495,28 @@ const CreatePackageScreen = () => {
             value={formData.allinclusive}
             onValueChange={(value) => handleChange("allinclusive", value)}
           />
+
           <FlightInformation formData={formData} handleChange={handleChange} />
 
-          <AuthButton title="Create Package" onPress={handleSubmit} />
+          <AuthButton
+            title="Create Package"
+            onPress={handleSubmit}
+            disabled={loading}
+          />
         </ScrollView>
       </View>
     </KeyboardAvoidingView>
   );
 };
 
+export default CreatePackageScreen;
+
 const styles = StyleSheet.create({
+  loadingContainer: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
+  },
   container: {
     flex: 1,
     backgroundColor: "#fff",
@@ -669,5 +652,3 @@ const styles = StyleSheet.create({
     padding: 2,
   },
 });
-
-export default CreatePackageScreen;

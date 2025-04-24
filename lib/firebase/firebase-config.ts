@@ -52,7 +52,7 @@ export { app, auth, firestore, database, storage };
 export const COLLECTIONS = {
   USERS: "users",
   AGENTS: "agents",
-  PACKAGES: "packages",
+  PACKAGES: "package_info",
   BOOKINGS: "bookings",
   REVIEWS: "agent_reviews",
   CHAT_ROOMS: "chat_rooms", // Will be stored in Realtime Database

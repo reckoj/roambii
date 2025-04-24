@@ -2,7 +2,6 @@ import React, { useEffect, useState, useCallback, useRef } from "react";
 import {
   View,
   Text,
-  ScrollView,
   TouchableOpacity,
   StyleSheet,
   Alert,
@@ -10,15 +9,9 @@ import {
   Image,
   RefreshControl,
   Dimensions,
-  Animated as RNAnimated,
   StatusBar,
+  ScrollView,
 } from "react-native";
-import {
-  GestureHandlerRootView,
-  GestureDetector,
-  Gesture,
-  PanGestureHandler,
-} from "react-native-gesture-handler";
 import {
   PlusCircle,
   Trash2,
@@ -31,49 +24,18 @@ import {
   ChevronRight,
   Calendar,
 } from "lucide-react-native";
-import { router } from "expo-router";
-import { deletePackage, getAgentPackages } from "@/lib/appwrite";
-import { useGlobalContext } from "@/lib/global-provider";
+import { router, useFocusEffect } from "expo-router";
+import { getAgentPackages, deletePackage } from "@/lib/agent-service";
+import { auth } from "@/lib/firebase/firebase-config";
 import images from "@/constants/images";
-import Animated, {
-  useAnimatedStyle,
-  useSharedValue,
-  useAnimatedReaction,
-  withSpring,
-  withTiming,
-  runOnJS,
-  FadeIn,
-  FadeOut,
-} from "react-native-reanimated";
+import { SwipeListView } from "react-native-swipe-list-view";
+import Animated, { FadeIn, FadeOut } from "react-native-reanimated";
 import CustomHeader from "@/components/HeaderComponent";
 
 const { width } = Dimensions.get("window");
 
-type FlightDetails = {
-  from: string;
-  to: string;
-  departure: string;
-  arrival: string;
-  flightNumber: string;
-};
-
-type BookedTrip = {
-  id: string;
-  destination: string;
-  departureDate: string;
-  returnDate: string;
-  amount: number;
-  bookingReference: string;
-  passengers: number;
-  paymentMethod: string;
-  flightDetails: {
-    outbound: FlightDetails;
-    return: FlightDetails;
-  };
-};
-
 // Format date helper
-const formatDate = (dateString: string) => {
+const formatDate = (dateString: string | Date) => {
   if (!dateString) return "";
   const date = new Date(dateString);
   return date.toLocaleDateString("en-US", {
@@ -83,128 +45,26 @@ const formatDate = (dateString: string) => {
   });
 };
 
-// SwipeableRow component to replace the deprecated Swipeable
-const SwipeableRow = ({
-  children,
-  onDelete,
-  onEdit,
-  packageId,
-}: {
-  children: React.ReactNode;
-  onDelete: (id: string) => void;
-  onEdit: (id: string) => void;
-  packageId: string;
-}) => {
-  // Action buttons width
-  const ACTIONS_WIDTH = 144;
-
-  // Shared values for animation
-  const translateX = useSharedValue(0);
-  const rowHeight = useSharedValue(0);
-  const isOpen = useSharedValue(false);
-
-  // Create pan gesture
-  const panGesture = Gesture.Pan()
-    .onUpdate((event) => {
-      // Limit to left swipe only and not beyond action width
-      translateX.value = Math.max(
-        Math.min(event.translationX, 0),
-        -ACTIONS_WIDTH
-      );
-    })
-    .onEnd((event) => {
-      // Determine if should snap open or closed
-      const shouldOpen = event.translationX < -ACTIONS_WIDTH / 2;
-
-      if (shouldOpen) {
-        translateX.value = withSpring(-ACTIONS_WIDTH, { damping: 20 });
-        isOpen.value = true;
-      } else {
-        translateX.value = withSpring(0, { damping: 20 });
-        isOpen.value = false;
-      }
-    });
-
-  // Style for the row
-  const rowStyle = useAnimatedStyle(() => {
-    return {
-      transform: [{ translateX: translateX.value }],
-    };
-  });
-
-  // Close the swipeable programmatically
-  const close = () => {
-    translateX.value = withTiming(0, { duration: 200 });
-    isOpen.value = false;
-  };
-
-  // Handle measurements to know row height
-  const onLayout = (event: any) => {
-    rowHeight.value = event.nativeEvent.layout.height;
-  };
-
-  // Handle edit
-  const handleEdit = () => {
-    close();
-    onEdit(packageId);
-  };
-
-  // Handle delete
-  const handleDelete = () => {
-    close();
-    onDelete(packageId);
-  };
-
-  return (
-    <View>
-      {/* Action buttons behind the row */}
-      <View
-        style={[
-          styles.actionButtons,
-          { position: "absolute", right: 0, height: rowHeight.value },
-        ]}
-      >
-        <TouchableOpacity
-          onPress={handleEdit}
-          style={[styles.actionButton, styles.editButton]}
-        >
-          <Edit size={20} color="#FFF" />
-        </TouchableOpacity>
-
-        <TouchableOpacity
-          onPress={handleDelete}
-          style={[styles.actionButton, styles.deleteButton]}
-        >
-          <Trash2 size={20} color="#FFF" />
-        </TouchableOpacity>
-      </View>
-
-      {/* The swipeable row */}
-      <GestureDetector gesture={panGesture}>
-        <Animated.View style={rowStyle} onLayout={onLayout}>
-          {children}
-        </Animated.View>
-      </GestureDetector>
-    </View>
-  );
-};
-
 const Bookings = () => {
-  const { rawUser, isAgent } = useGlobalContext();
   const [packages, setPackages] = useState<any[]>([]);
   const [refreshing, setRefreshing] = useState(false);
   const [initialLoading, setInitialLoading] = useState(true);
-  const scrollY = useRef(new RNAnimated.Value(0)).current;
+
+  // Get current user
+  const user = auth.currentUser;
 
   /** Fetch packages function that can be reused */
   const fetchPackages = async () => {
-    if (!isAgent || !rawUser?.$id) {
+    if (!user?.uid) {
       setInitialLoading(false);
+      setRefreshing(false);
       return;
     }
 
     try {
-      const data = await getAgentPackages(rawUser.$id);
+      console.log("Fetching packages for user:", user.uid);
+      const data = await getAgentPackages(user.uid);
+      console.log("Packages fetched:", data.length);
       setPackages(data);
     } catch (error) {
       console.error("Error fetching packages:", error);
@@ -217,13 +77,26 @@ const Bookings = () => {
   /** Initial fetch when screen loads */
   useEffect(() => {
     fetchPackages();
-  }, [rawUser?.$id]);
+  }, [user?.uid]);
+
+  /** Refresh when screen comes into focus */
+  useFocusEffect(
+    useCallback(() => {
+      console.log("Screen focused, refreshing packages");
+      fetchPackages();
+      return () => {
+        // Cleanup function when screen is unfocused
+        console.log("Screen unfocused");
+      };
+    }, [user?.uid])
+  );
 
   /** Handle pull to refresh */
   const onRefresh = useCallback(() => {
+    console.log("Pull-to-refresh triggered");
     setRefreshing(true);
     fetchPackages();
-  }, [rawUser?.$id]);
+  }, [user?.uid]);
 
   /** Handle deleting a package */
   const handleDelete = async (packageId: string) => {
@@ -261,13 +134,6 @@ const Bookings = () => {
     router.push("/create-package");
   };
 
-  // Header animation
-  const headerOpacity = scrollY.interpolate({
-    inputRange: [0, 60],
-    outputRange: [0, 1],
-    extrapolate: "clamp",
-  });
-
   // Show loader only on initial load
   if (initialLoading) {
     return (
@@ -278,8 +144,159 @@ const Bookings = () => {
     );
   }
 
+  // Render hidden row item (for actions like edit/delete)
+  const renderHiddenItem = (data: any) => (
+    <View style={styles.rowBack}>
+      <TouchableOpacity
+        style={[styles.actionButton, styles.editButton]}
+        onPress={() => handleEdit(data.item.$id)}
+      >
+        <Edit size={20} color="#FFF" />
+      </TouchableOpacity>
+      <TouchableOpacity
+        style={[styles.actionButton, styles.deleteButton]}
+        onPress={() => handleDelete(data.item.$id)}
+      >
+        <Trash2 size={20} color="#FFF" />
+      </TouchableOpacity>
+    </View>
+  );
+
+  // Render visible row item (package card)
+  const renderItem = (data: any) => {
+    const pkg = data.item;
+
+    return (
+      <Animated.View
+        entering={FadeIn.duration(400).delay(data.index * 100)}
+        exiting={FadeOut.duration(300)}
+      >
+        <TouchableOpacity
+          style={styles.packageCard}
+          activeOpacity={0.9}
+          onPress={() => handleEdit(pkg.$id)}
+        >
+          {/* Card content */}
+          <View style={styles.cardContent}>
+            {/* Image */}
+            <Image
+              source={{
+                uri: pkg.image || "https://via.placeholder.com/150",
+              }}
+              style={styles.packageImage}
+            />
+
+            {/* Package details */}
+            <View style={styles.packageDetails}>
+              <View style={styles.nameRow}>
+                <Text style={styles.packageName} numberOfLines={1}>
+                  {pkg.name}
+                </Text>
+                <View style={styles.ratingContainer}>
+                  <Star size={14} color="#FFD700" fill="#FFD700" />
+                  <Text style={styles.ratingText}>
+                    {pkg.rating?.toFixed(1) || "4.5"}
+                  </Text>
+                </View>
+              </View>
+
+              {/* Location */}
+              <View style={styles.locationRow}>
+                <MapPin size={14} color="#95A5A6" />
+                <Text style={styles.locationText} numberOfLines={1}>
+                  {pkg.type || "Accommodation"}
+                </Text>
+              </View>
+
+              {/* Features */}
+              <View style={styles.featuresRow}>
+                {pkg.bedrooms && (
+                  <View style={styles.feature}>
+                    <Bed size={12} color="#7F8C8D" />
+                    <Text style={styles.featureText}>{pkg.bedrooms}</Text>
+                  </View>
+                )}
+
+                {pkg.bathrooms && (
+                  <View style={styles.feature}>
+                    <Bath size={12} color="#7F8C8D" />
+                    <Text style={styles.featureText}>{pkg.bathrooms}</Text>
+                  </View>
+                )}
+
+                {pkg.guestAmount && (
+                  <View style={styles.feature}>
+                    <Users size={12} color="#7F8C8D" />
+                    <Text style={styles.featureText}>{pkg.guestAmount}</Text>
+                  </View>
+                )}
+              </View>
+
+              {/* Dates */}
+              {pkg.checkInDate && pkg.checkOutDate && (
+                <View style={styles.dateRow}>
+                  <Calendar size={12} color="#95A5A6" />
+                  <Text style={styles.dateText}>
+                    {formatDate(pkg.checkInDate)} -{" "}
+                    {formatDate(pkg.checkOutDate)}
+                  </Text>
+                </View>
+              )}
+            </View>
+
+            {/* Price */}
+            <View style={styles.priceContainer}>
+              <Text style={styles.priceValue}>${pkg.price}</Text>
+              <ChevronRight size={16} color="#95A5A6" />
+            </View>
+          </View>
+        </TouchableOpacity>
+      </Animated.View>
+    );
+  };
+
+  // Empty state with pull to refresh
+  const renderEmptyState = () => (
+    <ScrollView
+      contentContainerStyle={styles.emptyScrollContent}
+      refreshControl={
+        <RefreshControl
+          refreshing={refreshing}
+          onRefresh={onRefresh}
+          colors={["#1ABC9C"]}
+          tintColor="#1ABC9C"
+        />
+      }
+    >
+      <Animated.View
+        style={styles.emptyContainer}
+        entering={FadeIn.duration(400)}
+      >
+        <Image
+          source={images.blank}
+          style={styles.emptyImage}
+          resizeMode="contain"
+        />
+
+        <Text style={styles.emptyTitle}>No Packages Yet</Text>
+        <Text style={styles.emptySubtitle}>
+          Create your first package listing to get started
+        </Text>
+
+        <TouchableOpacity
+          style={styles.createButton}
+          onPress={handleCreatePackage}
+          activeOpacity={0.8}
+        >
+          <PlusCircle color="white" size={20} style={styles.buttonIcon} />
+          <Text style={styles.createButtonText}>Create Package</Text>
+        </TouchableOpacity>
+      </Animated.View>
+    </ScrollView>
+  );
+
   return (
-    <GestureHandlerRootView style={styles.container}>
+    <View style={styles.container}>
       <StatusBar barStyle="light-content" />
 
       {/* Header */}
@@ -291,165 +308,43 @@ const Bookings = () => {
       />
 
       {/* Main content */}
-      <RNAnimated.ScrollView
-        contentContainerStyle={styles.scrollContent}
-        refreshControl={
-          <RefreshControl
-            refreshing={refreshing}
-            onRefresh={onRefresh}
-            colors={["#1ABC9C"]}
-            tintColor="#1ABC9C"
-          />
-        }
-        onScroll={RNAnimated.event(
-          [{ nativeEvent: { contentOffset: { y: scrollY } } }],
-          { useNativeDriver: true }
-        )}
-        scrollEventThrottle={16}
-      >
-        {/* Package count summary */}
-        {packages.length > 0 && (
+      {packages.length === 0 ? (
+        renderEmptyState()
+      ) : (
+        // Package list with swipe functionality
+        <View style={{ flex: 1 }}>
+          {/* Package count summary */}
           <View style={styles.summaryContainer}>
             <Text style={styles.summaryText}>
               You have <Text style={styles.countText}>{packages.length}</Text>{" "}
               active {packages.length === 1 ? "package" : "packages"}
             </Text>
           </View>
-        )}
 
-        {/* Empty state */}
-        {packages.length === 0 ? (
-          <Animated.View
-            style={styles.emptyContainer}
-            entering={FadeIn.duration(400)}
-          >
-            <Image
-              source={images.blank}
-              style={styles.emptyImage}
-              resizeMode="contain"
-            />
-
-            <Text style={styles.emptyTitle}>No Packages Yet</Text>
-            <Text style={styles.emptySubtitle}>
-              Create your first package listing to get started
-            </Text>
-
-            <TouchableOpacity
-              style={styles.createButton}
-              onPress={handleCreatePackage}
-              activeOpacity={0.8}
-            >
-              <PlusCircle color="white" size={20} style={styles.buttonIcon} />
-              <Text style={styles.createButtonText}>Create Package</Text>
-            </TouchableOpacity>
-          </Animated.View>
-        ) : (
-          // Package list
-          packages.map((pkg, index) => (
-            <Animated.View
-              key={pkg.$id}
-              entering={FadeIn.duration(400).delay(index * 100)}
-              exiting={FadeOut.duration(300)}
-            >
-              <SwipeableRow
-                packageId={pkg.$id}
-                onDelete={handleDelete}
-                onEdit={handleEdit}
-              >
-                <TouchableOpacity
-                  style={styles.packageCard}
-                  activeOpacity={0.9}
-                  onPress={() => handleEdit(pkg.$id)}
-                >
-                  {/* Card content */}
-                  <View style={styles.cardContent}>
-                    {/* Image */}
-                    <Image
-                      source={{
-                        uri: pkg.image || "https://via.placeholder.com/150",
-                      }}
-                      style={styles.packageImage}
-                    />
-
-                    {/* Package details */}
-                    <View style={styles.packageDetails}>
-                      <View style={styles.nameRow}>
-                        <Text style={styles.packageName} numberOfLines={1}>
-                          {pkg.name}
-                        </Text>
-                        <View style={styles.ratingContainer}>
-                          <Star size={14} color="#FFD700" fill="#FFD700" />
-                          <Text style={styles.ratingText}>
-                            {pkg.rating?.toFixed(1) || "4.5"}
-                          </Text>
-                        </View>
-                      </View>
-
-                      {/* Location */}
-                      <View style={styles.locationRow}>
-                        <MapPin size={14} color="#95A5A6" />
-                        <Text style={styles.locationText} numberOfLines={1}>
-                          {pkg.type || "Accommodation"}
-                        </Text>
-                      </View>
-
-                      {/* Features */}
-                      <View style={styles.featuresRow}>
-                        {pkg.bedrooms && (
-                          <View style={styles.feature}>
-                            <Bed size={12} color="#7F8C8D" />
-                            <Text style={styles.featureText}>
-                              {pkg.bedrooms}
-                            </Text>
-                          </View>
-                        )}
-
-                        {pkg.bathrooms && (
-                          <View style={styles.feature}>
-                            <Bath size={12} color="#7F8C8D" />
-                            <Text style={styles.featureText}>
-                              {pkg.bathrooms}
-                            </Text>
-                          </View>
-                        )}
-
-                        {pkg.guestAmount && (
-                          <View style={styles.feature}>
-                            <Users size={12} color="#7F8C8D" />
-                            <Text style={styles.featureText}>
-                              {pkg.guestAmount}
-                            </Text>
-                          </View>
-                        )}
-                      </View>
-
-                      {/* Dates */}
-                      {pkg.checkInDate && pkg.checkOutDate && (
-                        <View style={styles.dateRow}>
-                          <Calendar size={12} color="#95A5A6" />
-                          <Text style={styles.dateText}>
-                            {formatDate(pkg.checkInDate)} -{" "}
-                            {formatDate(pkg.checkOutDate)}
-                          </Text>
-                        </View>
-                      )}
-                    </View>
-
-                    {/* Price */}
-                    <View style={styles.priceContainer}>
-                      <Text style={styles.priceValue}>${pkg.price}</Text>
-                      <ChevronRight size={16} color="#95A5A6" />
-                    </View>
-                  </View>
-                </TouchableOpacity>
-              </SwipeableRow>
-            </Animated.View>
-          ))
-        )}
-
-        {/* Bottom padding to avoid FAB overlap */}
-        {packages.length > 0 && <View style={{ height: 100 }} />}
-      </RNAnimated.ScrollView>
+          <SwipeListView
+            data={packages}
+            renderItem={renderItem}
+            renderHiddenItem={renderHiddenItem}
+            rightOpenValue={-144} // negative value to open from right side
+            disableRightSwipe // disable swiping from left to right
+            keyExtractor={(item) => item.$id}
+            friction={20} // controls how fast swiping up/down can disable the swipe
+            tension={40} // higher = swiping items faster
+            useNativeDriver={false}
+            swipeToOpenPercent={30} // % of item width needed to trigger swipe
+            closeOnRowBeginSwipe={true} // close other rows when one starts swiping
+            refreshControl={
+              <RefreshControl
+                refreshing={refreshing}
+                onRefresh={onRefresh}
+                colors={["#1ABC9C"]}
+                tintColor="#1ABC9C"
+              />
+            }
+            contentContainerStyle={styles.scrollContent}
+          />
+        </View>
+      )}
 
       {/* Floating action button */}
       {packages.length > 0 && (
@@ -461,7 +356,7 @@ const Bookings = () => {
           <PlusCircle color="white" size={26} />
         </TouchableOpacity>
       )}
-    </GestureHandlerRootView>
+    </View>
   );
 };
 
@@ -483,11 +378,18 @@ const styles = StyleSheet.create({
   },
   scrollContent: {
     paddingHorizontal: 16,
-    paddingTop: 16,
-    paddingBottom: 24,
+    paddingTop: 8,
+    paddingBottom: 100, // Extra padding at bottom for FAB
+  },
+  emptyScrollContent: {
+    flexGrow: 1,
+    justifyContent: "center",
+    paddingTop: 40,
   },
   summaryContainer: {
-    marginBottom: 16,
+    marginHorizontal: 16,
+    marginBottom: 8,
+    marginTop: 16,
   },
   summaryText: {
     fontSize: 16,
@@ -497,22 +399,11 @@ const styles = StyleSheet.create({
     fontWeight: "600",
     color: "#1ABC9C",
   },
-  headerBackground: {
-    position: "absolute",
-    top: 0,
-    left: 0,
-    right: 0,
-    height: 60,
-    backgroundColor: "#FFFFFF",
-    zIndex: 1,
-    borderBottomWidth: 1,
-    borderBottomColor: "#F0F0F0",
-  },
   emptyContainer: {
     alignItems: "center",
     justifyContent: "center",
-    paddingTop: 40,
     paddingHorizontal: 20,
+    paddingBottom: 40,
   },
   emptyImage: {
     width: width * 0.7,
@@ -555,14 +446,11 @@ const styles = StyleSheet.create({
   },
   packageCard: {
     backgroundColor: "#FFFFFF",
-    borderRadius: 16,
     marginBottom: 16,
     shadowColor: "#000",
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.05,
-    shadowRadius: 8,
     elevation: 2,
-    overflow: "hidden",
   },
   cardContent: {
     flexDirection: "row",
@@ -649,25 +537,32 @@ const styles = StyleSheet.create({
     color: "#1ABC9C",
     marginBottom: 8,
   },
-  actionButtons: {
+  // Swipe list view styles
+  rowBack: {
+    alignItems: "center",
+    backgroundColor: "transparent",
     flexDirection: "row",
-    width: 144, // This should match the ACTIONS_WIDTH constant
+    justifyContent: "flex-end",
+    paddingRight: 16,
     height: "100%",
-    paddingBottom: 16, // Add padding to make buttons a bit smaller than the card
-    paddingTop: 8,
+    marginBottom: 16,
   },
   actionButton: {
-    flex: 1,
-    justifyContent: "center",
     alignItems: "center",
+    bottom: 0,
+    justifyContent: "center",
+    position: "absolute",
+    top: 0,
+    width: 72,
+    height: 114,
   },
   editButton: {
     backgroundColor: "#3498DB",
-    borderRadius: 16,
+    right: 72,
   },
   deleteButton: {
     backgroundColor: "#E74C3C",
-    borderRadius: 16,
+    right: 0,
   },
   floatingButton: {
     position: "absolute",
