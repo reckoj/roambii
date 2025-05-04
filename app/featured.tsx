@@ -1,88 +1,312 @@
-import { View, Text, FlatList, ActivityIndicator } from "react-native";
-import React, { useEffect } from "react";
-import { useAppwrite } from "@/lib/useAppwrite";
-import { featuredPackages, getAllPackages } from "@/lib/appwrite";
+import {
+  View,
+  Text,
+  FlatList,
+  ActivityIndicator,
+  StyleSheet,
+  Dimensions,
+  TouchableOpacity,
+  StatusBar,
+  SafeAreaView,
+  Image,
+} from "react-native";
+import React, { useEffect, useState } from "react";
 import { router, useLocalSearchParams } from "expo-router";
 import { Card } from "@/components/Cards";
 import NoResults from "@/components/NoResults";
 import CustomHeader from "@/components/HeaderComponent";
+import { useDispatch, useSelector } from "react-redux";
+import { RootState, AppDispatch } from "@/lib/redux/store/store";
+import {
+  fetchFeaturedPackagesAsync,
+  fetchPackagesAsync,
+} from "@/lib/redux/slices/packageSlice";
+import { LinearGradient } from "expo-linear-gradient";
+import { ArrowLeft, MapPin, Heart, Star } from "lucide-react-native";
+
+const { width, height } = Dimensions.get("window");
 
 const Featured: React.FC = () => {
   const params = useLocalSearchParams<{ query?: string; filter?: string }>();
-  const { data: latestProperties, loading: latestPropertiesLoading } =
-    useAppwrite({
-      fn: featuredPackages,
-    });
+  const dispatch = useDispatch<AppDispatch>();
 
-  const {
-    data: properties,
-    refetch,
-    loading,
-  } = useAppwrite({
-    fn: getAllPackages,
-    params: {
-      filter: params.filter!,
-      query: params.query!,
-      limit: 6,
-    },
-    skip: true,
-  });
+  // Get data from Redux store
+  const { featuredPackages, loading } = useSelector(
+    (state: RootState) => state.packages
+  );
 
+  // Fetch featured packages on component mount
   useEffect(() => {
-    refetch({
-      filter: params.filter!,
-      query: params.query!,
-      limit: 6,
-    });
-  }, [params.filter, params.query]);
+    dispatch(fetchFeaturedPackagesAsync());
+  }, [dispatch]);
+
+  // Fetch filtered packages when params change
+  useEffect(() => {
+    dispatch(
+      fetchPackagesAsync({
+        filter: params.filter || "",
+        query: params.query || "",
+        limit: 6,
+        reset: true,
+      })
+    );
+  }, [params.filter, params.query, dispatch]);
 
   const handleCardPress = (id: string): void =>
     router.push(`/properties/${id}`);
 
-  return (
-    <View className="flex-1">
-      {/* Custom Header Component - handling safe area automatically */}
-      <CustomHeader title="Featured Packages" handleSafeArea={true} />
+  // Custom package card component with modern styling
+  const PackageCard = ({ item, index }: { item: any; index: number }) => (
+    <TouchableOpacity
+      style={[
+        styles.packageCard,
+        { transform: [{ scale: index % 3 === 0 ? 1 : 0.95 }] },
+      ]}
+      activeOpacity={0.9}
+      onPress={() => handleCardPress(item.id)}
+    >
+      <View style={styles.cardImageContainer}>
+        <Image
+          source={{ uri: item.image || "https://via.placeholder.com/300" }}
+          style={styles.cardImage}
+        />
 
-      {/* Main content with white background */}
-      <View className="flex-1 bg-white">
-        <View className="px-5">
-          <View className="my-5">
-            {latestPropertiesLoading ? (
-              <ActivityIndicator size="large" color="#1ABC9C" />
-            ) : !latestProperties || latestProperties.length === 0 ? (
-              <NoResults />
-            ) : (
-              <FlatList
-                data={latestProperties}
-                renderItem={({ item }) => (
-                  <View
-                    className={`${
-                      latestProperties.length === 1
-                        ? "w-[48%] self-center"
-                        : "w-[48%]"
-                    }`}
-                  >
-                    <Card
-                      item={item}
-                      onPress={() => handleCardPress(item.$id)}
-                    />
-                  </View>
-                )}
-                keyExtractor={(item) => item.$id}
-                numColumns={latestProperties.length === 1 ? 1 : 2}
-                columnWrapperStyle={
-                  latestProperties.length > 1 ? { gap: 20 } : undefined
-                }
-                contentContainerStyle={{ paddingBottom: 56 }}
-                showsVerticalScrollIndicator={false}
-              />
-            )}
-          </View>
+        <View style={styles.cardBadge}>
+          <Text style={styles.cardBadgeText}>FEATURED</Text>
         </View>
+
+        <TouchableOpacity style={styles.favoriteButton}>
+          <Heart size={16} color="#FFF" />
+        </TouchableOpacity>
+
+        {/* Price tag */}
+        <View style={styles.priceTag}>
+          <Text style={styles.priceText}>${item.price || 0}</Text>
+        </View>
+      </View>
+
+      <View style={styles.cardContent}>
+        <Text numberOfLines={1} style={styles.cardTitle}>
+          {item.name || "Unnamed Package"}
+        </Text>
+
+        <View style={styles.locationRow}>
+          <MapPin size={12} color="#95A5A6" />
+          <Text style={styles.locationText} numberOfLines={1}>
+            {item.type || "Accommodation"}
+          </Text>
+        </View>
+
+        {item.rating && (
+          <View style={styles.ratingRow}>
+            <Star size={12} color="#FFD700" fill="#FFD700" />
+            <Text style={styles.ratingText}>{item.rating.toFixed(1)}</Text>
+          </View>
+        )}
+      </View>
+    </TouchableOpacity>
+  );
+
+  return (
+    <View style={styles.container}>
+      <StatusBar barStyle="light-content" />
+
+      {/* Gradient Header */}
+      <LinearGradient
+        colors={["#1ABC9C", "#36d6ba"]}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 1, y: 0 }}
+        style={styles.header}
+      >
+        <SafeAreaView style={styles.headerContent}>
+          <TouchableOpacity
+            onPress={() => router.back()}
+            style={styles.backButton}
+          >
+            <ArrowLeft size={24} color="#fff" />
+          </TouchableOpacity>
+
+          <Text style={styles.headerTitle}>Featured Packages</Text>
+
+          <View style={{ width: 40 }} />
+        </SafeAreaView>
+      </LinearGradient>
+
+      {/* Main content */}
+      <View style={styles.contentContainer}>
+        {loading ? (
+          <View style={styles.loadingContainer}>
+            <ActivityIndicator size="large" color="#1ABC9C" />
+            <Text style={styles.loadingText}>Loading featured packages...</Text>
+          </View>
+        ) : !featuredPackages || featuredPackages.length === 0 ? (
+          <NoResults />
+        ) : (
+          <FlatList
+            data={featuredPackages}
+            renderItem={({ item, index }) => (
+              <PackageCard item={item} index={index} />
+            )}
+            keyExtractor={(item) => item.id}
+            numColumns={2}
+            columnWrapperStyle={styles.columnWrapper}
+            contentContainerStyle={styles.listContent}
+            showsVerticalScrollIndicator={false}
+          />
+        )}
       </View>
     </View>
   );
 };
+
+const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+    backgroundColor: "#F8F9FA",
+  },
+  header: {
+    paddingTop: StatusBar.currentHeight || 0,
+    paddingBottom: 15,
+  },
+  headerContent: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingHorizontal: 16,
+    paddingTop: 10,
+  },
+  backButton: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: "rgba(255, 255, 255, 0.2)",
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  headerTitle: {
+    fontSize: 18,
+    fontWeight: "700",
+    color: "#fff",
+  },
+  contentContainer: {
+    flex: 1,
+    backgroundColor: "#F8F9FA",
+    marginTop: -20,
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    paddingTop: 30,
+    paddingHorizontal: 10,
+  },
+  loadingContainer: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  loadingText: {
+    marginTop: 12,
+    fontSize: 14,
+    color: "#95A5A6",
+  },
+  listContent: {
+    paddingBottom: 40,
+    paddingHorizontal: 6,
+  },
+  columnWrapper: {
+    justifyContent: "space-between",
+  },
+  packageCard: {
+    width: width / 2 - 24,
+    marginBottom: 20,
+    backgroundColor: "#FFFFFF",
+    borderRadius: 16,
+    overflow: "hidden",
+    shadowColor: "#000",
+    shadowOffset: {
+      width: 0,
+      height: 2,
+    },
+    shadowOpacity: 0.05,
+    shadowRadius: 10,
+    elevation: 3,
+    marginHorizontal: 6,
+  },
+  cardImageContainer: {
+    position: "relative",
+  },
+  cardImage: {
+    width: "100%",
+    height: 140,
+    borderTopLeftRadius: 16,
+    borderTopRightRadius: 16,
+  },
+  cardBadge: {
+    position: "absolute",
+    top: 12,
+    left: 12,
+    backgroundColor: "rgba(26, 188, 156, 0.9)",
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 4,
+  },
+  cardBadgeText: {
+    color: "#FFFFFF",
+    fontSize: 10,
+    fontWeight: "700",
+  },
+  favoriteButton: {
+    position: "absolute",
+    top: 12,
+    right: 12,
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: "rgba(0, 0, 0, 0.3)",
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  priceTag: {
+    position: "absolute",
+    bottom: 0,
+    left: 0,
+    backgroundColor: "rgba(26, 188, 156, 0.9)",
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderTopRightRadius: 8,
+  },
+  priceText: {
+    color: "#FFFFFF",
+    fontWeight: "700",
+    fontSize: 16,
+  },
+  cardContent: {
+    padding: 12,
+  },
+  cardTitle: {
+    fontSize: 16,
+    fontWeight: "600",
+    color: "#34495E",
+    marginBottom: 6,
+  },
+  locationRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginBottom: 6,
+  },
+  locationText: {
+    fontSize: 12,
+    color: "#95A5A6",
+    marginLeft: 4,
+  },
+  ratingRow: {
+    flexDirection: "row",
+    alignItems: "center",
+  },
+  ratingText: {
+    fontSize: 12,
+    color: "#34495E",
+    fontWeight: "500",
+    marginLeft: 4,
+  },
+});
 
 export default Featured;
