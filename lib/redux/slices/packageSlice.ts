@@ -4,10 +4,37 @@ import {
   getPackageById,
   searchPackages,
   updatePackage,
-} from "@/lib/package-service"; // Updated import path to use new firebase services
-
+} from "@/lib/package-service";
 import { createSlice, createAsyncThunk } from "@reduxjs/toolkit";
-import { Package } from "@/lib/firebase/models"; // Import the Package type from Firebase models
+
+// Define a proper interface for your package data that matches what your Firebase returns
+interface Package {
+  id: string;
+  name: string;
+  price: number;
+  type: string;
+  description?: string;
+  image?: string;
+  agent: {
+    id: string;
+    name: string;
+    avatar?: string;
+  };
+  // Add all other fields your packages have
+  rating?: number;
+  amenities?: string[];
+  allinclusive?: boolean;
+  roomType?: string;
+  bedrooms?: number;
+  bathrooms?: number;
+  guestCount?: number;
+  checkInDate?: string;
+  checkOutDate?: string;
+  checkInTime?: string;
+  checkOutTime?: string;
+  createdAt?: string;
+  updatedAt?: string;
+}
 
 interface PackageState {
   packages: Package[];
@@ -36,6 +63,56 @@ const initialState: PackageState = {
   query: "",
 };
 
+// Helper function to serialize dates
+const serializePackage = (pkg: any): Package => {
+  return {
+    id: pkg.id || "",
+    name: pkg.name || "",
+    price:
+      typeof pkg.price === "number" ? pkg.price : parseFloat(pkg.price) || 0,
+    type: pkg.type || "",
+    description: pkg.description || "",
+    image: pkg.image || pkg.banner_image || "",
+    agent: {
+      id: pkg.agent?.id || "",
+      name: pkg.agent?.name || "Unknown",
+      avatar: pkg.agent?.avatar || "",
+    },
+    rating:
+      typeof pkg.rating === "number" ? pkg.rating : parseFloat(pkg.rating) || 0,
+    amenities: pkg.amenities || [],
+    allinclusive: pkg.allinclusive || pkg.is_all_inclusive || false,
+    roomType: pkg.roomType || pkg.room_type || "",
+    bedrooms: pkg.bedrooms || pkg.beds || 0,
+    bathrooms: pkg.bathrooms || pkg.baths || 0,
+    guestCount: pkg.guestCount || pkg.guest_amount || 0,
+    checkInDate:
+      pkg.check_in_date instanceof Date
+        ? pkg.check_in_date.toISOString()
+        : pkg.check_in_date || "",
+    checkOutDate:
+      pkg.check_out_date instanceof Date
+        ? pkg.check_out_date.toISOString()
+        : pkg.check_out_date || "",
+    checkInTime:
+      pkg.check_in_time instanceof Date
+        ? pkg.check_in_time.toISOString()
+        : pkg.check_in_time || "",
+    checkOutTime:
+      pkg.check_out_time instanceof Date
+        ? pkg.check_out_time.toISOString()
+        : pkg.check_out_time || "",
+    createdAt:
+      pkg.createdAt instanceof Date
+        ? pkg.createdAt.toISOString()
+        : pkg.createdAt || "",
+    updatedAt:
+      pkg.updatedAt instanceof Date
+        ? pkg.updatedAt.toISOString()
+        : pkg.updatedAt || "",
+  };
+};
+
 // Async thunks for packages
 export const fetchPackagesAsync = createAsyncThunk(
   "packages/fetchPackages",
@@ -56,18 +133,17 @@ export const fetchPackagesAsync = createAsyncThunk(
     { rejectWithValue }
   ) => {
     try {
-      const result = await searchPackages(
-        query || "",
-        filter || "All",
-        limit.toString()
-      );
+      const result = await searchPackages(query || "", filter || "All", limit);
 
       if (!result || !Array.isArray(result)) {
         return { packages: [], reset, hasMore: false };
       }
 
+      // Transform and serialize each package
+      const serializedPackages = result.map((pkg) => serializePackage(pkg));
+
       return {
-        packages: result,
+        packages: serializedPackages,
         reset,
         hasMore: result.length === limit,
       };
@@ -87,7 +163,8 @@ export const fetchFeaturedPackagesAsync = createAsyncThunk(
         return [];
       }
 
-      return result;
+      // Transform and serialize each package
+      return result.map((pkg) => serializePackage(pkg));
     } catch (error: any) {
       return rejectWithValue(error.message);
     }
@@ -104,7 +181,8 @@ export const fetchPackageByIdAsync = createAsyncThunk(
         return rejectWithValue("Package not found");
       }
 
-      return result;
+      // Transform and serialize the package
+      return serializePackage(result);
     } catch (error: any) {
       return rejectWithValue(error.message);
     }
@@ -143,8 +221,8 @@ export const updatePackageAsync = createAsyncThunk(
         return rejectWithValue("Failed to update package");
       }
 
-      // Return the updated package
-      return result;
+      // Transform and serialize the updated package
+      return serializePackage(result);
     } catch (error: any) {
       return rejectWithValue(error.message);
     }
