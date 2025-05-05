@@ -44,90 +44,89 @@ import {
   Platform,
   SafeAreaView,
   Alert,
+  ActivityIndicator,
 } from "react-native";
 import { router, useLocalSearchParams } from "expo-router";
+import { useEffect, useState } from "react";
+import { ArrowLeft, MessageCircle } from "lucide-react-native";
+import { useSelector, useDispatch } from "react-redux";
 
 import icons from "@/constants/icons";
 import images from "@/constants/images";
 import Comment from "@/components/Comment";
 import { amenities } from "@/constants/data";
-
-import { useAppwrite } from "@/lib/useAppwrite";
-import { getAgentById, getCurrentUser, getPropertyById } from "@/lib/appwrite";
-import FlightInfo from "@/components/FlightInfo";
-import { useEffect, useState } from "react";
-import { ArrowLeft, MessageCircle } from "lucide-react-native";
-import { useGlobalContext } from "@/lib/global-provider";
 import CustomHeader from "@/components/HeaderComponent";
+import FlightInfo from "@/components/FlightInfo";
 
-interface AgentProps {
-  id: string; // Agent ID
-  userId: string; // Current logged-in user ID
-}
+// Import Firebase specific functions and Redux
+import { getPackageById, getAgentById } from "@/lib/package-service";
+import { getChatRoomId } from "@/lib/chat-service";
+import { RootState, AppDispatch } from "@/lib/redux/store/store";
+import { fetchPackageByIdAsync } from "@/lib/redux/slices/packageSlice";
 
 const Property = () => {
-  const params = useLocalSearchParams();
   const { id } = useLocalSearchParams<{ id?: string }>();
-  const { rawUser } = useGlobalContext();
-  const agentId = Array.isArray(params.id) ? params.id[0] : params.id;
+  const packageId = id || "";
   const windowHeight = Dimensions.get("window").height;
+  const dispatch = useDispatch<AppDispatch>();
 
-  const { data: property } = useAppwrite({
-    fn: getPropertyById,
-    params: {
-      id: id!,
-    },
-  });
-  const [expanded, setExpanded] = useState(false);
+  // Get data from Redux store
+  const { currentPackage: property, loading } = useSelector(
+    (state: RootState) => state.packages
+  );
+  const { user } = useSelector((state: RootState) => state.auth);
 
   const [agent, setAgent] = useState<any>(null);
-  const [user, setUser] = useState<any>(null);
-  const [loading, setLoading] = useState(true);
+  const [expanded, setExpanded] = useState(false);
+  const [loadingAgent, setLoadingAgent] = useState(true);
 
+  // Fetch property data on component mount
+  useEffect(() => {
+    if (packageId) {
+      dispatch(fetchPackageByIdAsync(packageId));
+    }
+  }, [dispatch, packageId]);
+
+  // Fetch agent data when property is loaded
   useEffect(() => {
     const fetchAgent = async () => {
-      if (property?.agent?.$id) {
+      if (property?.agent?.id) {
         try {
-          setLoading(true);
-          const data = await getAgentById({ id: String(property.agent.$id) });
-
-          if (data) {
-            setAgent({
-              ...data,
-              avatar: data.avatar && data.avatar.startsWith("https"),
-            });
-          } else {
-            console.warn("[No Agent Data Found]");
+          setLoadingAgent(true);
+          const agentData = await getAgentById(property.agent.id);
+          if (agentData) {
+            setAgent(agentData);
           }
         } catch (error) {
-          console.error("Error fetching agent by ID:", error);
+          console.error("Error fetching agent data:", error);
         } finally {
-          setLoading(false);
+          setLoadingAgent(false);
         }
       }
     };
 
-    if (property?.agent?.$id) {
+    if (property) {
       fetchAgent();
     }
   }, [property]);
 
   const handleContact = async () => {
-    if (!property?.agent || !rawUser) {
+    if (!property?.agent?.id || !user?.id) {
       Alert.alert("Error", "Cannot start chat. Missing user or agent data.");
       return;
     }
 
-    const room_id = `${rawUser.$id}_${property.agent.$id}`;
-
     try {
+      // Generate a consistent room ID
+      const room_id = getChatRoomId(user.id, property.agent.id);
+
       router.push({
         pathname: "/chatScreen",
         params: {
           room_id,
-          user: rawUser.$id,
-          agentId: property.agent.$id,
-          avatar: property.agent.avatar,
+          user: user.id,
+          agentId: property.agent.id,
+          avatar: property.agent.avatar || "",
         },
       });
     } catch (error) {
@@ -136,68 +135,43 @@ const Property = () => {
     }
   };
 
-  const formatTime = (timeString: string) => {
-    // If the value is empty or undefined
-    if (!timeString) return "";
+  // Show loading state
+  if (loading) {
+    return (
+      <View className="flex-1 justify-center items-center">
+        <ActivityIndicator size="large" color="#1ABC9C" />
+        <Text className="mt-4 text-gray-600">Loading property details...</Text>
+      </View>
+    );
+  }
 
-    try {
-      // If it's already in a nice format like "2:00 PM", just return it
-      if (timeString.includes("AM") || timeString.includes("PM")) {
-        return timeString;
-      }
-
-      // Handle common time formats
-      let hours, minutes, ampm;
-
-      // Check if it's in format HH:MM or HH:MM:SS
-      if (timeString.includes(":")) {
-        const parts = timeString.split(":");
-        hours = parseInt(parts[0], 10);
-        minutes = parseInt(parts[1], 10);
-
-        // Convert to 12-hour format
-        ampm = hours >= 12 ? "PM" : "AM";
-        hours = hours % 12;
-        hours = hours ? hours : 12; // the hour '0' should be '12'
-
-        // Format minutes to always have 2 digits
-        minutes = minutes < 10 ? "0" + minutes : minutes;
-
-        return `${hours}:${minutes} ${ampm}`;
-      }
-
-      // If it's a number (timestamp or hours)
-      const num = parseInt(timeString, 10);
-      if (!isNaN(num)) {
-        // If it looks like hours (0-23)
-        if (num >= 0 && num <= 23) {
-          hours = num;
-          ampm = hours >= 12 ? "PM" : "AM";
-          hours = hours % 12;
-          hours = hours ? hours : 12;
-          return `${hours}:00 ${ampm}`;
-        }
-      }
-
-      // If we can't parse it properly, return as is
-      return timeString;
-    } catch (error) {
-      // If any error occurs, return the original string
-      return timeString;
-    }
-  };
+  // Show error if property not found
+  if (!property) {
+    return (
+      <View className="flex-1 justify-center items-center">
+        <Text className="text-xl font-rubik-bold text-black-300">
+          Property not found
+        </Text>
+        <TouchableOpacity
+          className="mt-4 bg-primary-300 py-2 px-4 rounded-md"
+          onPress={() => router.back()}
+        >
+          <Text className="text-white font-rubik-bold">Go Back</Text>
+        </TouchableOpacity>
+      </View>
+    );
+  }
 
   return (
     <View className="flex-1 bg-transparent">
       <CustomHeader title="" />
-      <View className="flex flex-row items-center w-full justify-between"></View>
       <ScrollView
         showsVerticalScrollIndicator={false}
         contentContainerClassName="pb-32 bg-white"
       >
         <View className="relative w-full" style={{ height: windowHeight / 2 }}>
           <Image
-            source={{ uri: property?.image }}
+            source={{ uri: property.image }}
             className="size-full"
             resizeMode="cover"
           />
@@ -205,67 +179,64 @@ const Property = () => {
             source={images.whiteGradient}
             className="absolute top-0 w-full z-40"
           />
-
-          <View
-            className="z-50 absolute inset-x-7"
-            style={{
-              top: Platform.OS === "ios" ? 70 : 20,
-            }}
-          ></View>
         </View>
 
         <View className="px-5 mt-7 flex gap-2">
           <Text className="text-2xl font-rubik-extrabold">Package Info</Text>
-          {/* <Text className="text-xl font-rubik-extrabold">{property?.name}</Text> */}
           <Text className="text-sm font-rubik-extrabold text-black-100">
-            {property?.name}
+            {property.name}
           </Text>
-          <View className="flex flex-row items-center justify-between gap-3 ">
+
+          <View className="flex flex-row items-center justify-between gap-3">
             <View className="flex flex-row items-center px-4 py-2 bg-primary-100 rounded-full">
               <Text className="text-xs font-rubik-bold text-primary-300">
-                {property?.type}
+                {property.type}
               </Text>
             </View>
 
             <View className="flex flex-row items-center gap-2">
               <Image source={icons.star} className="size-5" />
               <Text className="text-black-200 text-sm mt-1 font-rubik-medium">
-                {property?.rating} ({property?.reviews.length} reviews)
+                {property.rating || 4.5}
+                reviews
               </Text>
             </View>
+
             <View className="flex flex-row items-center px-4 py-2 bg-primary-100 rounded-full">
               <Text className="text-xs font-rubik-bold text-primary-300">
-                {property?.allinclusive}
+                {property.allinclusive ? "All Inclusive" : "Standard"}
               </Text>
             </View>
           </View>
-          <View className="flex flex-row justify-between mt-5 ">
+
+          <View className="flex flex-row justify-between mt-5">
             <View className="flex flex-row items-center">
-              <View className="flex flex-row items-center justify-center bg-primary-100 rounded-full size-10 ">
+              <View className="flex flex-row items-center justify-center bg-primary-100 rounded-full size-10">
                 <Image source={icons.bed} className="size-4" />
               </View>
               <Text className="text-black-300 text-lg font-rubik-medium ml-2">
-                {property?.bedrooms} King Bed
+                {property.bedrooms || 1} King Bed
               </Text>
             </View>
 
             <View className="flex flex-row items-center">
-              <View className="flex flex-row items-center justify-center bg-primary-100 rounded-full size-10 ">
+              <View className="flex flex-row items-center justify-center bg-primary-100 rounded-full size-10">
                 <Image source={icons.area} className="size-4" />
               </View>
               <Text className="text-black-300 text-lg font-rubik-medium ml-2">
-                {property?.roomType}
+                {property.roomType || "Standard Room"}
               </Text>
             </View>
           </View>
+
           <View className="mt-7">
             <Text className="text-black-300 text-xl font-rubik-bold">
               Amenities
             </Text>
 
-            {property?.amenities.length > 0 && (
+            {property.amenities && property.amenities.length > 0 && (
               <View className="flex flex-row flex-wrap items-start justify-start mt-2 gap-5">
-                {property?.amenities.map((item: string, index: number) => {
+                {property.amenities.map((item: string, index: number) => {
                   const amenity = amenities.find(
                     (amenity) => amenity.title === item
                   );
@@ -297,10 +268,6 @@ const Property = () => {
           </View>
 
           <View className="mt-2">
-            {/* <Text className="text-black-300 text-xl font-rubik-bold">
-               Info
-            </Text> */}
-
             <View className="flex-row flex-wrap mt-3 justify-between">
               <View
                 className="flex-col bg-primary-100 p-4 rounded-xl mb-3"
@@ -310,7 +277,7 @@ const Property = () => {
                   Check-in Date
                 </Text>
                 <Text className="text-black-300 text-base font-rubik-bold mt-1">
-                  {formatDateTime(property?.checkInDate)}
+                  {formatDateTime(property.checkInDate!)}
                 </Text>
               </View>
 
@@ -322,7 +289,7 @@ const Property = () => {
                   Check-out Date
                 </Text>
                 <Text className="text-black-300 text-base font-rubik-bold mt-1">
-                  {formatDateTime(property?.checkOutDate)}
+                  {formatDateTime(property.checkOutDate!)}
                 </Text>
               </View>
 
@@ -334,7 +301,7 @@ const Property = () => {
                   Check-in Time
                 </Text>
                 <Text className="text-black-300 text-base font-rubik-bold mt-1">
-                  {formatDateTime(property?.checkInTime, true) || "2:00 PM"}
+                  {formatDateTime(property.checkInTime!, true) || "2:00 PM"}
                 </Text>
               </View>
 
@@ -346,7 +313,7 @@ const Property = () => {
                   Check-out Time
                 </Text>
                 <Text className="text-black-300 text-base font-rubik-bold mt-1">
-                  {formatDateTime(property?.checkOutTime, true) || "11:00 AM"}
+                  {formatDateTime(property.checkOutTime!, true) || "11:00 AM"}
                 </Text>
               </View>
 
@@ -358,30 +325,39 @@ const Property = () => {
                   Number of Guests
                 </Text>
                 <Text className="text-black-300 text-base font-rubik-bold mt-1">
-                  {property?.guests || "2"}{" "}
-                  {property?.guests === 1 ? "Guest" : "Guests"}
+                  {property.guestCount || 2}{" "}
+                  {property.guestCount === 1 ? "Guest" : "Guests"}
                 </Text>
               </View>
             </View>
           </View>
 
-          {/* <FlightInfo /> */}
           <View className="w-full border-t border-accent-100 pt-7 mt-5">
             <View className="flex flex-row items-center justify-between mt-4">
               <View className="flex flex-row items-center">
-                <Image
-                  source={{ uri: property?.agent.avatar }}
-                  className="size-14 rounded-full"
-                />
+                {loadingAgent ? (
+                  <ActivityIndicator size="small" color="#1ABC9C" />
+                ) : (
+                  <>
+                    <Image
+                      source={{
+                        uri:
+                          property.agent.avatar ||
+                          "https://via.placeholder.com/56",
+                      }}
+                      className="size-14 rounded-full"
+                    />
 
-                <View className="flex flex-col items-start justify-center ml-3">
-                  <Text className="text-lg text-black-300 text-start font-rubik-bold">
-                    {property?.agent.name}
-                  </Text>
-                  <Text className="text-sm text-black-200 text-start font-rubik-medium">
-                    {property?.agent.email}
-                  </Text>
-                </View>
+                    <View className="flex flex-col items-start justify-center ml-3">
+                      <Text className="text-lg text-black-300 text-start font-rubik-bold">
+                        {property.agent.name}
+                      </Text>
+                      <Text className="text-sm text-black-200 text-start font-rubik-medium">
+                        {agent?.email || "Contact agent"}
+                      </Text>
+                    </View>
+                  </>
+                )}
               </View>
 
               <TouchableOpacity
@@ -389,27 +365,22 @@ const Property = () => {
                 className="flex flex-row items-center gap-3"
               >
                 <MessageCircle color={"#1ABC9C"} />
-                {/* <Image source={icons.phone} className="size-7" /> */}
               </TouchableOpacity>
             </View>
           </View>
+
           <View className="mt-7">
             <Text className="text-black-300 text-xl font-rubik-bold">
               Overview
             </Text>
-            {/* <Text className="text-black-200 text-base font-rubik mt-2">
-              {property?.description}
-              
-          
-            </Text> */}
             <Text
               numberOfLines={expanded ? undefined : 2}
               className="font-rubik-light text-text"
             >
-              {property?.description}
+              {property.description}
             </Text>
 
-            {/* Toggle Button (Always Visible) */}
+            {/* Toggle Button */}
             <TouchableOpacity onPress={() => setExpanded(!expanded)}>
               <Text className="font-rubik-light text-primary-200">
                 {expanded ? "See Less" : "Read More"}
@@ -417,13 +388,13 @@ const Property = () => {
             </TouchableOpacity>
           </View>
 
-          {property?.reviews.length > 0 && (
+          {/* {property.reviews && property.reviews.length > 0 && (
             <View className="mt-7">
               <View className="flex flex-row items-center justify-between">
                 <View className="flex flex-row items-center">
                   <Image source={icons.star} className="size-6" />
                   <Text className="text-black-300 text-xl font-rubik-bold ml-2">
-                    {property?.rating} ({property?.reviews.length} reviews)
+                    {property.rating}  reviews)
                   </Text>
                 </View>
 
@@ -435,10 +406,10 @@ const Property = () => {
               </View>
 
               <View className="mt-5">
-                <Comment item={property?.reviews[0]} />
+                <Comment item={property.reviews[0]} />
               </View>
             </View>
-          )}
+          )} */}
         </View>
       </ScrollView>
 
@@ -452,7 +423,7 @@ const Property = () => {
               numberOfLines={1}
               className="text-primary-300 text-start text-2xl font-rubik-bold"
             >
-              ${property?.price}
+              ${property.price}
             </Text>
           </View>
 
@@ -461,7 +432,7 @@ const Property = () => {
               router.push({
                 pathname: "/bookingScreen",
                 params: {
-                  id: property?.$id,
+                  id: property.id,
                 },
               })
             }
