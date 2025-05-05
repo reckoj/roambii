@@ -18,7 +18,7 @@ import CustomInput from "./CustomInput";
 import images from "@/constants/images";
 
 interface Review {
-  $id: string;
+  id: string;
   users: string[];
   agentId: any;
   agentRating: number;
@@ -63,11 +63,11 @@ const AgentReviews: React.FC<AgentReviewsProps> = ({ agentId }) => {
       const userReview = reviews.find(
         (review) =>
           // Check if user ID is in users array
-          (Array.isArray(review.users) && review.users.includes(rawUser.$id)) ||
+          (Array.isArray(review.users) && review.users.includes(rawUser.id)) ||
           // Or check permissions (as a fallback)
           (review.$permissions &&
             Array.isArray(review.$permissions) &&
-            review.$permissions.some((p) => p.includes(`user:${rawUser.$id}`)))
+            review.$permissions.some((p) => p.includes(`user:${rawUser.id}`)))
       );
 
       setUserHasReviewed(!!userReview);
@@ -100,7 +100,7 @@ const AgentReviews: React.FC<AgentReviewsProps> = ({ agentId }) => {
       // Log the details of each review with non-null agentId
       const reviewDetails = reviewsWithNonNullAgentId.map((doc) => {
         return {
-          id: doc.$id,
+          id: doc.id,
           agentId: doc.agentId,
           agentIdType: typeof doc.agentId,
           isExactMatch: doc.agentId === agentId,
@@ -120,7 +120,7 @@ const AgentReviews: React.FC<AgentReviewsProps> = ({ agentId }) => {
         // Check for direct string equality
         if (doc.agentId === agentId) {
           console.log(
-            `✅ MATCH found for review ${doc.$id} - direct string match`
+            `✅ MATCH found for review ${doc.id} - direct string match`
           );
           return true;
         }
@@ -129,11 +129,11 @@ const AgentReviews: React.FC<AgentReviewsProps> = ({ agentId }) => {
         if (
           Array.isArray(doc.agentId) &&
           doc.agentId.some((id) =>
-            typeof id === "string" ? id === agentId : id?.$id === agentId
+            typeof id === "string" ? id === agentId : id?.id === agentId
           )
         ) {
           console.log(
-            `✅ MATCH found for review ${doc.$id} - array contains match`
+            `✅ MATCH found for review ${doc.id} - array contains match`
           );
           return true;
         }
@@ -142,11 +142,9 @@ const AgentReviews: React.FC<AgentReviewsProps> = ({ agentId }) => {
         if (
           typeof doc.agentId === "object" &&
           doc.agentId !== null &&
-          doc.agentId.$id === agentId
+          doc.agentId.id === agentId
         ) {
-          console.log(
-            `✅ MATCH found for review ${doc.$id} - object $id match`
-          );
+          console.log(`✅ MATCH found for review ${doc.id} - object id match`);
           return true;
         }
 
@@ -175,7 +173,7 @@ const AgentReviews: React.FC<AgentReviewsProps> = ({ agentId }) => {
       // Process reviews to include user data
       const processedReviews = await Promise.all(
         matchingReviews.map(async (doc) => {
-          console.log(`Processing review: ${doc.$id}`);
+          console.log(`Processing review: ${doc.id}`);
 
           // Default user data
           let userData = {
@@ -208,7 +206,7 @@ const AgentReviews: React.FC<AgentReviewsProps> = ({ agentId }) => {
             userId =
               typeof doc.users[0] === "string"
                 ? doc.users[0]
-                : doc.users[0]?.$id;
+                : doc.users[0]?.id;
             if (userId) {
               console.log(`Found user ID in users array: ${userId}`);
             }
@@ -263,7 +261,7 @@ const AgentReviews: React.FC<AgentReviewsProps> = ({ agentId }) => {
 
           // Return formatted review
           return {
-            $id: doc.$id,
+            id: doc.id,
             users: doc.users || [],
             agentId: doc.agentId || agentId,
             agentRating: doc.agentRating || 0,
@@ -286,13 +284,11 @@ const AgentReviews: React.FC<AgentReviewsProps> = ({ agentId }) => {
           (review) =>
             // Check if user ID is in users array
             (Array.isArray(review.users) &&
-              review.users.includes(rawUser.$id)) ||
+              review.users.includes(rawUser.id)) ||
             // Or check permissions (as a fallback)
             (review.$permissions &&
               Array.isArray(review.$permissions) &&
-              review.$permissions.some((p) =>
-                p.includes(`user:${rawUser.$id}`)
-              ))
+              review.$permissions.some((p) => p.includes(`user:${rawUser.id}`)))
         );
 
         setUserHasReviewed(hasReviewed);
@@ -315,7 +311,7 @@ const AgentReviews: React.FC<AgentReviewsProps> = ({ agentId }) => {
       return;
     }
 
-    if (!rawUser || !rawUser.$id) {
+    if (!rawUser || !rawUser.id) {
       Alert.alert("Error", "You must be logged in to leave a review.");
       return;
     }
@@ -330,7 +326,7 @@ const AgentReviews: React.FC<AgentReviewsProps> = ({ agentId }) => {
     try {
       console.log("\n=== SUBMITTING REVIEW ===");
       console.log(`Agent ID: ${agentId}`);
-      console.log(`User ID: ${rawUser.$id}`);
+      console.log(`User ID: ${rawUser.id}`);
 
       // Create with direct agentId format (which we know works)
       console.log("Creating review with direct agentId format");
@@ -340,7 +336,7 @@ const AgentReviews: React.FC<AgentReviewsProps> = ({ agentId }) => {
         agentRating: rating,
         comment,
         createdAt: new Date().toISOString(),
-        users: [rawUser.$id], // Add user ID to the users array
+        users: [rawUser.id], // Add user ID to the users array
       };
 
       console.log("Review data:", JSON.stringify(reviewData));
@@ -352,23 +348,23 @@ const AgentReviews: React.FC<AgentReviewsProps> = ({ agentId }) => {
         reviewData,
         [
           Permission.read(Role.any()),
-          Permission.update(Role.user(rawUser.$id)),
-          Permission.delete(Role.user(rawUser.$id)),
+          Permission.update(Role.user(rawUser.id)),
+          Permission.delete(Role.user(rawUser.id)),
         ]
       );
 
-      console.log(`Review created successfully with ID: ${newReview.$id}`);
+      console.log(`Review created successfully with ID: ${newReview.id}`);
 
       // Format for display
       const formattedReview: Review = {
-        $id: newReview.$id,
-        users: [rawUser.$id],
+        id: newReview.id,
+        users: [rawUser.id],
         agentId: agentId,
         agentRating: rating,
         comment,
         createdAt: new Date().toISOString(),
         author: rawUser.name || "Anonymous",
-        avatar: rawUser.avatar,
+        avatar: rawUser.avatar!,
       };
 
       // Update local state
@@ -426,7 +422,7 @@ const AgentReviews: React.FC<AgentReviewsProps> = ({ agentId }) => {
           <Text style={styles.sectionTitle}>Reviews ({reviews.length})</Text>
           <FlatList
             data={reviews}
-            keyExtractor={(item) => item.$id}
+            keyExtractor={(item) => item.id}
             horizontal
             showsHorizontalScrollIndicator={false}
             contentContainerStyle={{ paddingVertical: 16 }}

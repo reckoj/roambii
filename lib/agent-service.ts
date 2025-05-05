@@ -1,4 +1,4 @@
-// lib/firebase/agentService.ts
+// lib/agent-service.ts
 import {
   collection,
   doc,
@@ -15,40 +15,99 @@ import {
   DocumentData,
 } from "firebase/firestore";
 import { ref, get, update } from "firebase/database";
-import {
-  firestore,
-  database,
-  COLLECTIONS,
-} from "../lib/firebase/firebase-config";
+import { firestore, database, COLLECTIONS } from "./firebase/firebase-config";
 import { Agent } from "./firebase/models";
-import { uploadProfileImage } from "../lib/storage-service";
+import { uploadProfileImage } from "./storage-service";
 
 /**
- * Get agent profile by ID
+ * Get agent profile by ID with enhanced error handling
  */
 export const getAgentById = async (agentId: string): Promise<Agent | null> => {
   try {
+    console.log("Fetching agent with ID:", agentId);
+
+    // Primary approach: Direct document lookup
     const agentRef = doc(firestore, COLLECTIONS.AGENTS, agentId);
     const agentDoc = await getDoc(agentRef);
 
-    if (!agentDoc.exists()) {
-      return null;
+    if (agentDoc.exists()) {
+      console.log("Found agent by direct ID lookup");
+      const agentData = agentDoc.data() as Omit<Agent, "id">;
+
+      return {
+        id: agentId,
+        ...agentData,
+        createdAt:
+          agentData.createdAt instanceof Timestamp
+            ? agentData.createdAt.toDate()
+            : agentData.createdAt,
+        updatedAt:
+          agentData.updatedAt instanceof Timestamp
+            ? agentData.updatedAt.toDate()
+            : agentData.updatedAt,
+      };
     }
 
-    const agentData = agentDoc.data() as Omit<Agent, "id">;
+    // Fallback 1: Try finding by userId field
+    console.log("Agent not found by direct ID, trying userId field...");
+    try {
+      const agentsRef = collection(firestore, COLLECTIONS.AGENTS);
+      const userIdQuery = query(agentsRef, where("userId", "==", agentId));
+      const userIdSnapshot = await getDocs(userIdQuery);
 
-    return {
-      id: agentId,
-      ...agentData,
-      createdAt:
-        agentData.createdAt instanceof Timestamp
-          ? agentData.createdAt.toDate()
-          : agentData.createdAt,
-      updatedAt:
-        agentData.updatedAt instanceof Timestamp
-          ? agentData.updatedAt.toDate()
-          : agentData.updatedAt,
-    };
+      if (!userIdSnapshot.empty) {
+        const doc = userIdSnapshot.docs[0];
+        const agentData = doc.data() as Omit<Agent, "id">;
+        console.log("Found agent by userId field lookup");
+
+        return {
+          id: doc.id,
+          ...agentData,
+          createdAt:
+            agentData.createdAt instanceof Timestamp
+              ? agentData.createdAt.toDate()
+              : agentData.createdAt,
+          updatedAt:
+            agentData.updatedAt instanceof Timestamp
+              ? agentData.updatedAt.toDate()
+              : agentData.updatedAt,
+        };
+      }
+    } catch (error) {
+      console.log("Error in userId lookup fallback:", error);
+    }
+
+    // Fallback 2: Try searching for email
+    console.log("Agent not found by userId, trying email lookup...");
+    try {
+      const agentsRef = collection(firestore, COLLECTIONS.AGENTS);
+      const emailQuery = query(agentsRef, where("email", "==", agentId));
+      const emailSnapshot = await getDocs(emailQuery);
+
+      if (!emailSnapshot.empty) {
+        const doc = emailSnapshot.docs[0];
+        const agentData = doc.data() as Omit<Agent, "id">;
+        console.log("Found agent by email lookup");
+
+        return {
+          id: doc.id,
+          ...agentData,
+          createdAt:
+            agentData.createdAt instanceof Timestamp
+              ? agentData.createdAt.toDate()
+              : agentData.createdAt,
+          updatedAt:
+            agentData.updatedAt instanceof Timestamp
+              ? agentData.updatedAt.toDate()
+              : agentData.updatedAt,
+        };
+      }
+    } catch (error) {
+      console.log("Error in email lookup fallback:", error);
+    }
+
+    console.error("Agent not found with ID:", agentId);
+    return null;
   } catch (error) {
     console.error("Error fetching agent profile:", error);
     return null;
@@ -309,28 +368,75 @@ export const getAgentPackages = async (
     const querySnapshot = await getDocs(q);
     console.log(`Found ${querySnapshot.size} packages for this agent`);
 
-    const packages: DocumentData[] = [];
+    // If no packages found with agent reference, try with agentId field
+    if (querySnapshot.size === 0) {
+      console.log(
+        "No packages found with agent reference, trying agentId field"
+      );
+      const secondQuery = query(packagesRef, where("agentId", "==", agentId));
+      const secondSnapshot = await getDocs(secondQuery);
 
+      if (secondSnapshot.size > 0) {
+        console.log(`Found ${secondSnapshot.size} packages with agentId field`);
+
+        const packages: DocumentData[] = [];
+        for (const doc of secondSnapshot.docs) {
+          const packageData = doc.data();
+
+          packages.push({
+            $id: doc.id,
+            name: packageData.name || "Untitled Package",
+            type: packageData.type || "Accommodation",
+            price: packageData.price || 0,
+            image: packageData.banner_image || packageData.image,
+            rating: packageData.rating || 0,
+            bedrooms: packageData.beds || packageData.bedrooms || 0,
+            bathrooms: packageData.baths || packageData.bathrooms || 0,
+            guestAmount:
+              packageData.guest_amount || packageData.guestAmount || 0,
+            checkInDate:
+              packageData.check_in_date?.toDate?.() || packageData.checkInDate,
+            checkOutDate:
+              packageData.check_out_date?.toDate?.() ||
+              packageData.checkOutDate,
+            is_all_inclusive:
+              packageData.is_all_inclusive || packageData.allinclusive || false,
+            description: packageData.description || "",
+            room_type: packageData.room_type || packageData.roomType || "",
+            amenities: packageData.amenities || [],
+          });
+        }
+
+        return packages;
+      }
+
+      return []; // No packages found with either approach
+    }
+
+    const packages: DocumentData[] = [];
     for (const doc of querySnapshot.docs) {
       const packageData = doc.data();
 
       // Format data to match the expected format in the UI
       packages.push({
         $id: doc.id,
-        name: packageData.name,
-        type: packageData.type,
-        price: packageData.price,
-        image: packageData.banner_image,
-        rating: packageData.rating,
-        bedrooms: packageData.beds,
-        bathrooms: packageData.baths,
-        guestAmount: packageData.guest_amount,
-        checkInDate: packageData.check_in_date?.toDate?.(),
-        checkOutDate: packageData.check_out_date?.toDate?.(),
-        is_all_inclusive: packageData.is_all_inclusive,
-        description: packageData.description,
-        room_type: packageData.room_type,
-        amenities: packageData.amenities,
+        name: packageData.name || "Untitled Package",
+        type: packageData.type || "Accommodation",
+        price: packageData.price || 0,
+        image: packageData.banner_image || packageData.image,
+        rating: packageData.rating || 0,
+        bedrooms: packageData.beds || packageData.bedrooms || 0,
+        bathrooms: packageData.baths || packageData.bathrooms || 0,
+        guestAmount: packageData.guest_amount || packageData.guestAmount || 0,
+        checkInDate:
+          packageData.check_in_date?.toDate?.() || packageData.checkInDate,
+        checkOutDate:
+          packageData.check_out_date?.toDate?.() || packageData.checkOutDate,
+        is_all_inclusive:
+          packageData.is_all_inclusive || packageData.allinclusive || false,
+        description: packageData.description || "",
+        room_type: packageData.room_type || packageData.roomType || "",
+        amenities: packageData.amenities || [],
       });
     }
 

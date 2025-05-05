@@ -1,10 +1,10 @@
-// lib/firebase/reviewService.ts
+// lib/review-service.ts
 import {
   collection,
   doc,
   getDoc,
   getDocs,
-  setDoc,
+  addDoc,
   updateDoc,
   deleteDoc,
   query,
@@ -13,6 +13,7 @@ import {
   limit,
   Timestamp,
   runTransaction,
+  serverTimestamp,
 } from "firebase/firestore";
 import { firestore, COLLECTIONS } from "./firebase/firebase-config";
 import { Review } from "./firebase/models";
@@ -20,6 +21,8 @@ import { getUserProfile } from "./user-service";
 
 /**
  * Get all reviews for an agent
+ * @param agentId The ID of the agent
+ * @returns Array of reviews
  */
 export const getAgentReviews = async (agentId: string): Promise<Review[]> => {
   try {
@@ -59,6 +62,9 @@ export const getAgentReviews = async (agentId: string): Promise<Review[]> => {
 
 /**
  * Check if a user has already reviewed an agent
+ * @param userId The ID of the user
+ * @param agentId The ID of the agent
+ * @returns Boolean indicating if user has reviewed
  */
 export const hasUserReviewedAgent = async (
   userId: string,
@@ -83,7 +89,11 @@ export const hasUserReviewedAgent = async (
 
 /**
  * Create a new review for an agent
- * This function also updates the agent's rating
+ * @param agentId The ID of the agent
+ * @param userId The ID of the user leaving the review
+ * @param rating The rating (1-5)
+ * @param comment The review text
+ * @returns The created review or null
  */
 export const createReview = async (
   agentId: string,
@@ -104,24 +114,186 @@ export const createReview = async (
       throw new Error("User not found");
     }
 
-    // Create a new review document
-    const reviewRef = doc(collection(firestore, COLLECTIONS.REVIEWS));
+    // Use a transaction to create the review and update agent rating
+    return await runTransaction(firestore, async (transaction) => {
+      // First get the agent document
+      const agentRef = doc(firestore, COLLECTIONS.AGENTS, agentId);
+      const agentDoc = await transaction.get(agentRef);
 
-    const reviewData: Omit<Review, "id"> = {
-      agentId,
-      userId,
-      rating,
-      comment,
-      author: user.name,
-      avatar: user.avatar || "",
-      createdAt: new Date(),
-      updatedAt: new Date(),
-    };
+      if (!agentDoc.exists()) {
+        throw new Error("Agent not found");
+      }
 
-    // Use a transaction to update the review and the agent's rating
+      // Create a new review
+      const reviewsRef = collection(firestore, COLLECTIONS.REVIEWS);
+      const newReviewRef = doc(reviewsRef);
+
+      const reviewData: Omit<Review, "id"> = {
+        agentId,
+        userId,
+        rating: Math.min(Math.max(rating, 1), 5), // Ensure rating is between 1-5
+        comment,
+        author: user.name,
+        avatar: user.avatar,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      };
+
+      // Calculate new rating
+      const agentData = agentDoc.data();
+      const currentRating = agentData.rating || 0;
+      const currentReviewCount = agentData.reviewCount || 0;
+
+      // Calculate weighted average
+      const newReviewCount = currentReviewCount + 1;
+      const newRating =
+        (currentRating * currentReviewCount + rating) / newReviewCount;
+
+      // Set the review document
+      transaction.set(newReviewRef, {
+        ...reviewData,
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
+      });
+
+      // Update the agent document
+      transaction.update(agentRef, {
+        rating: newRating,
+        reviewCount: newReviewCount,
+        updatedAt: serverTimestamp(),
+      });
+
+      // Return the new review
+      return {
+        id: newReviewRef.id,
+        ...reviewData,
+      };
+    });
+  } catch (error) {
+    console.error("Error creating review:", error);
+    return null;
+  }
+};
+
+/**
+ * Update an existing review
+ * @param reviewId The ID of the review to update
+ * @param updates The fields to update
+ * @returns The updated review or null
+ */
+export const updateReview = async (
+  reviewId: string,
+  updates: {
+    rating?: number;
+    comment?: string;
+  }
+): Promise<Review | null> => {
+  try {
+    const reviewRef = doc(firestore, COLLECTIONS.REVIEWS, reviewId);
+
+    // First, get the current review data
+    const reviewDoc = await getDoc(reviewRef);
+    if (!reviewDoc.exists()) {
+      throw new Error("Review not found");
+    }
+
+    const reviewData = reviewDoc.data() as Omit<Review, "id">;
+    const oldRating = reviewData.rating;
+    const agentId = reviewData.agentId;
+
+    // Only proceed with update if rating changed
+    if (updates.rating !== undefined && updates.rating !== oldRating) {
+      // Use transaction to update both review and agent rating
+      return await runTransaction(firestore, async (transaction) => {
+        // Get the agent document
+        const agentRef = doc(firestore, COLLECTIONS.AGENTS, agentId);
+        const agentDoc = await transaction.get(agentRef);
+
+        if (!agentDoc.exists()) {
+          throw new Error("Agent not found");
+        }
+
+        // Prepare the updates for the review
+        const updateData: any = {
+          ...updates,
+          updatedAt: serverTimestamp(),
+        };
+
+        // Ensure rating is between 1-5
+        if (updates.rating !== undefined) {
+          updateData.rating = Math.min(Math.max(updates.rating, 1), 5);
+        }
+
+        transaction.update(reviewRef, updateData);
+
+        // Update agent rating
+        const agentData = agentDoc.data();
+        const currentRating = agentData.rating || 0;
+        const reviewCount = agentData.reviewCount || 0;
+
+        if (reviewCount > 1) {
+          // Remove old rating and add new one
+          const newRating =
+            (currentRating * reviewCount -
+              oldRating +
+              (updates.rating || oldRating)) /
+            reviewCount;
+
+          transaction.update(agentRef, {
+            rating: newRating,
+            updatedAt: serverTimestamp(),
+          });
+        }
+
+        // Return the updated review
+        return {
+          id: reviewId,
+          ...reviewData,
+          ...updates,
+          rating: updates.rating || reviewData.rating,
+          updatedAt: new Date(),
+        };
+      });
+    } else {
+      // Just update the review without affecting agent rating
+      await updateDoc(reviewRef, {
+        ...updates,
+        updatedAt: serverTimestamp(),
+      });
+
+      // Return the updated review
+      return {
+        id: reviewId,
+        ...reviewData,
+        ...updates,
+        updatedAt: new Date(),
+      };
+    }
+  } catch (error) {
+    console.error("Error updating review:", error);
+    return null;
+  }
+};
+
+/**
+ * Delete a review
+ * @param reviewId The ID of the review to delete
+ * @returns Boolean indicating success
+ */
+export const deleteReview = async (reviewId: string): Promise<boolean> => {
+  try {
+    // Use transaction to delete review and update agent rating
     await runTransaction(firestore, async (transaction) => {
-      // Add the review
-      transaction.set(reviewRef, reviewData);
+      const reviewRef = doc(firestore, COLLECTIONS.REVIEWS, reviewId);
+      const reviewDoc = await transaction.get(reviewRef);
+
+      if (!reviewDoc.exists()) {
+        throw new Error("Review not found");
+      }
+
+      const reviewData = reviewDoc.data() as Omit<Review, "id">;
+      const agentId = reviewData.agentId;
+      const rating = reviewData.rating;
 
       // Get the agent document
       const agentRef = doc(firestore, COLLECTIONS.AGENTS, agentId);
@@ -131,158 +303,10 @@ export const createReview = async (
         throw new Error("Agent not found");
       }
 
-      // Calculate new rating
-      const agentData = agentDoc.data();
-      const currentRating = agentData.rating || 0;
-      const reviewCount = agentData.reviewCount || 0;
-
-      // Calculate new average rating
-      const newReviewCount = reviewCount + 1;
-      const newRating = (currentRating * reviewCount + rating) / newReviewCount;
-
-      // Update agent document
-      transaction.update(agentRef, {
-        rating: newRating,
-        reviewCount: newReviewCount,
-        updatedAt: new Date(),
-      });
-    });
-
-    return {
-      id: reviewRef.id,
-      ...reviewData,
-    };
-  } catch (error) {
-    console.error("Error creating review:", error);
-    return null;
-  }
-};
-
-/**
- * Update a review
- * This function also updates the agent's rating
- */
-export const updateReview = async (
-  reviewId: string,
-  updatedData: {
-    rating?: number;
-    comment?: string;
-  }
-): Promise<Review | null> => {
-  try {
-    const reviewRef = doc(firestore, COLLECTIONS.REVIEWS, reviewId);
-
-    // Use a transaction to update the review and the agent's rating
-    const reviewData = await runTransaction(firestore, async (transaction) => {
-      // Get the current review
-      const reviewDoc = await transaction.get(reviewRef);
-
-      if (!reviewDoc.exists()) {
-        throw new Error("Review not found");
-      }
-
-      const currentReviewData = reviewDoc.data() as Omit<Review, "id">;
-      const agentId = currentReviewData.agentId;
-
-      // Update review document
-      const updateData: any = {
-        ...updatedData,
-        updatedAt: new Date(),
-      };
-
-      transaction.update(reviewRef, updateData);
-
-      // If rating has changed, update agent's rating
-      if (
-        updatedData.rating !== undefined &&
-        updatedData.rating !== currentReviewData.rating
-      ) {
-        // Get agent document
-        const agentRef = doc(firestore, COLLECTIONS.AGENTS, agentId);
-        const agentDoc = await transaction.get(agentRef);
-
-        if (!agentDoc.exists()) {
-          throw new Error("Agent not found");
-        }
-
-        // Calculate new rating
-        const agentData = agentDoc.data();
-        const currentAgentRating = agentData.rating || 0;
-        const reviewCount = agentData.reviewCount || 0;
-
-        if (reviewCount > 0) {
-          // Subtract old rating and add new rating
-          const oldRatingContribution = currentReviewData.rating / reviewCount;
-          const newRatingContribution = updatedData.rating / reviewCount;
-          const newRating =
-            currentAgentRating - oldRatingContribution + newRatingContribution;
-
-          // Update agent document with new rating
-          transaction.update(agentRef, {
-            rating: newRating,
-            updatedAt: new Date(),
-          });
-        }
-      }
-
-      // Return updated review data
-      return {
-        ...currentReviewData,
-        ...updateData,
-      };
-    });
-
-    // Return complete review object
-    return {
-      id: reviewId,
-      ...reviewData,
-      createdAt:
-        reviewData.createdAt instanceof Timestamp
-          ? reviewData.createdAt.toDate()
-          : reviewData.createdAt,
-      updatedAt:
-        reviewData.updatedAt instanceof Timestamp
-          ? reviewData.updatedAt.toDate()
-          : reviewData.updatedAt,
-    };
-  } catch (error) {
-    console.error("Error updating review:", error);
-    return null;
-  }
-};
-
-/**
- * Delete a review
- * This function also updates the agent's rating
- */
-export const deleteReview = async (reviewId: string): Promise<boolean> => {
-  try {
-    const reviewRef = doc(firestore, COLLECTIONS.REVIEWS, reviewId);
-
-    // Use a transaction to delete the review and update the agent's rating
-    await runTransaction(firestore, async (transaction) => {
-      // Get the current review
-      const reviewDoc = await transaction.get(reviewRef);
-
-      if (!reviewDoc.exists()) {
-        throw new Error("Review not found");
-      }
-
-      const reviewData = reviewDoc.data() as Review;
-      const agentId = reviewData.agentId;
-
       // Delete the review
       transaction.delete(reviewRef);
 
-      // Get agent document
-      const agentRef = doc(firestore, COLLECTIONS.AGENTS, agentId);
-      const agentDoc = await transaction.get(agentRef);
-
-      if (!agentDoc.exists()) {
-        throw new Error("Agent not found");
-      }
-
-      // Calculate new rating
+      // Update agent rating
       const agentData = agentDoc.data();
       const currentRating = agentData.rating || 0;
       const reviewCount = agentData.reviewCount || 0;
@@ -292,19 +316,18 @@ export const deleteReview = async (reviewId: string): Promise<boolean> => {
         transaction.update(agentRef, {
           rating: 0,
           reviewCount: 0,
-          updatedAt: new Date(),
+          updatedAt: serverTimestamp(),
         });
       } else {
-        // Calculate new average by removing this rating
+        // Calculate new rating by removing this rating
         const newReviewCount = reviewCount - 1;
         const newRating =
-          (currentRating * reviewCount - reviewData.rating) / newReviewCount;
+          (currentRating * reviewCount - rating) / newReviewCount;
 
-        // Update agent document
         transaction.update(agentRef, {
           rating: newRating,
           reviewCount: newReviewCount,
-          updatedAt: new Date(),
+          updatedAt: serverTimestamp(),
         });
       }
     });
@@ -317,41 +340,9 @@ export const deleteReview = async (reviewId: string): Promise<boolean> => {
 };
 
 /**
- * Get a specific review by ID
- */
-export const getReviewById = async (
-  reviewId: string
-): Promise<Review | null> => {
-  try {
-    const reviewRef = doc(firestore, COLLECTIONS.REVIEWS, reviewId);
-    const reviewDoc = await getDoc(reviewRef);
-
-    if (!reviewDoc.exists()) {
-      return null;
-    }
-
-    const reviewData = reviewDoc.data() as Omit<Review, "id">;
-
-    return {
-      id: reviewId,
-      ...reviewData,
-      createdAt:
-        reviewData.createdAt instanceof Timestamp
-          ? reviewData.createdAt.toDate()
-          : reviewData.createdAt,
-      updatedAt:
-        reviewData.updatedAt instanceof Timestamp
-          ? reviewData.updatedAt.toDate()
-          : reviewData.updatedAt,
-    };
-  } catch (error) {
-    console.error("Error fetching review:", error);
-    return null;
-  }
-};
-
-/**
- * Get all reviews submitted by a user
+ * Get reviews by user
+ * @param userId The ID of the user
+ * @returns Array of reviews created by the user
  */
 export const getUserReviews = async (userId: string): Promise<Review[]> => {
   try {

@@ -1,14 +1,6 @@
 import { useEffect, useState } from "react";
 import { router, useLocalSearchParams } from "expo-router";
 import {
-  avatar,
-  config,
-  databases,
-  getAgentById,
-  getAgentPackages,
-  getAgentPackagesProfile,
-} from "@/lib/appwrite";
-import {
   Image,
   SafeAreaView,
   ScrollView,
@@ -16,7 +8,6 @@ import {
   TouchableOpacity,
   View,
   Dimensions,
-  Platform,
   StyleSheet,
   Modal,
   ActivityIndicator,
@@ -37,14 +28,12 @@ import {
   Share2,
   Award,
 } from "lucide-react-native";
-import { useAppwrite } from "@/lib/useAppwrite";
-import { Card } from "@/components/Cards";
 import NoResults from "@/components/NoResults";
-import ReviewModal from "@/components/ReviewModal";
+import { Card } from "@/components/Cards";
 import images from "@/constants/images";
 import { useGlobalContext } from "@/lib/global-provider";
-import { ID, Query } from "react-native-appwrite";
-import AgentReviews from "@/components/AgentReviews";
+import { getAgentById, getAgentPackages } from "@/lib/agent-service";
+import { Agent } from "@/lib/firebase/models";
 
 // Define theme colors
 const COLORS = {
@@ -69,44 +58,52 @@ const COLORS = {
 
 const { width } = Dimensions.get("window");
 
-type Package = {
-  name: string;
-  price: string;
-};
-
 type Review = {
-  id: number;
+  id: string;
   author: string;
   rating: number;
   comment: string;
-  avatar: string;
+  avatar?: string;
 };
 
 const AgentProfile = () => {
   const params = useLocalSearchParams();
   const agentId = Array.isArray(params.id) ? params.id[0] : params.id;
-  const [agent, setAgent] = useState<any>(null);
+  const [agent, setAgent] = useState<Agent | null>(null);
   const { rawUser } = useGlobalContext();
   const [loading, setLoading] = useState(true);
   const [packages, setPackages] = useState<any[]>([]);
   const [loadingPackages, setLoadingPackages] = useState(true);
   const [selectedReview, setSelectedReview] = useState<Review | null>(null);
   const [isModalVisible, setIsModalVisible] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     const fetchAgent = async () => {
       if (agentId) {
         try {
           setLoading(true);
-          const data = await getAgentById({ id: String(agentId) });
+          const data = await getAgentById(String(agentId));
 
           if (data) {
             setAgent(data);
           } else {
+            setError("Agent not found");
             console.warn("[No Agent Data Found]");
+            Alert.alert(
+              "Agent Not Found",
+              "The requested agent profile could not be found.",
+              [{ text: "Go Back", onPress: () => router.back() }]
+            );
           }
         } catch (error) {
           console.error("Error fetching agent by ID:", error);
+          setError("Failed to load agent data");
+          Alert.alert(
+            "Error",
+            "Failed to load agent profile. Please try again later.",
+            [{ text: "Go Back", onPress: () => router.back() }]
+          );
         } finally {
           setLoading(false);
         }
@@ -121,11 +118,11 @@ const AgentProfile = () => {
       if (agentId) {
         try {
           setLoadingPackages(true);
-          const agentPackages = await getAgentPackagesProfile(agentId);
-
+          const agentPackages = await getAgentPackages(agentId);
           setPackages(agentPackages);
         } catch (error) {
           console.error("Error fetching agent's packages:", error);
+          // Don't show an alert for packages failure to avoid multiple alerts
         } finally {
           setLoadingPackages(false);
         }
@@ -135,10 +132,26 @@ const AgentProfile = () => {
     fetchPackages();
   }, [agentId]);
 
-  if (loading || !agent) {
+  if (loading) {
     return (
       <View style={styles.loadingContainer}>
         <ActivityIndicator size="large" color={COLORS.primary} />
+      </View>
+    );
+  }
+
+  if (error || !agent) {
+    return (
+      <View style={styles.errorContainer}>
+        <Text style={styles.errorText}>
+          {error || "Failed to load agent profile"}
+        </Text>
+        <TouchableOpacity
+          style={styles.goBackButton}
+          onPress={() => router.back()}
+        >
+          <Text style={styles.goBackText}>Go Back</Text>
+        </TouchableOpacity>
       </View>
     );
   }
@@ -149,16 +162,19 @@ const AgentProfile = () => {
       return;
     }
 
-    const room_id = `${rawUser.$id}_${agent.$id}`;
-
     try {
+      // Generate consistent room ID between user and agent
+      const userID = rawUser.id;
+      const agentID = agent.id;
+
       router.push({
         pathname: "/chatScreen",
         params: {
-          room_id,
-          user: rawUser.$id,
-          agentId: agent.$id,
-          avatar: agent.avatar,
+          room_id:
+            userID < agentID ? `${userID}_${agentID}` : `${agentID}_${userID}`,
+          user: userID,
+          agentId: agentID,
+          avatar: agent.avatar || "",
           from: "agentprofile",
         },
       });
@@ -195,25 +211,20 @@ const AgentProfile = () => {
       return { uri: agent.avatar };
     }
 
-    // Check if it's a numerical index for the images object
-    if (typeof agent.avatar === "number") {
-      return agent.avatar;
-    }
-
     // Default fallback
     return images.avatar;
   };
 
   const getAgentExperience = () => {
-    return agent.experience || "3+ years";
+    return "3+ years";
   };
 
   const getAgentLocation = () => {
-    return agent.location || "International";
+    return "International";
   };
 
   const getAgentLanguages = () => {
-    return agent.languages || "English, Spanish";
+    return "English, Spanish";
   };
 
   return (
@@ -262,7 +273,7 @@ const AgentProfile = () => {
 
           <Text style={styles.agentName}>{agent.name}</Text>
           <Text style={styles.agentSpecialty}>
-            {agent.niche} Travel Specialist
+            {agent.niche || "Travel"} Specialist
           </Text>
 
           <View style={styles.agentRatingContainer}>
@@ -270,8 +281,10 @@ const AgentProfile = () => {
               <Award size={14} color={COLORS.gold} />
               <Text style={styles.badgeText}>Top Agent</Text>
             </View>
-            {renderStars(4.5)}
-            <Text style={styles.ratingText}>4.5 (34 reviews)</Text>
+            {renderStars(agent.rating || 4.5)}
+            <Text style={styles.ratingText}>
+              {agent.rating || 4.5} ({agent.reviewCount || 0} reviews)
+            </Text>
           </View>
 
           <TouchableOpacity
@@ -337,10 +350,10 @@ const AgentProfile = () => {
               data={packages}
               renderItem={({ item }) => (
                 <View style={styles.packageCard}>
-                  <Card item={item} onPress={() => handleCardPress(item.$id)} />
+                  <Card item={item} onPress={() => handleCardPress(item.id)} />
                 </View>
               )}
-              keyExtractor={(item) => item.$id}
+              keyExtractor={(item) => item.id}
               showsHorizontalScrollIndicator={false}
               contentContainerStyle={styles.packagesList}
             />
@@ -349,16 +362,29 @@ const AgentProfile = () => {
 
         {/* Reviews Section */}
         <View style={styles.sectionContainer}>
-          <AgentReviews agentId={agentId} />
+          <Text style={styles.sectionTitle}>Reviews</Text>
+          {agent.reviewCount === 0 ? (
+            <View style={styles.noReviewsContainer}>
+              <Text style={styles.noReviewsText}>
+                No reviews yet. Be the first to leave a review!
+              </Text>
+            </View>
+          ) : (
+            <View style={styles.reviewsPreviewContainer}>
+              <Text style={styles.reviewsPreviewText}>
+                This agent has {agent.reviewCount} reviews with an average
+                rating of {agent.rating?.toFixed(1) || "0.0"}.
+              </Text>
+              <TouchableOpacity
+                style={styles.viewAllReviewsButton}
+                // onPress={() => router.push(`/agent-reviews/${agent.id}`)}
+              >
+                <Text style={styles.viewAllReviewsText}>View All Reviews</Text>
+              </TouchableOpacity>
+            </View>
+          )}
         </View>
       </ScrollView>
-
-      <ReviewModal
-        isModalVisible={isModalVisible}
-        setIsModalVisible={setIsModalVisible}
-        selectedReview={selectedReview}
-        renderStars={renderStars}
-      />
     </View>
   );
 };
@@ -373,6 +399,30 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     alignItems: "center",
     backgroundColor: COLORS.background,
+  },
+  errorContainer: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
+    backgroundColor: COLORS.background,
+    padding: 20,
+  },
+  errorText: {
+    fontSize: 18,
+    color: COLORS.text,
+    marginBottom: 20,
+    textAlign: "center",
+  },
+  goBackButton: {
+    backgroundColor: COLORS.primary,
+    paddingVertical: 12,
+    paddingHorizontal: 20,
+    borderRadius: 12,
+  },
+  goBackText: {
+    color: COLORS.white,
+    fontSize: 16,
+    fontWeight: "600",
   },
   headerGradient: {
     paddingTop: StatusBar.currentHeight || 0,
@@ -413,30 +463,6 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     alignItems: "center",
   },
-  profileImageWrapper: {
-    position: "absolute",
-    bottom: -55,
-    width: 110,
-    height: 110,
-    borderRadius: 55,
-    backgroundColor: COLORS.background,
-    justifyContent: "center",
-    alignItems: "center",
-    zIndex: 10, // Add this to ensure it's on top
-  },
-  // profileImageContainer: {
-  //   width: 100,
-  //   height: 100,
-  //   borderRadius: 50,
-  //   overflow: "hidden",
-  //   borderWidth: 3,
-  //   borderColor: COLORS.white,
-  //   elevation: 5, // Add elevation for Android
-  //   shadowColor: "#000", // Shadow for iOS
-  //   shadowOffset: { width: 0, height: 2 },
-  //   shadowOpacity: 0.1,
-  //   shadowRadius: 8,
-  // },
   profileImage: {
     width: "100%",
     height: "100%",
@@ -604,6 +630,43 @@ const styles = StyleSheet.create({
   packagesList: {
     paddingBottom: 8,
     paddingRight: 20,
+  },
+  noReviewsContainer: {
+    padding: 20,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: COLORS.lightGray,
+    borderRadius: 12,
+  },
+  noReviewsText: {
+    fontSize: 14,
+    color: COLORS.textLight,
+    textAlign: "center",
+  },
+  reviewsPreviewContainer: {
+    padding: 16,
+    backgroundColor: COLORS.lightGray,
+    borderRadius: 12,
+    alignItems: "center",
+  },
+  reviewsPreviewText: {
+    fontSize: 14,
+    color: COLORS.text,
+    textAlign: "center",
+    marginBottom: 16,
+  },
+  viewAllReviewsButton: {
+    backgroundColor: COLORS.white,
+    paddingVertical: 8,
+    paddingHorizontal: 16,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: COLORS.primary,
+  },
+  viewAllReviewsText: {
+    color: COLORS.primary,
+    fontSize: 14,
+    fontWeight: "500",
   },
 });
 
