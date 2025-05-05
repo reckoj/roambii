@@ -174,13 +174,26 @@ const AgentProfile = () => {
   };
 
   const handleCardPress = (id: string) => {
-    console.log("Navigating to property with ID:", id);
-    // Check if id is $id or id format
+    console.log("Original ID received:", id);
+    console.log("Type of ID:", typeof id);
+
+    // Check if id exists and is a string
+    if (!id) {
+      console.error("ID is undefined or null");
+      Alert.alert("Error", "Cannot navigate - package ID is missing");
+      return;
+    }
+
+    // Get the ID in the correct format
     const propertyId = id.startsWith("$") ? id.substring(1) : id;
-    router.push({
-      pathname: "/properties/[id]",
-      params: { id: propertyId },
-    });
+    console.log("Processed property ID:", propertyId);
+
+    // Log the full item for debugging
+    // console.log("Full item data structure:", JSON.stringify(item, null, 2));
+
+    // Try direct navigation
+    console.log("Attempting navigation to:", `/properties/${propertyId}`);
+    router.push(`/properties/${propertyId}`);
   };
 
   const handleShareProfile = () => {
@@ -357,11 +370,14 @@ const AgentProfile = () => {
                 <View style={styles.packageCard}>
                   <Card
                     item={item}
-                    onPress={() => handleCardPress(item.$id || item.id)}
+                    onPress={() => {
+                      console.log("Card pressed with ID:", item.$id || item.id);
+                      handleCardPress(item.$id || item.id);
+                    }}
                   />
                 </View>
               )}
-              keyExtractor={(item) => item.$id || item.id}
+              keyExtractor={(item) => item.id}
               showsHorizontalScrollIndicator={false}
               contentContainerStyle={styles.packagesList}
             />
