@@ -1,3 +1,4 @@
+import { createSlice, createAsyncThunk } from "@reduxjs/toolkit";
 import {
   checkIsAgent,
   getChatRooms,
@@ -8,10 +9,16 @@ import {
   sendMessage,
   ChatRoom,
   ChatMessage,
-} from "@/lib/chat-service"; // Updated import path
-import { getUserProfile } from "@/lib/user-service"; // Updated import path
-
-import { createSlice, createAsyncThunk } from "@reduxjs/toolkit";
+} from "@/lib/chat-service";
+import {
+  doc,
+  getDoc,
+  collection,
+  query,
+  where,
+  getDocs,
+} from "firebase/firestore";
+import { firestore, COLLECTIONS } from "@/lib/firebase/firebase-config";
 
 interface UserProfile {
   id: string;
@@ -55,13 +62,95 @@ const initialState: ChatState = {
   lastUpdated: {},
 };
 
+// Get user profile from Firestore
+async function getUserProfile(userId: string): Promise<UserProfile | null> {
+  try {
+    // Try direct ID lookup first
+    const userRef = doc(firestore, COLLECTIONS.USERS, userId);
+    const userDoc = await getDoc(userRef);
+
+    if (userDoc.exists()) {
+      const userData = userDoc.data();
+      return {
+        id: userId,
+        name: userData.name || "Unknown User",
+        email: userData.email || "",
+        avatar: userData.avatar || undefined,
+        ...userData,
+      };
+    }
+
+    // Try query by userId field
+    const usersRef = collection(firestore, COLLECTIONS.USERS);
+    const q = query(usersRef, where("userId", "==", userId));
+    const querySnapshot = await getDocs(q);
+
+    if (!querySnapshot.empty) {
+      const userData = querySnapshot.docs[0].data();
+      return {
+        id: userId,
+        name: userData.name || "Unknown User",
+        email: userData.email || "",
+        avatar: userData.avatar || undefined,
+        ...userData,
+      };
+    }
+
+    // Try agents collection if not found in users
+    const agentRef = doc(firestore, COLLECTIONS.AGENTS, userId);
+    const agentDoc = await getDoc(agentRef);
+
+    if (agentDoc.exists()) {
+      const agentData = agentDoc.data();
+      return {
+        id: userId,
+        name: agentData.name || "Unknown Agent",
+        email: agentData.email || "",
+        avatar: agentData.avatar || undefined,
+        isAgent: true,
+        ...agentData,
+      };
+    }
+
+    // Try query by userId field in agents collection
+    const agentsRef = collection(firestore, COLLECTIONS.AGENTS);
+    const agentQ = query(agentsRef, where("userId", "==", userId));
+    const agentSnapshot = await getDocs(agentQ);
+
+    if (!agentSnapshot.empty) {
+      const agentData = agentSnapshot.docs[0].data();
+      return {
+        id: userId,
+        name: agentData.name || "Unknown Agent",
+        email: agentData.email || "",
+        avatar: agentData.avatar || undefined,
+        isAgent: true,
+        ...agentData,
+      };
+    }
+
+    return null;
+  } catch (error) {
+    console.error("Error fetching user profile:", error);
+    return null;
+  }
+}
+
 // Async thunks for chat
 export const fetchChatRoomsAsync = createAsyncThunk(
   "chat/fetchChatRooms",
   async (userId: string, { rejectWithValue }) => {
     try {
       const chatRooms = await getChatRooms(userId);
-      return { chatRooms, userId }; // Return both chatRooms and userId
+
+      // Calculate total unread count
+      let totalUnread = 0;
+      chatRooms.forEach((room) => {
+        const userUnreadCount = room.unread_count?.[userId] || 0;
+        totalUnread += userUnreadCount;
+      });
+
+      return { chatRooms, userId, totalUnread };
     } catch (error: any) {
       return rejectWithValue(error.message);
     }
@@ -81,12 +170,6 @@ export const fetchMessagesAsync = createAsyncThunk(
       // If we have cached messages and they're fresh (less than 5 minutes old)
       // Return them immediately to show something to the user while we fetch fresh data
       if (cachedMessages.length > 0 && cacheAge < 5 * 60 * 1000) {
-        // Still fetch fresh messages but don't wait for them to return something
-        getMessages(roomId).then((freshMessages) => {
-          // Return the fresh messages, but this won't be handled by the thunk
-          return { roomId, messages: freshMessages, freshData: true };
-        });
-
         // Return cached data immediately marked as non-fresh
         return { roomId, messages: cachedMessages, freshData: false };
       }
@@ -137,7 +220,7 @@ export const markMessagesAsReadAsync = createAsyncThunk(
   ) => {
     try {
       const success = await markMessagesAsRead(roomId, userId);
-      return { roomId, success, userId }; // Include userId for unread count calculation
+      return { roomId, success, userId };
     } catch (error: any) {
       return rejectWithValue(error.message);
     }
@@ -187,11 +270,11 @@ export const fetchChatPartnerProfileAsync = createAsyncThunk(
       const partnerId = getChatPartner(participants, currentUserId);
       if (!partnerId) return null;
 
-      // First check if we already have this user's profile in the state
+      // Get user profile from Firestore
       const profile = await getUserProfile(partnerId);
 
       if (profile) {
-        // Also update our user profiles record
+        // Also update our user profiles cache in Redux
         dispatch(
           updateUserProfiles({
             [partnerId]: profile,
@@ -259,11 +342,15 @@ const chatSlice = createSlice({
       const roomId = state.currentRoom;
 
       if (messages && messages.length > 0 && roomId) {
+        // Important: Replace current messages with the updated messages
         state.currentMessages = messages;
 
         // Also update the message cache
         state.messageCache[roomId] = messages;
         state.lastUpdated[roomId] = Date.now();
+
+        // Log for debugging
+        console.log(`Updated ${messages.length} messages in Redux state`);
       }
     },
     setMessageSubscription: (state, action) => {
@@ -283,8 +370,8 @@ const chatSlice = createSlice({
         if (room.id === roomId) {
           return {
             ...room,
-            lastMessage: message,
-            lastUpdated: timestamp || Date.now(),
+            last_message: message,
+            last_updated: timestamp || Date.now(),
           };
         }
         return room;
@@ -293,9 +380,9 @@ const chatSlice = createSlice({
       // Re-sort rooms by lastUpdated
       state.chatRooms.sort((a, b) => {
         const timeA =
-          typeof a.lastUpdated === "number" ? a.lastUpdated : Date.now();
+          typeof a.last_updated === "number" ? a.last_updated : Date.now();
         const timeB =
-          typeof b.lastUpdated === "number" ? b.lastUpdated : Date.now();
+          typeof b.last_updated === "number" ? b.last_updated : Date.now();
         return timeB - timeA;
       });
     },
@@ -318,241 +405,6 @@ const chatSlice = createSlice({
       state.lastUpdated = {};
     },
   },
-  extraReducers: (builder) => {
-    builder
-      // Check is agent cases
-      .addCase(checkIsAgentAsync.pending, (state) => {
-        state.loading = true;
-      })
-      .addCase(checkIsAgentAsync.fulfilled, (state, action) => {
-        state.loading = false;
-        state.isAgent = action.payload.isAgent;
-        state.agentUserId = action.payload.agentId;
-      })
-      .addCase(checkIsAgentAsync.rejected, (state, action) => {
-        state.loading = false;
-        state.error = action.payload as string;
-      })
-
-      // Fetch chat rooms cases
-      .addCase(fetchChatRoomsAsync.pending, (state) => {
-        state.loading = true;
-        state.error = null;
-      })
-      .addCase(fetchChatRoomsAsync.fulfilled, (state, action) => {
-        state.loading = false;
-        state.chatRooms = action.payload.chatRooms;
-
-        // Calculate total unread count using the current user ID from payload
-        const currentUserId = action.payload.userId;
-        state.unreadCount = action.payload.chatRooms.reduce((total, room) => {
-          // Access the unreadCount object and get the count for the current user
-          const count = room.unreadCount?.[currentUserId] || 0;
-          return total + count;
-        }, 0);
-      })
-      .addCase(fetchChatRoomsAsync.rejected, (state, action) => {
-        state.loading = false;
-        state.error = action.payload as string;
-      })
-
-      // Fetch messages cases
-      .addCase(fetchMessagesAsync.pending, (state) => {
-        state.loading = true;
-        state.error = null;
-      })
-      .addCase(fetchMessagesAsync.fulfilled, (state, action) => {
-        state.loading = false;
-        const { roomId, messages, freshData } = action.payload;
-
-        // Update current messages if this is for the current room
-        if (state.currentRoom === roomId) {
-          state.currentMessages = messages;
-        }
-
-        // Only update the cache if these are fresh messages from the server
-        if (freshData) {
-          state.messageCache[roomId] = messages;
-          state.lastUpdated[roomId] = Date.now();
-        }
-      })
-      .addCase(fetchMessagesAsync.rejected, (state, action) => {
-        state.loading = false;
-        state.error = action.payload as string;
-      })
-
-      // Send message cases
-      .addCase(sendMessageAsync.pending, (state) => {
-        state.loading = true;
-        state.error = null;
-      })
-      .addCase(sendMessageAsync.fulfilled, (state, action) => {
-        state.loading = false;
-        state.lastMessageSent = action.payload;
-        const roomId = state.currentRoom;
-
-        // Update the current messages list if we have a room selected
-        if (roomId) {
-          if (
-            !state.currentMessages.some((msg) => msg.id === action.payload.id)
-          ) {
-            state.currentMessages.push(action.payload);
-
-            // Sort messages by timestamp
-            state.currentMessages.sort((a, b) => {
-              const timeA =
-                typeof a.timestamp === "number" ? a.timestamp : Date.now();
-              const timeB =
-                typeof b.timestamp === "number" ? b.timestamp : Date.now();
-              return timeA - timeB;
-            });
-
-            // Also update the message cache
-            state.messageCache[roomId] = [...state.currentMessages];
-            state.lastUpdated[roomId] = Date.now();
-          }
-        }
-
-        // Also update the last message in the corresponding chat room
-        if (roomId) {
-          const roomIndex = state.chatRooms.findIndex(
-            (room) => room.id === roomId
-          );
-          if (roomIndex !== -1) {
-            state.chatRooms[roomIndex] = {
-              ...state.chatRooms[roomIndex],
-              lastMessage: action.payload.content,
-              lastUpdated:
-                typeof action.payload.timestamp === "number"
-                  ? action.payload.timestamp
-                  : Date.now(),
-            };
-
-            // Re-sort rooms by last_updated
-            state.chatRooms.sort((a, b) => {
-              const timeA =
-                typeof a.lastUpdated === "number" ? a.lastUpdated : Date.now();
-              const timeB =
-                typeof b.lastUpdated === "number" ? b.lastUpdated : Date.now();
-              return timeB - timeA;
-            });
-          }
-        }
-      })
-      .addCase(sendMessageAsync.rejected, (state, action) => {
-        state.loading = false;
-        state.error = action.payload as string;
-      })
-
-      // Mark messages as read cases
-      .addCase(markMessagesAsReadAsync.fulfilled, (state, action) => {
-        const { roomId, userId } = action.payload;
-
-        // Update unread count for this room
-        state.chatRooms = state.chatRooms.map((room) => {
-          if (room.id === roomId) {
-            // Create a new unreadCount object with the user's count set to 0
-            const updatedUnreadCount = { ...room.unreadCount };
-            updatedUnreadCount[userId] = 0;
-
-            return {
-              ...room,
-              unreadCount: updatedUnreadCount,
-            };
-          }
-          return room;
-        });
-
-        // Update read status for current messages if we're in this room
-        if (state.currentRoom === roomId) {
-          state.currentMessages = state.currentMessages.map((message) => {
-            if (message.receiverId === userId && !message.read) {
-              return { ...message, read: true };
-            }
-            return message;
-          });
-
-          // Also update the message cache
-          state.messageCache[roomId] = [...state.currentMessages];
-          state.lastUpdated[roomId] = Date.now();
-        }
-
-        // Recalculate total unread count
-        state.unreadCount = state.chatRooms.reduce((total, room) => {
-          // Get the unread count for this user specifically
-          const userUnreadCount = room.unreadCount?.[userId] || 0;
-          return total + userUnreadCount;
-        }, 0);
-      })
-
-      // Delete chat cases
-      .addCase(deleteChatAsync.pending, (state) => {
-        state.loading = true;
-        state.error = null;
-      })
-      .addCase(deleteChatAsync.fulfilled, (state, action) => {
-        state.loading = false;
-
-        // Remove the chat room
-        const deletedRoomId = action.payload;
-        state.chatRooms = state.chatRooms.filter(
-          (room) => room.id !== deletedRoomId
-        );
-
-        // If the current room is the one being deleted, reset it
-        if (state.currentRoom === deletedRoomId) {
-          state.currentRoom = null;
-          state.currentMessages = [];
-          state.currentPartner = null;
-        }
-
-        // Remove from message cache too
-        if (state.messageCache[deletedRoomId]) {
-          const newCache = { ...state.messageCache };
-          delete newCache[deletedRoomId];
-          state.messageCache = newCache;
-
-          const newLastUpdated = { ...state.lastUpdated };
-          delete newLastUpdated[deletedRoomId];
-          state.lastUpdated = newLastUpdated;
-        }
-
-        // Recalculate total unread count (without the deleted room)
-        if (state.chatRooms.length > 0) {
-          // We need the userId to correctly calculate remaining unread messages
-          // Get a sample userId from the first chatRoom's unreadCount
-          const sampleRoom = state.chatRooms[0];
-          if (sampleRoom && sampleRoom.unreadCount) {
-            const userId = Object.keys(sampleRoom.unreadCount)[0];
-            if (userId) {
-              state.unreadCount = state.chatRooms.reduce(
-                (total, room) => total + (room.unreadCount?.[userId] || 0),
-                0
-              );
-            }
-          }
-        } else {
-          state.unreadCount = 0;
-        }
-      })
-      .addCase(deleteChatAsync.rejected, (state, action) => {
-        state.loading = false;
-        state.error = action.payload as string;
-      })
-
-      // Fetch chat partner profile cases
-      .addCase(fetchChatPartnerProfileAsync.pending, (state) => {
-        // We don't set loading to true here to avoid UI flicker
-      })
-      .addCase(fetchChatPartnerProfileAsync.fulfilled, (state, action) => {
-        if (action.payload) {
-          state.currentPartner = action.payload;
-        }
-      })
-      .addCase(fetchChatPartnerProfileAsync.rejected, (state, action) => {
-        state.error = action.payload as string;
-      });
-  },
 });
 
 export const {
@@ -570,4 +422,5 @@ export const {
   clearMessageCache,
 } = chatSlice.actions;
 
+// Export the reducer as default
 export default chatSlice.reducer;

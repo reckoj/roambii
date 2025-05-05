@@ -1,9 +1,9 @@
+// lib/firebase/firebase-config.ts
 import { initializeApp, getApps, getApp } from "firebase/app";
-import { getAuth, initializeAuth, Auth } from "firebase/auth";
+import { getAuth } from "firebase/auth";
 import { getFirestore } from "firebase/firestore";
 import { getDatabase } from "firebase/database";
 import { getStorage } from "firebase/storage";
-import AsyncStorage from "@react-native-async-storage/async-storage";
 
 // Your Firebase configuration
 const firebaseConfig = {
@@ -15,12 +15,6 @@ const firebaseConfig = {
   appId: process.env.EXPO_PUBLIC_FIREBASE_APP_ID,
   databaseURL: process.env.EXPO_PUBLIC_FIREBASE_DATABASE_URL,
 };
-
-// Log Firebase config to debug environment variables
-console.log("Initializing Firebase with config:", {
-  ...firebaseConfig,
-  apiKey: firebaseConfig.apiKey ? "Present" : "Missing",
-});
 
 // Initialize Firebase
 let app;
@@ -38,15 +32,12 @@ try {
 }
 
 // Initialize and export services
-const auth: Auth = getAuth(app);
-
+const auth = getAuth(app);
 const firestore = getFirestore(app);
-const database = getDatabase(app);
+const firebaseDb = getDatabase(app); // Properly export the database instance
 const storage = getStorage(app);
 
-export { app, auth, firestore, database, storage };
-
-// Rest of the file remains the same...
+export { app, auth, firestore, firebaseDb, storage };
 
 // Add type definitions for collections to ensure type safety
 export const COLLECTIONS = {

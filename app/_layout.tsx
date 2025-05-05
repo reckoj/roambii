@@ -3,14 +3,15 @@ import { router, SplashScreen, Stack } from "expo-router";
 import "./global.css";
 import { useFonts } from "expo-font";
 import { useEffect } from "react";
-import { useDispatch } from "react-redux";
+import { useDispatch, useSelector } from "react-redux";
 import GlobalProvider from "@/lib/global-provider";
 import StripeProvider from "@/app/StripeProvider";
 import ReduxProvider from "@/lib/redux/provider";
-import { AppDispatch } from "@/lib/redux/store/store";
+import { AppDispatch, RootState } from "@/lib/redux/store/store";
 import { fetchCurrentUserAsync } from "@/lib/redux/slices/authSlice";
 import { verifyEmail } from "@/lib/auth-service";
 import { Alert } from "react-native";
+import { setupUnreadMessageTracker } from "@/lib/firebase/chat-notifications";
 
 // Prevent auto-hiding of splash screen
 SplashScreen.preventAutoHideAsync().catch(() => {
@@ -19,6 +20,9 @@ SplashScreen.preventAutoHideAsync().catch(() => {
 
 function AppInitializer() {
   const dispatch = useDispatch<AppDispatch>();
+  const { isAuthenticated, user } = useSelector(
+    (state: RootState) => state.auth
+  );
 
   useEffect(() => {
     const initialize = async () => {
@@ -29,6 +33,11 @@ function AppInitializer() {
         // Attempt to fetch current user
         const result = await dispatch(fetchCurrentUserAsync()).unwrap();
         console.log("User session restored:", !!result);
+
+        // Setup chat notifications if authenticated
+        if (result && result.id) {
+          setupUnreadMessageTracker(result.id);
+        }
       } catch (error) {
         console.log("No active session:", error);
       } finally {
@@ -38,7 +47,19 @@ function AppInitializer() {
     };
 
     initialize();
+
+    // Cleanup function
+    return () => {
+      // Any cleanup needed for app initialization
+    };
   }, [dispatch]);
+
+  // Also set up chat notifications when user logs in
+  useEffect(() => {
+    if (isAuthenticated && user?.id) {
+      setupUnreadMessageTracker(user.id);
+    }
+  }, [isAuthenticated, user?.id]);
 
   return null;
 }

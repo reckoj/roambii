@@ -426,7 +426,7 @@ const ChatListScreen: React.FC = () => {
               const showName =
                 !isProfileLoading && !isIdOnly(rawPartnerName, partnerId);
 
-              const hasUnread = (item.unreadCount?.[userId || ""] || 0) > 0;
+              const hasUnread = (item.unread_count?.[userId || ""] || 0) > 0;
 
               return (
                 <Pressable
@@ -441,6 +441,7 @@ const ChatListScreen: React.FC = () => {
                 >
                   <View style={styles.chatItemContent}>
                     {/* Avatar with shimmer loading effect */}
+
                     {isAvatarLoading ? (
                       <ShimmerEffect
                         width={56}
@@ -452,7 +453,16 @@ const ChatListScreen: React.FC = () => {
                         source={{ uri: partnerProfile.avatar }}
                         style={styles.avatar}
                         onLoad={() => handleAvatarLoad(partnerId)}
-                        onError={() => handleAvatarLoad(partnerId)}
+                        onError={() => {
+                          console.log("Avatar load error for:", partnerId);
+                          handleAvatarLoad(partnerId);
+                          // Fallback when image fails to load
+                          setLoadingAvatars((prev) => ({
+                            ...prev,
+                            [partnerId]: false,
+                          }));
+                        }}
+                        // defaultSource={require("@/assets/images/default-avatar.png")} // Add a default avatar image
                       />
                     ) : (
                       <View style={styles.avatarFallback}>
@@ -483,7 +493,7 @@ const ChatListScreen: React.FC = () => {
                           </Text>
                         )}
                         <Text style={styles.timeStamp}>
-                          {formatTimestamp(item.lastUpdated)}
+                          {formatTimestamp(item.last_updated)}
                         </Text>
                         <TouchableOpacity
                           style={styles.optionsButton}
@@ -502,15 +512,16 @@ const ChatListScreen: React.FC = () => {
                           numberOfLines={1}
                           ellipsizeMode="tail"
                         >
-                          {item.lastMessage || "No messages yet"}
+                          {item.last_message || "No messages yet"}
                         </Text>
 
+                        {/* Move the unread badge here so it's in the message container */}
                         {hasUnread && (
                           <View style={styles.unreadBadge}>
                             <Text style={styles.unreadCount}>
-                              {item.unreadCount?.[userId || ""] > 99
+                              {item.unread_count?.[userId || ""] > 99
                                 ? "99+"
-                                : item.unreadCount?.[userId || ""]}
+                                : item.unread_count?.[userId || ""]}
                             </Text>
                           </View>
                         )}
@@ -661,19 +672,18 @@ const styles = StyleSheet.create({
     color: COLORS.textLight,
     marginLeft: 4,
   },
+  // Update these styles
   messageRow: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
+    marginTop: 2, // Add a bit of spacing from the name
   },
   messagePreview: {
     fontSize: 14,
     color: COLORS.messagePreview,
     flex: 1,
-  },
-  boldText: {
-    fontWeight: "700",
-    color: COLORS.text,
+    marginRight: 8, // Add space between message and badge
   },
   unreadBadge: {
     backgroundColor: COLORS.primary,
@@ -682,8 +692,13 @@ const styles = StyleSheet.create({
     borderRadius: 11,
     justifyContent: "center",
     alignItems: "center",
-    marginLeft: 8,
+    // Remove marginLeft since it's now positioned correctly
   },
+  boldText: {
+    fontWeight: "700",
+    color: COLORS.text,
+  },
+
   unreadCount: {
     color: COLORS.white,
     fontSize: 11,

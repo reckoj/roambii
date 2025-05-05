@@ -255,6 +255,8 @@ const ChatScreen = () => {
     }
   }, [currentUserId, receivedAgentId, dispatch, messageCache]);
 
+  // In your ChatScreen component, modify the subscription setup:
+
   // Setup subscription separately
   const setupSubscription = useCallback(() => {
     // Only set up subscription if we have a room and don't already have one
@@ -268,17 +270,46 @@ const ChatScreen = () => {
       // Create a subscription and store in ref
       subscriptionRef.current = subscribeToMessages(
         roomIdRef.current,
-        (updatedMessages: string | any[]) => {
+        (updatedMessages: ChatMessage[]) => {
           console.log(
             `Received ${updatedMessages.length} messages from subscription`
           );
+
+          // Immediately update Redux state with new messages
           dispatch(updateMessages(updatedMessages));
+
+          // Mark messages as read since the chat is open
+          if (currentUserId) {
+            dispatch(
+              markMessagesAsReadAsync({
+                roomId: roomIdRef.current!,
+                userId: currentUserId,
+              })
+            ).catch((err) =>
+              console.error("Error marking messages as read on update:", err)
+            );
+          }
+
+          // Force a render by updating a local state
+          setLastMessageUpdate(Date.now());
         }
       );
     } catch (error) {
       console.error("Error setting up subscription:", error);
     }
   }, [currentUserId, dispatch]);
+
+  // Add a state to force re-renders when new messages arrive
+  const [lastMessageUpdate, setLastMessageUpdate] = useState<number>(0);
+
+  // Make sure useEffect dependencies include lastMessageUpdate
+  useEffect(() => {
+    if (currentMessages.length > 0) {
+      setTimeout(() => {
+        flatListRef.current?.scrollToEnd({ animated: true });
+      }, 100);
+    }
+  }, [currentMessages, lastMessageUpdate]); // Add lastMessageUpdate here
 
   // Initialize chat room and setup subscription
   useEffect(() => {
@@ -537,7 +568,7 @@ const ChatScreen = () => {
             ref={flatListRef}
             data={currentMessages}
             keyExtractor={(item) =>
-              item.id || `${item.timestamp}-${item.senderId}`
+              item.id || `${item.timestamp}-${item.sender_id}`
             }
             contentContainerStyle={{ padding: 16 }}
             // ListFooterComponent={
@@ -551,8 +582,8 @@ const ChatScreen = () => {
               // Determine if this message is from the same sender as the previous one
               const isConsecutive =
                 index > 0 &&
-                currentMessages[index - 1].senderId === item.senderId;
-              const isFromCurrentUser = item.senderId === currentUserId;
+                currentMessages[index - 1].sender_id === item.sender_id;
+              const isFromCurrentUser = item.sender_id === currentUserId;
 
               return (
                 <ChatBubble

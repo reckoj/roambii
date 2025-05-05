@@ -1,22 +1,46 @@
-// lib/firebase/chatService.ts
+// lib/chat-service.ts
 import {
   ref,
-  push,
   set,
+  push,
   get,
+  update,
+  remove,
+  onValue,
+  off,
   query,
   orderByChild,
   equalTo,
-  update,
-  onValue,
-  off,
-  remove,
+  serverTimestamp,
 } from "firebase/database";
-import { database } from "../lib/firebase/firebase-config";
-import { getDoc, doc } from "firebase/firestore";
-import { firestore, COLLECTIONS } from "../lib/firebase/firebase-config";
-import { ChatMessage, ChatRoom } from "./firebase/models";
-import { checkIsAgent } from "../lib/auth-service";
+import { firebaseDb, firestore } from "./firebase/firebase-config";
+import {
+  doc,
+  getDoc,
+  collection,
+  query as firestoreQuery,
+  where,
+  getDocs,
+} from "firebase/firestore";
+import { COLLECTIONS } from "./firebase/firebase-config";
+
+// Export types for chat functionality
+export interface ChatMessage {
+  id?: string;
+  sender_id: string;
+  receiver_id: string;
+  content: string;
+  timestamp: number | Object;
+  read: boolean;
+}
+
+export interface ChatRoom {
+  id: string;
+  participants: string[];
+  last_message: string;
+  last_updated: number | Object;
+  unread_count: { [userId: string]: number };
+}
 
 /**
  * IMPORTANT: This is the core function that needs to be used consistently
@@ -43,6 +67,42 @@ export function getChatRoomId(userId1: string, userId2: string): string {
 
   console.log("Generated room ID:", roomId, "from users:", userId1, userId2);
   return roomId;
+}
+
+/**
+ * Check if a user is an agent and get their agent document ID
+ */
+export async function checkIsAgent(
+  userId: string
+): Promise<{ isAgent: boolean; agentId: string | null }> {
+  if (!userId) {
+    return { isAgent: false, agentId: null };
+  }
+
+  try {
+    // Try to find user as an agent by ID
+    const agentRef = doc(firestore, COLLECTIONS.AGENTS, userId);
+    const agentDoc = await getDoc(agentRef);
+
+    if (agentDoc.exists()) {
+      return { isAgent: true, agentId: userId };
+    }
+
+    // Try to find agent by userId field
+    const agentsCollection = collection(firestore, COLLECTIONS.AGENTS);
+    const q = firestoreQuery(agentsCollection, where("userId", "==", userId));
+    const querySnapshot = await getDocs(q);
+
+    if (!querySnapshot.empty) {
+      const agent = querySnapshot.docs[0];
+      return { isAgent: true, agentId: agent.id };
+    }
+
+    return { isAgent: false, agentId: null };
+  } catch (error) {
+    console.error("Error checking if user is agent:", error);
+    return { isAgent: false, agentId: null };
+  }
 }
 
 /**
@@ -102,8 +162,8 @@ export async function getChatRooms(userId: string): Promise<ChatRoom[]> {
   try {
     console.log("[Fetching Chat Rooms for] ==> ", userId);
 
-    // Check for rooms where this user is a participant
-    const roomsRef = ref(database, "chat_rooms");
+    // Reference to the chat_rooms collection in Firebase Realtime Database
+    const roomsRef = ref(firebaseDb, "chat_rooms");
     const snapshot = await get(roomsRef);
 
     if (!snapshot.exists()) {
@@ -118,37 +178,54 @@ export async function getChatRooms(userId: string): Promise<ChatRoom[]> {
 
       // Check if participants is an array or an object
       if (roomData.participants) {
+        // If it's an array, check if user is in it
         if (Array.isArray(roomData.participants)) {
           if (roomData.participants.includes(userId)) {
             rooms.push({
               id: roomSnapshot.key || "",
               participants: roomData.participants || [],
-              lastMessage: roomData.lastMessage || "",
-              lastUpdated: roomData.lastUpdated || Date.now(),
-              unreadCount: roomData.unreadCount?.[userId] || 0,
+              last_message: roomData.last_message || "",
+              last_updated: roomData.last_updated || Date.now(),
+              unread_count: roomData.unread_count || { [userId]: 0 },
             });
           }
-        } else if (typeof roomData.participants === "object") {
+        }
+        // If it's an object, check if user is a value
+        else if (typeof roomData.participants === "object") {
           const participantIds = Object.values(roomData.participants);
           if (participantIds.includes(userId)) {
             rooms.push({
               id: roomSnapshot.key || "",
               participants: participantIds as string[],
-              lastMessage: roomData.lastMessage || "",
-              lastUpdated: roomData.lastUpdated || Date.now(),
-              unreadCount: roomData.unreadCount?.[userId] || 0,
+              last_message: roomData.last_message || "",
+              last_updated: roomData.last_updated || Date.now(),
+              unread_count: roomData.unread_count || { [userId]: 0 },
             });
           }
         }
       }
+
+      // Also check for rooms where user_id or agent_id matches
+      if (
+        (roomData.user_id === userId || roomData.agent_id === userId) &&
+        !rooms.some((r) => r.id === roomSnapshot.key)
+      ) {
+        rooms.push({
+          id: roomSnapshot.key || "",
+          participants: [roomData.user_id, roomData.agent_id].filter(Boolean),
+          last_message: roomData.last_message || "",
+          last_updated: roomData.last_updated || Date.now(),
+          unread_count: roomData.unread_count || { [userId]: 0 },
+        });
+      }
     });
 
-    // Sort by last updated timestamp (newest first)
+    // Sort by last updated timestamp
     rooms.sort((a, b) => {
       const timeA =
-        typeof a.lastUpdated === "number" ? a.lastUpdated : Date.now();
+        typeof a.last_updated === "number" ? a.last_updated : Date.now();
       const timeB =
-        typeof b.lastUpdated === "number" ? b.lastUpdated : Date.now();
+        typeof b.last_updated === "number" ? b.last_updated : Date.now();
       return timeB - timeA;
     });
 
@@ -172,7 +249,7 @@ export async function getMessages(roomId: string): Promise<ChatMessage[]> {
   try {
     console.log("[Fetching Messages for Room] ==> ", roomId);
 
-    const messagesRef = ref(database, `messages/${roomId}`);
+    const messagesRef = ref(firebaseDb, `messages/${roomId}`);
     const snapshot = await get(messagesRef);
 
     if (!snapshot.exists()) {
@@ -185,10 +262,10 @@ export async function getMessages(roomId: string): Promise<ChatMessage[]> {
       const message = childSnapshot.val();
       messages.push({
         id: childSnapshot.key || "",
-        senderId: message.senderId,
-        receiverId: message.receiverId,
+        sender_id: message.sender_id,
+        receiver_id: message.receiver_id,
         content: message.content,
-        timestamp: message.timestamp || Date.now(), // Default to now if missing
+        timestamp: message.timestamp || Date.now(),
         read: message.read || false,
       });
     });
@@ -209,8 +286,7 @@ export async function getMessages(roomId: string): Promise<ChatMessage[]> {
 }
 
 /**
- * Subscribe to messages in a specific room
- * Returns a function to unsubscribe
+ * Subscribe to messages in a specific room with improved real-time handling
  */
 export function subscribeToMessages(
   roomId: string,
@@ -221,51 +297,74 @@ export function subscribeToMessages(
     return () => {};
   }
 
-  console.log("[Subscribing to Messages for Room] ==> ", roomId);
+  console.log(
+    "[SUBSCRIPTION SETUP] Room:",
+    roomId,
+    "at:",
+    new Date().toISOString()
+  );
 
-  const messagesRef = ref(database, `messages/${roomId}`);
+  const messagesRef = ref(firebaseDb, `messages/${roomId}`);
 
-  // Listen for changes to messages
-  onValue(messagesRef, (snapshot) => {
-    if (!snapshot.exists()) {
-      console.log(`Received 0 messages from subscription`);
-      callback([]);
-      return;
-    }
+  // Listen for changes to messages with better logging
+  const unsubscribe = onValue(
+    messagesRef,
+    (snapshot) => {
+      console.log(
+        "[SUBSCRIPTION TRIGGERED] Room:",
+        roomId,
+        "at:",
+        new Date().toISOString()
+      );
 
-    const messages: ChatMessage[] = [];
-    snapshot.forEach((childSnapshot) => {
-      const message = childSnapshot.val();
-      messages.push({
-        id: childSnapshot.key || "",
-        senderId: message.senderId,
-        receiverId: message.receiverId,
-        content: message.content,
-        timestamp: message.timestamp || Date.now(),
-        read: message.read || false,
+      if (!snapshot.exists()) {
+        console.log(`[SUBSCRIPTION] No messages for room: ${roomId}`);
+        callback([]);
+        return;
+      }
+
+      const messages: ChatMessage[] = [];
+      snapshot.forEach((childSnapshot) => {
+        const message = childSnapshot.val();
+        messages.push({
+          id: childSnapshot.key || "",
+          sender_id: message.sender_id,
+          receiver_id: message.receiver_id,
+          content: message.content,
+          timestamp: message.timestamp || Date.now(),
+          read: message.read || false,
+        });
       });
-    });
 
-    // Sort by timestamp
-    messages.sort((a, b) => {
-      const timeA = typeof a.timestamp === "number" ? a.timestamp : Date.now();
-      const timeB = typeof b.timestamp === "number" ? b.timestamp : Date.now();
-      return timeA - timeB;
-    });
+      // Sort by timestamp
+      messages.sort((a, b) => {
+        const timeA =
+          typeof a.timestamp === "number" ? a.timestamp : Date.now();
+        const timeB =
+          typeof b.timestamp === "number" ? b.timestamp : Date.now();
+        return timeA - timeB;
+      });
 
-    console.log(`Received ${messages.length} messages from subscription`);
-    callback(messages);
-  });
+      console.log(
+        `[SUBSCRIPTION] Room ${roomId}: Sending ${messages.length} messages to callback`
+      );
+      callback(messages);
+    },
+    (error) => {
+      // Add error handling callback
+      console.error(`[SUBSCRIPTION ERROR] Room ${roomId}:`, error);
+    }
+  );
 
-  // Return unsubscribe function
+  // Return enhanced unsubscribe function
   return () => {
-    console.log(`Unsubscribing from room ${roomId}`);
+    console.log(`[UNSUBSCRIBING] Room ${roomId} at:`, new Date().toISOString());
     off(messagesRef);
   };
 }
 
 /**
- * Send a message with consistent room ID resolution
+ * Send a message
  */
 export async function sendMessage(
   senderId: string,
@@ -277,7 +376,7 @@ export async function sendMessage(
   }
 
   try {
-    // Generate a consistent room ID that handles agent/user relationships
+    // Generate room ID
     const roomId = await getConsistentRoomId(senderId, receiverId);
 
     console.log("[Sending Message] ==> ", {
@@ -288,45 +387,44 @@ export async function sendMessage(
     });
 
     // Prepare message data
-    const messageData: Omit<ChatMessage, "id"> = {
-      senderId,
-      receiverId,
+    const messageData = {
+      sender_id: senderId,
+      receiver_id: receiverId,
       content,
-      timestamp: Date.now(),
+      timestamp: serverTimestamp(),
       read: false,
     };
 
     // Create message reference
-    const messagesRef = ref(database, `messages/${roomId}`);
+    const messagesRef = ref(firebaseDb, `messages/${roomId}`);
     const newMessageRef = push(messagesRef);
 
     // Save message
     await set(newMessageRef, messageData);
 
     // Update chat room data
-    const roomRef = ref(database, `chat_rooms/${roomId}`);
+    const roomRef = ref(firebaseDb, `chat_rooms/${roomId}`);
     const roomSnapshot = await get(roomRef);
 
     if (!roomSnapshot.exists()) {
       // Create new room
       await set(roomRef, {
         participants: [senderId, receiverId],
-        lastMessage: content,
-        lastUpdated: Date.now(),
-        unreadCount: {
+        last_message: content,
+        last_updated: serverTimestamp(),
+        unread_count: {
           [receiverId]: 1,
-          [senderId]: 0,
         },
       });
     } else {
       // Update existing room
       const roomData = roomSnapshot.val();
       const updates: any = {
-        lastMessage: content,
-        lastUpdated: Date.now(),
+        last_message: content,
+        last_updated: serverTimestamp(),
       };
 
-      // Update participants array if needed
+      // Ensure participants array contains both users
       if (!roomData.participants) {
         updates.participants = [senderId, receiverId];
       } else if (Array.isArray(roomData.participants)) {
@@ -340,15 +438,12 @@ export async function sendMessage(
         updates.participants = participants;
       }
 
-      // Update unread count for receiver
-      if (!roomData.unreadCount) {
-        updates.unreadCount = {
-          [receiverId]: 1,
-          [senderId]: 0,
-        };
+      // Increment unread count for receiver
+      if (!roomData.unread_count) {
+        updates.unread_count = { [receiverId]: 1 };
       } else {
-        const currentCount = roomData.unreadCount[receiverId] || 0;
-        updates[`unreadCount/${receiverId}`] = currentCount + 1;
+        const currentCount = roomData.unread_count[receiverId] || 0;
+        updates[`unread_count/${receiverId}`] = currentCount + 1;
       }
 
       await update(roomRef, updates);
@@ -357,6 +452,7 @@ export async function sendMessage(
     return {
       ...messageData,
       id: newMessageRef.key || "",
+      timestamp: Date.now(), // Replace serverTimestamp with current time for immediate use
     };
   } catch (error) {
     console.error("Error sending message:", error);
@@ -365,7 +461,7 @@ export async function sendMessage(
 }
 
 /**
- * Mark messages as read with improved handling for agents
+ * Mark messages as read
  */
 export async function markMessagesAsRead(
   roomId: string,
@@ -396,7 +492,7 @@ export async function markMessagesAsRead(
     );
 
     // First, explicitly update unread count for the user to 0
-    const roomRef = ref(database, `chat_rooms/${roomId}`);
+    const roomRef = ref(firebaseDb, `chat_rooms/${roomId}`);
     const roomSnapshot = await get(roomRef);
 
     if (!roomSnapshot.exists()) {
@@ -409,12 +505,12 @@ export async function markMessagesAsRead(
       `Setting unread_count to 0 for user ${effectiveUserId} in room ${roomId}`
     );
     const updates: { [key: string]: any } = {
-      [`unreadCount/${effectiveUserId}`]: 0,
+      [`unread_count/${effectiveUserId}`]: 0,
     };
 
     // If this is an agent, also update the original user ID's unread count
     if (isAgentResult.isAgent && isAgentResult.agentId) {
-      updates[`unreadCount/${userId}`] = 0;
+      updates[`unread_count/${userId}`] = 0;
       console.log(
         `Also setting unread_count to 0 for original userId ${userId}`
       );
@@ -423,7 +519,7 @@ export async function markMessagesAsRead(
     await update(roomRef, updates);
 
     // Mark all messages as read where user is receiver (checking both IDs)
-    const messagesRef = ref(database, `messages/${roomId}`);
+    const messagesRef = ref(firebaseDb, `messages/${roomId}`);
     const messagesSnapshot = await get(messagesRef);
 
     if (!messagesSnapshot.exists()) {
@@ -438,8 +534,8 @@ export async function markMessagesAsRead(
       const message = childSnapshot.val();
       // Check both the original user ID and effective ID (for agents)
       if (
-        (message.receiverId === userId ||
-          message.receiverId === effectiveUserId) &&
+        (message.receiver_id === userId ||
+          message.receiver_id === effectiveUserId) &&
         !message.read
       ) {
         messageUpdates[`${childSnapshot.key}/read`] = true;
@@ -486,8 +582,8 @@ export async function deleteChat(roomId: string): Promise<boolean> {
     console.log("[Deleting Chat Room and Messages] ==> ", roomId);
 
     // Create references to both the room and messages
-    const roomRef = ref(database, `chat_rooms/${roomId}`);
-    const messagesRef = ref(database, `messages/${roomId}`);
+    const roomRef = ref(firebaseDb, `chat_rooms/${roomId}`);
+    const messagesRef = ref(firebaseDb, `messages/${roomId}`);
 
     // Delete messages first
     await remove(messagesRef);
@@ -503,4 +599,3 @@ export async function deleteChat(roomId: string): Promise<boolean> {
     throw error;
   }
 }
-export { ChatRoom, checkIsAgent, ChatMessage };

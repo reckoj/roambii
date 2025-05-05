@@ -12,6 +12,7 @@ import { useGlobalContext } from "@/lib/global-provider";
 import { useEffect, useState } from "react";
 import { ref, onValue } from "firebase/database";
 import { checkIsAgent } from "@/lib/auth-service";
+import { firebaseDb } from "@/lib/firebase/firebase-config";
 
 // New TabIcon for Lucide icons with badge support
 const LucideTabIcon = ({
