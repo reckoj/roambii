@@ -9,7 +9,6 @@ import {
   View,
   Dimensions,
   StyleSheet,
-  Modal,
   ActivityIndicator,
   FlatList,
   Alert,
@@ -20,9 +19,7 @@ import {
   Star,
   ArrowLeft,
   MessageCircle,
-  ChevronRight,
   Globe,
-  Calendar,
   MapPin,
   User2,
   Share2,
@@ -34,6 +31,7 @@ import images from "@/constants/images";
 import { useGlobalContext } from "@/lib/global-provider";
 import { getAgentById, getAgentPackages } from "@/lib/agent-service";
 import { Agent } from "@/lib/firebase/models";
+import ReviewsList from "@/components/ReviewsList";
 
 // Define theme colors
 const COLORS = {
@@ -58,14 +56,6 @@ const COLORS = {
 
 const { width } = Dimensions.get("window");
 
-type Review = {
-  id: string;
-  author: string;
-  rating: number;
-  comment: string;
-  avatar?: string;
-};
-
 const AgentProfile = () => {
   const params = useLocalSearchParams();
   const agentId = Array.isArray(params.id) ? params.id[0] : params.id;
@@ -74,9 +64,8 @@ const AgentProfile = () => {
   const [loading, setLoading] = useState(true);
   const [packages, setPackages] = useState<any[]>([]);
   const [loadingPackages, setLoadingPackages] = useState(true);
-  const [selectedReview, setSelectedReview] = useState<Review | null>(null);
-  const [isModalVisible, setIsModalVisible] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [showAllReviews, setShowAllReviews] = useState(false);
 
   useEffect(() => {
     const fetchAgent = async () => {
@@ -184,7 +173,20 @@ const AgentProfile = () => {
     }
   };
 
-  const handleCardPress = (id: string) => router.push(`/properties/${id}`);
+  const handleCardPress = (id: string) => {
+    console.log("Navigating to property with ID:", id);
+    // Check if id is $id or id format
+    const propertyId = id.startsWith("$") ? id.substring(1) : id;
+    router.push({
+      pathname: "/properties/[id]",
+      params: { id: propertyId },
+    });
+  };
+
+  const handleShareProfile = () => {
+    // Implement share functionality here
+    Alert.alert("Share", "Share agent profile functionality coming soon!");
+  };
 
   const renderStars = (rating: number) => {
     return (
@@ -249,7 +251,10 @@ const AgentProfile = () => {
             <View style={styles.headerTitleContainer}>
               <Text style={styles.headerTitle}>Agent Profile</Text>
             </View>
-            <TouchableOpacity style={styles.shareButton}>
+            <TouchableOpacity
+              style={styles.shareButton}
+              onPress={handleShareProfile}
+            >
               <Share2 size={22} color={COLORS.white} />
             </TouchableOpacity>
           </View>
@@ -350,39 +355,22 @@ const AgentProfile = () => {
               data={packages}
               renderItem={({ item }) => (
                 <View style={styles.packageCard}>
-                  <Card item={item} onPress={() => handleCardPress(item.id)} />
+                  <Card
+                    item={item}
+                    onPress={() => handleCardPress(item.$id || item.id)}
+                  />
                 </View>
               )}
-              keyExtractor={(item) => item.id}
+              keyExtractor={(item) => item.$id || item.id}
               showsHorizontalScrollIndicator={false}
               contentContainerStyle={styles.packagesList}
             />
           )}
         </View>
 
-        {/* Reviews Section */}
+        {/* Reviews Section - Now uses the ReviewsList component */}
         <View style={styles.sectionContainer}>
-          <Text style={styles.sectionTitle}>Reviews</Text>
-          {agent.reviewCount === 0 ? (
-            <View style={styles.noReviewsContainer}>
-              <Text style={styles.noReviewsText}>
-                No reviews yet. Be the first to leave a review!
-              </Text>
-            </View>
-          ) : (
-            <View style={styles.reviewsPreviewContainer}>
-              <Text style={styles.reviewsPreviewText}>
-                This agent has {agent.reviewCount} reviews with an average
-                rating of {agent.rating?.toFixed(1) || "0.0"}.
-              </Text>
-              <TouchableOpacity
-                style={styles.viewAllReviewsButton}
-                // onPress={() => router.push(`/agent-reviews/${agent.id}`)}
-              >
-                <Text style={styles.viewAllReviewsText}>View All Reviews</Text>
-              </TouchableOpacity>
-            </View>
-          )}
+          {agent && <ReviewsList agentId={agent.id} />}
         </View>
       </ScrollView>
     </View>
@@ -630,43 +618,6 @@ const styles = StyleSheet.create({
   packagesList: {
     paddingBottom: 8,
     paddingRight: 20,
-  },
-  noReviewsContainer: {
-    padding: 20,
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: COLORS.lightGray,
-    borderRadius: 12,
-  },
-  noReviewsText: {
-    fontSize: 14,
-    color: COLORS.textLight,
-    textAlign: "center",
-  },
-  reviewsPreviewContainer: {
-    padding: 16,
-    backgroundColor: COLORS.lightGray,
-    borderRadius: 12,
-    alignItems: "center",
-  },
-  reviewsPreviewText: {
-    fontSize: 14,
-    color: COLORS.text,
-    textAlign: "center",
-    marginBottom: 16,
-  },
-  viewAllReviewsButton: {
-    backgroundColor: COLORS.white,
-    paddingVertical: 8,
-    paddingHorizontal: 16,
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: COLORS.primary,
-  },
-  viewAllReviewsText: {
-    color: COLORS.primary,
-    fontSize: 14,
-    fontWeight: "500",
   },
 });
 

@@ -6,29 +6,46 @@ import {
   TouchableOpacity,
   Image,
   StyleSheet,
+  ScrollView,
 } from "react-native";
-import { X } from "lucide-react-native"; // Assuming you're using lucide-react-native for icons
+import { X, Star } from "lucide-react-native";
 
-interface Review {
+export interface ReviewDetails {
+  id: string;
   author: string;
-  avatar: string;
-  rating: number;
+  avatar?: string;
+  agentRating: number; // Changed from rating to agentRating to match ReviewsList
   comment: string;
+  createdAt?: string;
+  users?: string[];
+  agentId?: any;
+  $permissions?: string[];
 }
 
 interface ReviewModalProps {
   isModalVisible: boolean;
   setIsModalVisible: (visible: boolean) => void;
-  selectedReview: Review | null;
-  renderStars: (rating: number) => React.ReactNode;
+  selectedReview: ReviewDetails | null;
 }
 
 const ReviewModal: React.FC<ReviewModalProps> = ({
   isModalVisible,
   setIsModalVisible,
   selectedReview,
-  renderStars,
 }) => {
+  const renderStars = (rating: number) => (
+    <View style={styles.starContainer}>
+      {[...Array(5)].map((_, i) => (
+        <Star
+          key={i}
+          size={16}
+          color={i < Math.floor(rating) ? "#FDB814" : "#D1D5DB"}
+          fill={i < Math.floor(rating) ? "#FDB814" : "none"}
+        />
+      ))}
+    </View>
+  );
+
   return (
     <Modal
       animationType="slide"
@@ -49,21 +66,30 @@ const ReviewModal: React.FC<ReviewModalProps> = ({
               <X size={24} color="#000" />
             </TouchableOpacity>
           </View>
-          <View style={styles.modalBody}>
+          <ScrollView style={styles.modalBody}>
             <View style={styles.reviewerInfo}>
               <Image
-                source={{ uri: selectedReview?.avatar }}
+                source={
+                  selectedReview?.avatar
+                    ? { uri: selectedReview.avatar }
+                    : require("@/assets/images/avatar.png")
+                }
                 style={styles.modalAvatar}
               />
               <View>
                 <Text style={styles.reviewerName}>
                   {selectedReview?.author}
                 </Text>
-                {selectedReview && renderStars(selectedReview.rating)}
+                {selectedReview && renderStars(selectedReview.agentRating)}
+                {selectedReview?.createdAt && (
+                  <Text style={styles.reviewDate}>
+                    {new Date(selectedReview.createdAt).toLocaleDateString()}
+                  </Text>
+                )}
               </View>
             </View>
             <Text style={styles.reviewText}>{selectedReview?.comment}</Text>
-          </View>
+          </ScrollView>
         </View>
       </View>
     </Modal>
@@ -82,6 +108,7 @@ const styles = StyleSheet.create({
     backgroundColor: "white",
     borderRadius: 10,
     width: "100%",
+    maxHeight: "80%",
     padding: 20,
     shadowColor: "#000",
     shadowOffset: {
@@ -106,12 +133,13 @@ const styles = StyleSheet.create({
     padding: 5,
   },
   modalBody: {
-    gap: 15,
+    maxHeight: "90%",
   },
   reviewerInfo: {
     flexDirection: "row",
     alignItems: "center",
     gap: 10,
+    marginBottom: 15,
   },
   modalAvatar: {
     width: 50,
@@ -122,9 +150,18 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: "500",
   },
+  reviewDate: {
+    fontSize: 12,
+    color: "#6B7280",
+    marginTop: 2,
+  },
   reviewText: {
     fontSize: 16,
     lineHeight: 24,
+  },
+  starContainer: {
+    flexDirection: "row",
+    marginTop: 5,
   },
 });
 
