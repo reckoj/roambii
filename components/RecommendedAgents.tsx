@@ -9,8 +9,7 @@ import {
   View,
 } from "react-native";
 import { getAllAgents } from "@/lib/agent-service";
-
-// Import Firebase service instead of Appwrite
+import images from "@/constants/images"; // Import default images
 
 const RecommendedAgents = () => {
   const [agents, setAgents] = useState<any[]>([]);
@@ -22,6 +21,7 @@ const RecommendedAgents = () => {
         setLoading(true);
         // Use Firebase function to get all agents, limit to 10 for recommended list
         const data = await getAllAgents({ limit: 10 });
+        console.log("Fetched agents:", data.length);
         setAgents(data || []);
       } catch (error) {
         console.error("Error fetching agents:", error);
@@ -39,6 +39,41 @@ const RecommendedAgents = () => {
       pathname: "/agents/[id]",
       params: { id: agentId },
     });
+  };
+
+  // Helper function to get avatar image source with fallback
+  const getAvatarSource = (agent: any) => {
+    // Check for avatar in various potential property names
+    if (
+      agent.avatar &&
+      typeof agent.avatar === "string" &&
+      agent.avatar.startsWith("http")
+    ) {
+      return { uri: agent.avatar };
+    }
+
+    // Check for avatarUrl as alternative property name
+    if (
+      agent.avatarUrl &&
+      typeof agent.avatarUrl === "string" &&
+      agent.avatarUrl.startsWith("http")
+    ) {
+      return { uri: agent.avatarUrl };
+    }
+
+    // If no valid avatar URL found, use default avatar image
+    return images.avatar; // Make sure you have a default avatar in your images constants
+  };
+
+  // Helper function to get initials for fallback display
+  const getInitials = (name?: string): string => {
+    if (!name) return "A";
+    return name
+      .split(" ")
+      .map((n) => n[0])
+      .join("")
+      .toUpperCase()
+      .substring(0, 2);
   };
 
   if (loading) {
@@ -71,13 +106,18 @@ const RecommendedAgents = () => {
           onPress={() => handleAgentPress(agent.id)}
           className="flex flex-col items-center mr-4 px-4"
         >
-          <Image
-            source={
-              agent.avatar // Use a placeholder if no avatar
-            }
-            className="size-16 rounded-full"
-          />
-          <Text className="text-sm text-text font-rubik">
+          {/* Avatar with error handling */}
+          <View className="size-16 rounded-full overflow-hidden bg-gray-200 flex items-center justify-center">
+            <Image
+              source={getAvatarSource(agent)}
+              className="size-16 rounded-full"
+              defaultSource={images.avatar}
+              onError={() =>
+                console.log(`Failed to load avatar for agent ${agent.id}`)
+              }
+            />
+          </View>
+          <Text className="text-sm text-text font-rubik mt-1">
             {agent.name ? agent.name.split(" ")[0] : "Agent"}
           </Text>
         </TouchableOpacity>

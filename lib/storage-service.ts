@@ -10,6 +10,15 @@ import { storage } from "../lib/firebase/firebase-config";
 import { v4 as uuidv4 } from "uuid";
 
 /**
+ * Generate a unique filename for Firebase Storage
+ * Alternative to uuid which has compatibility issues on some React Native environments
+ */
+const generateUniqueFilename = (prefix: string, extension: string): string => {
+  const timestamp = Date.now();
+  const randomStr = Math.random().toString(36).substring(2, 10);
+  return `${prefix}_${timestamp}_${randomStr}.${extension}`;
+};
+/**
  * Upload a profile image to Firebase Storage
  * @param userId User ID to associate with the image
  * @param imageUri Local URI of the image to upload
@@ -18,27 +27,48 @@ import { v4 as uuidv4 } from "uuid";
 export const uploadProfileImage = async (
   userId: string,
   imageUri: string
-): Promise<string | undefined> => {
+): Promise<string | null> => {
   try {
+    console.log("Starting profile image upload for user:", userId);
+
     // Fetch the file from the URI
     const response = await fetch(imageUri);
     const blob = await response.blob();
 
-    // Generate a unique file name
+    // Generate a unique file name using timestamp
+    const timestamp = Date.now();
+    const random = Math.floor(Math.random() * 10000);
     const fileExtension = imageUri.split(".").pop() || "jpg";
-    const fileName = `${userId}_profile_${uuidv4()}.${fileExtension}`;
+    const fileName = `profile_${userId}_${timestamp}_${random}.${fileExtension}`;
+    const filePath = `avatars/${userId}/${fileName}`;
+
+    console.log("Uploading to Firebase path:", filePath);
 
     // Upload to Firebase Storage
-    const avatarRef = ref(storage, `avatars/${fileName}`);
-    await uploadBytes(avatarRef, blob);
+    const avatarRef = ref(storage, filePath);
+    const uploadResult = await uploadBytes(avatarRef, blob);
+    console.log("Upload completed:", uploadResult.metadata.fullPath);
 
     // Get download URL
     const downloadUrl = await getDownloadURL(avatarRef);
+    console.log("Image uploaded successfully, URL:", downloadUrl);
+
+    // Test if the URL is accessible
+    try {
+      const urlTest = await fetch(downloadUrl, { method: "HEAD" });
+      if (!urlTest.ok) {
+        console.error("Uploaded image URL is not accessible:", urlTest.status);
+        return null;
+      }
+    } catch (urlError) {
+      console.error("Error testing image URL:", urlError);
+      // Continue anyway since some environments might block the test request
+    }
 
     return downloadUrl;
   } catch (error) {
     console.error("Error uploading profile image:", error);
-    return undefined;
+    return null;
   }
 };
 

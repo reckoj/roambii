@@ -31,6 +31,7 @@ import {
   collection,
   where,
   getDocs,
+  DocumentReference,
 } from "firebase/firestore";
 import { auth, firestore, COLLECTIONS } from "../lib/firebase/firebase-config";
 import * as Linking from "expo-linking";
@@ -336,36 +337,135 @@ export const getCurrentUser = async (): Promise<User | null> => {
 };
 
 /**
- * Update user profile
+ * Update user profile with enhanced error handling and Firebase Auth synchronization
  */
 export const updateUser = async (
   userId: string,
   updates: Partial<User>
 ): Promise<boolean> => {
   try {
-    // Update user document in Firestore
-    const userRef = doc(firestore, COLLECTIONS.USERS, userId);
-    await updateDoc(userRef, {
-      ...updates,
-      updatedAt: new Date(),
-    });
+    console.log(
+      "Updating user:",
+      userId,
+      "with updates:",
+      JSON.stringify(updates)
+    );
 
-    // If user is an agent, update agent document as well
-    const agentRef = doc(firestore, COLLECTIONS.AGENTS, userId);
-    const agentDoc = await getDoc(agentRef);
+    // First find the user document - multiple strategies for backward compatibility
+    let userDocRef: DocumentReference | null = null;
 
-    if (agentDoc.exists()) {
-      await updateDoc(agentRef, {
-        ...updates,
-        updatedAt: new Date(),
-      });
+    // Strategy 1: Direct ID lookup
+    const directRef = doc(firestore, COLLECTIONS.USERS, userId);
+    const directDoc = await getDoc(directRef);
+
+    if (directDoc.exists()) {
+      console.log("Found user document via direct ID");
+      userDocRef = directRef;
+    } else {
+      // Strategy 2: Query by userId field
+      console.log("Direct ID lookup failed, trying userId field");
+      const usersRef = collection(firestore, COLLECTIONS.USERS);
+      const q = query(usersRef, where("userId", "==", userId));
+      const querySnapshot = await getDocs(q);
+
+      if (!querySnapshot.empty) {
+        userDocRef = querySnapshot.docs[0].ref;
+        console.log("Found user document via userId field");
+      } else {
+        // Strategy 3: Try email if auth.currentUser is available
+        if (auth.currentUser?.email) {
+          console.log("Trying to find user by email:", auth.currentUser.email);
+          const emailQuery = query(
+            usersRef,
+            where("email", "==", auth.currentUser.email)
+          );
+          const emailSnapshot = await getDocs(emailQuery);
+
+          if (!emailSnapshot.empty) {
+            userDocRef = emailSnapshot.docs[0].ref;
+            console.log("Found user document via email");
+          }
+        }
+      }
     }
 
-    // Update Firebase Auth profile if name is being updated
-    if (updates.name && auth.currentUser) {
-      await updateProfile(auth.currentUser, {
-        displayName: updates.name,
-      });
+    if (!userDocRef) {
+      console.error("Failed to find user document for update");
+      return false;
+    }
+
+    // Prepare update data
+    const updateData = {
+      ...updates,
+      updatedAt: new Date(),
+    };
+
+    // Update the user document
+    await updateDoc(userDocRef, updateData);
+    console.log("Updated user document in Firestore");
+
+    // Update Firebase Auth profile if relevant fields are being updated
+    if (auth.currentUser) {
+      const authUpdates: any = {};
+      let needsAuthUpdate = false;
+
+      if (updates.name) {
+        authUpdates.displayName = updates.name;
+        needsAuthUpdate = true;
+      }
+
+      if (updates.avatar) {
+        authUpdates.photoURL = updates.avatar;
+        needsAuthUpdate = true;
+      }
+
+      if (needsAuthUpdate) {
+        try {
+          await updateProfile(auth.currentUser, authUpdates);
+          console.log("Updated Firebase Auth profile");
+        } catch (authError) {
+          console.warn("Failed to update Firebase Auth profile:", authError);
+          // Continue since Firestore update was successful
+        }
+      }
+    }
+
+    // If user is an agent, update agent document as well
+    if (updates.avatar || updates.name) {
+      try {
+        // First check if user is an agent by document ID
+        const agentRef = doc(firestore, COLLECTIONS.AGENTS, userId);
+        const agentDoc = await getDoc(agentRef);
+
+        if (agentDoc.exists()) {
+          const agentUpdates: any = {};
+          if (updates.avatar) agentUpdates.avatar = updates.avatar;
+          if (updates.name) agentUpdates.name = updates.name;
+          agentUpdates.updatedAt = new Date();
+
+          await updateDoc(agentRef, agentUpdates);
+          console.log("Updated agent document");
+        } else {
+          // Try to find agent by userId
+          const agentsRef = collection(firestore, COLLECTIONS.AGENTS);
+          const q = query(agentsRef, where("userId", "==", userId));
+          const querySnapshot = await getDocs(q);
+
+          if (!querySnapshot.empty) {
+            const agentDoc = querySnapshot.docs[0];
+            const agentUpdates: any = {};
+            if (updates.avatar) agentUpdates.avatar = updates.avatar;
+            if (updates.name) agentUpdates.name = updates.name;
+            agentUpdates.updatedAt = new Date();
+
+            await updateDoc(agentDoc.ref, agentUpdates);
+            console.log("Updated agent document via userId");
+          }
+        }
+      } catch (agentError) {
+        console.warn("Failed to update agent document:", agentError);
+        // Continue since the user update was successful
+      }
     }
 
     return true;

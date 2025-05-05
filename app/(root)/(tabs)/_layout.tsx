@@ -11,8 +11,7 @@ import {
 import { useGlobalContext } from "@/lib/global-provider";
 import { useEffect, useState } from "react";
 import { ref, onValue } from "firebase/database";
-import { firebaseDb } from "@/lib/firebase";
-import { checkIsAgent } from "@/lib/chatService";
+import { checkIsAgent } from "@/lib/auth-service";
 
 // New TabIcon for Lucide icons with badge support
 const LucideTabIcon = ({
@@ -60,7 +59,7 @@ const UnreadMessageTracker = ({
   const { rawUser } = useGlobalContext();
 
   useEffect(() => {
-    if (!rawUser?.$id) return;
+    if (!rawUser?.id) return;
 
     // Track if component is mounted to avoid state updates after unmount
     let isMounted = true;
@@ -69,11 +68,11 @@ const UnreadMessageTracker = ({
     const setupUnreadListener = async () => {
       try {
         // Check if user is an agent
-        const isAgentResult = await checkIsAgent(rawUser.$id);
+        const isAgentResult = await checkIsAgent(rawUser.id);
         const userId =
           isAgentResult.isAgent && isAgentResult.agentId
             ? isAgentResult.agentId
-            : rawUser.$id;
+            : rawUser.id;
 
         console.log(
           `Setting up unread message tracker for ${

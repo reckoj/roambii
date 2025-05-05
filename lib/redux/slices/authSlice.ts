@@ -11,6 +11,7 @@ import {
   updatePassword,
 } from "@/lib/auth-service";
 import { User as FirebaseUser } from "@/lib/firebase/models"; // Import the Firebase User type
+import { uploadProfileImage } from "@/lib/storage-service";
 import { createSlice, createAsyncThunk } from "@reduxjs/toolkit";
 
 // Define interfaces for Redux state
@@ -214,33 +215,63 @@ export const fetchCurrentUserAsync = createAsyncThunk(
   }
 );
 
+// Update this function in your authSlice.ts file
 export const updateUserAsync = createAsyncThunk(
   "auth/updateUser",
   async (
-    { userId, updates }: { userId: string; updates: Partial<User> },
+    {
+      userId,
+      updates,
+      imageUri,
+    }: {
+      userId: string;
+      updates: Partial<User>;
+      imageUri?: string; // Add optional image URI parameter
+    },
     { rejectWithValue }
   ) => {
     try {
       console.log("Auth Slice: Updating user", userId);
+      let finalUpdates = { ...updates };
 
-      // Convert Redux user format to Firebase user format
-      const firebaseUpdates: Partial<FirebaseUser> = {
-        ...updates,
-        // Make sure to handle any type conversions here
-      };
+      // If imageUri is provided, upload it first
+      if (imageUri) {
+        console.log("Auth Slice: Uploading profile image");
+        try {
+          const avatarUrl = await uploadProfileImage(userId, imageUri);
 
-      const success = await updateUser(userId, firebaseUpdates);
+          if (avatarUrl) {
+            console.log("Auth Slice: Image upload successful, URL:", avatarUrl);
+            // Add the avatar URL to the updates
+            finalUpdates.avatar = avatarUrl;
+          } else {
+            console.log(
+              "Auth Slice: Failed to upload profile image - null URL returned"
+            );
+            return rejectWithValue("Failed to upload profile image");
+          }
+        } catch (uploadError) {
+          console.error("Auth Slice: Image upload error:", uploadError);
+          return rejectWithValue("Error uploading profile image");
+        }
+      }
+
+      // Now update the user with all changes including the new avatar URL if applicable
+      const success = await updateUser(userId, finalUpdates);
 
       if (success) {
-        console.log("Auth Slice: User update successful");
-        return updates;
+        console.log(
+          "Auth Slice: User update successful with updates:",
+          finalUpdates
+        );
+        return finalUpdates;
       } else {
         console.log("Auth Slice: User update failed");
         return rejectWithValue("Failed to update user");
       }
     } catch (error: any) {
-      console.error("Auth Slice: User update error", error.message);
-      return rejectWithValue(error.message);
+      console.error("Auth Slice: User update error", error);
+      return rejectWithValue(error.message || "Unknown error updating user");
     }
   }
 );

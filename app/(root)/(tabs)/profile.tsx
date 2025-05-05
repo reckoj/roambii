@@ -105,6 +105,8 @@ const Profile: React.FC = () => {
   const { rawUser, refetch, isAgent } = useGlobalContext();
   const dispatch = useDispatch<AppDispatch>();
   const [loading, setLoading] = useState<boolean>(false);
+  const [imageError, setImageError] = useState<boolean>(false);
+
   const [avatarUrl, setAvatarUrl] = useState<string | null>(
     rawUser?.avatar || null
   );
@@ -112,6 +114,12 @@ const Profile: React.FC = () => {
   useEffect(() => {
     if (rawUser?.avatar) {
       setAvatarUrl(rawUser.avatar);
+    }
+  }, [rawUser?.avatar]);
+  useEffect(() => {
+    if (rawUser?.avatar) {
+      setAvatarUrl(rawUser.avatar);
+      setImageError(false); // Reset error state when new avatar URL is set
     }
   }, [rawUser?.avatar]);
 
@@ -149,52 +157,69 @@ const Profile: React.FC = () => {
     }
   };
 
-  /**
-   * Handles image selection and upload
-   */
   const pickImage = async () => {
-    const pickerResult = await ImagePicker.launchImageLibraryAsync({
-      allowsEditing: true,
-      aspect: [4, 3],
-      quality: 0.7,
-    });
+    try {
+      const pickerResult = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        allowsEditing: true,
+        aspect: [1, 1],
+        quality: 0.7,
+      });
 
-    if (!pickerResult.canceled) {
-      try {
-        setLoading(true);
+      if (
+        !pickerResult.canceled &&
+        pickerResult.assets &&
+        pickerResult.assets.length > 0
+      ) {
+        try {
+          setLoading(true);
+          setImageError(false);
+          const imageUri = pickerResult.assets[0].uri;
 
-        // Use Firebase storage service to upload the image
-        const avatarUrl = await uploadProfileImage(
-          rawUser!.id,
-          pickerResult.assets[0].uri
-        );
+          console.log("Selected image URI:", imageUri);
 
-        if (avatarUrl) {
-          // Update user profile with new avatar URL
-          await dispatch(
+          // Use Redux to handle the upload and update
+          const result = await dispatch(
             updateUserAsync({
               userId: rawUser!.id,
-              updates: { avatar: avatarUrl },
+              updates: {}, // Avatar will be added by the thunk after upload
+              imageUri: imageUri,
             })
           ).unwrap();
 
-          Alert.alert("Success", "Profile picture updated successfully! 🎉");
-          refetch();
-        } else {
-          throw new Error("Failed to upload image");
+          console.log("Update result:", result);
+
+          if (result && result.avatar) {
+            // Success! Update local state with the new avatar URL
+            setAvatarUrl(result.avatar);
+            // Alert.alert("Success", "Profile picture updated successfully! 🎉");
+
+            // Ensure global context is refreshed
+            await refetch();
+          } else {
+            throw new Error(
+              "Failed to update profile picture - no avatar URL in result"
+            );
+          }
+        } catch (error: any) {
+          console.error("Error updating profile picture:", error);
+          Alert.alert(
+            "Error",
+            error.message ||
+              "Failed to update profile picture. Please try again."
+          );
+          setImageError(true);
+        } finally {
+          setLoading(false);
         }
-      } catch (error) {
-        console.error("Error uploading profile image:", error);
-        Alert.alert(
-          "Error",
-          "Failed to update profile picture. Please try again."
-        );
-      } finally {
-        setLoading(false);
       }
+    } catch (error) {
+      console.error("Image picker error:", error);
+      Alert.alert("Error", "There was a problem opening the image picker");
+      setLoading(false);
+      setImageError(true);
     }
   };
-
   /**
    * Handles user logout with Redux
    */
@@ -245,26 +270,41 @@ const Profile: React.FC = () => {
         end={{ x: 1, y: 1 }}
         style={styles.header}
       >
+        {/* Profile image section */}
         <View style={styles.profileImageContainer}>
           {loading ? (
-            <ActivityIndicator size="large" color="#1E90FF" />
-          ) : rawUser?.avatar ? ( // Display uploaded image if available
-            <Image
-              source={{ uri: rawUser.avatar }}
-              className="size-44 rounded-full border-2 border-slate-300"
-              style={styles.profileImage}
-              onLoadEnd={() => setLoading(false)}
-            />
-          ) : (
+            <View style={styles.loaderContainer}>
+              <ActivityIndicator size="large" color="#FFFFFF" />
+            </View>
+          ) : imageError || !avatarUrl ? (
+            // Show initials if there's no avatar or if there was an error loading it
             <View style={styles.initialsContainer}>
               <Text style={styles.initialsText}>
                 {getInitials(rawUser?.name)}
               </Text>
             </View>
+          ) : (
+            // Show the avatar image
+            <Image
+              source={{ uri: avatarUrl }}
+              style={styles.profileImage}
+              onError={(e) => {
+                console.error("Error loading image:", e.nativeEvent.error);
+                setImageError(true);
+              }}
+            />
           )}
 
-          <TouchableOpacity style={styles.cameraButton} onPress={pickImage}>
-            <Camera size={20} color={COLORS.white} />
+          <TouchableOpacity
+            style={styles.cameraButton}
+            onPress={pickImage}
+            disabled={loading}
+          >
+            {loading ? (
+              <ActivityIndicator size="small" color="#FFFFFF" />
+            ) : (
+              <Camera size={20} color={COLORS.white} />
+            )}
           </TouchableOpacity>
         </View>
 
@@ -490,4 +530,16 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: COLORS.textLight,
   },
+  loaderContainer: {
+    width: 100,
+    height: 100,
+    borderRadius: 50,
+    backgroundColor: "rgba(255, 255, 255, 0.3)",
+    justifyContent: "center",
+    alignItems: "center",
+    borderWidth: 4,
+    borderColor: COLORS.white,
+  },
 });
+
+//  (NOBRIDGE) ERROR  Error setting up unread message tracker: [ReferenceError: Property 'firebaseDb' doesn't exist]
