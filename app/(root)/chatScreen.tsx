@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState, useCallback } from "react";
+import React, { useEffect, useRef, useState, useCallback, useMemo } from "react";
 import {
   View,
   Text,
@@ -14,6 +14,8 @@ import {
   StyleSheet,
   ImageBackground,
   RefreshControl,
+  Dimensions,
+  Pressable,
 } from "react-native";
 import { StatusBar } from "react-native";
 import { router, useLocalSearchParams, useFocusEffect } from "expo-router";
@@ -22,12 +24,15 @@ import {
   subscribeToMessages,
   getConsistentRoomId,
   ChatMessage,
+  getChatPartner,
 } from "@/lib/chat-service";
 import { useGlobalContext } from "@/lib/global-provider";
 import images from "@/constants/images";
 import { databases, config } from "@/lib/appwrite";
 import { Query } from "react-native-appwrite";
 import ChatBubble from "@/components/ChatBubble";
+import { Ionicons } from "@expo/vector-icons";
+import ShimmerEffect from "@/components/LoadingShimmer";
 
 // Redux imports
 import { useDispatch, useSelector } from "react-redux";
@@ -39,9 +44,9 @@ import {
   markMessagesAsReadAsync,
   updateMessages,
   updateUserProfiles,
+  fetchChatPartnerProfileAsync,
 } from "@/lib/redux/slices/chatSlice";
 import { RootState, AppDispatch } from "@/lib/redux/store/store";
-import ShimmerEffect from "@/components/LoadingShimmer";
 
 const ChatScreen = () => {
   // Get route parameters
@@ -57,7 +62,8 @@ const ChatScreen = () => {
     currentPartner,
     loading: reduxLoading,
     error: reduxError,
-    userProfiles: savedUserProfiles,
+    isAgent: reduxIsAgent,
+    agentUserId: reduxAgentUserId,
     messageCache,
   } = useSelector((state: RootState) => state.chat);
 
@@ -83,15 +89,35 @@ const ChatScreen = () => {
     useState(false);
   const [forceUpdate, setForceUpdate] = useState(0);
 
+  // Add a memoized agent check that uses the cached result
+  const isAgent = useMemo((): boolean => {
+    if (!currentUserId) return false;
+    // Use the cached result from Redux state
+    return reduxIsAgent && reduxAgentUserId === currentUserId;
+  }, [currentUserId, reduxIsAgent, reduxAgentUserId]);
+
+  // Add a memoized room ID generator
+  const generateRoomId = useCallback(async () => {
+    if (!currentUserId || !receivedAgentId) return null;
+    
+    try {
+      const roomId = await getConsistentRoomId(currentUserId, receivedAgentId);
+      console.log("[Room ID Generated] Using room ID:", roomId, "for users:", currentUserId, receivedAgentId);
+      return roomId;
+    } catch (error) {
+      console.error("[Room ID Error]:", error);
+      return null;
+    }
+  }, [currentUserId, receivedAgentId]);
+
   // Fetch partner profile from Redux cache first, then Appwrite
   const fetchPartnerProfile = useCallback(async () => {
     if (!receivedAgentId) return;
 
     try {
       // First check if we already have this profile in Redux cache
-      if (savedUserProfiles && savedUserProfiles[receivedAgentId]) {
+      if (currentPartner) {
         console.log(`Using cached profile for partner: ${receivedAgentId}`);
-        dispatch(setCurrentPartner(savedUserProfiles[receivedAgentId]));
         setPartnerLoading(false);
         return;
       }
@@ -172,20 +198,11 @@ const ChatScreen = () => {
         dispatch(setCurrentPartner(foundProfile));
 
         // Also update the userProfiles cache in Redux
-        if (savedUserProfiles) {
-          dispatch(
-            updateUserProfiles({
-              ...savedUserProfiles,
-              [receivedAgentId]: foundProfile,
-            })
-          );
-        } else {
-          dispatch(
-            updateUserProfiles({
-              [receivedAgentId]: foundProfile,
-            })
-          );
-        }
+        dispatch(
+          updateUserProfiles({
+            [receivedAgentId]: foundProfile,
+          })
+        );
       }
 
       setPartnerLoading(false);
@@ -193,166 +210,79 @@ const ChatScreen = () => {
       console.error("Error in profile resolution:", error);
       setPartnerLoading(false);
     }
-  }, [receivedAgentId, dispatch, savedUserProfiles]);
+  }, [receivedAgentId, dispatch, currentPartner]);
 
   // Fetch profile on mount
   useEffect(() => {
     fetchPartnerProfile();
   }, [fetchPartnerProfile]);
 
-  // Setup chat room once
+  // Setup chat room once with proper cleanup
   const setupChatRoom = useCallback(async () => {
-    // Skip if already set up
-    if (hasSetupRef.current || !currentUserId || !receivedAgentId) return;
+    if (hasSetupRef.current || !currentUserId || !receivedAgentId) {
+      console.log("[Setup Skipped] Already set up or missing IDs");
+      return;
+    }
 
-    hasSetupRef.current = true;
+    hasSetupRef.current = true; // Set this before async operations
 
     try {
       setLoading(true);
       setMessagesLoading(true);
 
       // Generate room ID
-      const roomId = await getConsistentRoomId(currentUserId, receivedAgentId);
-
+      const roomId = await generateRoomId();
       if (!roomId) {
-        setError("Could not generate a valid room ID");
-        setLoading(false);
-        setMessagesLoading(false);
-        return;
+        throw new Error("Could not generate a valid room ID");
       }
 
       // Store in ref for stable reference
       roomIdRef.current = roomId;
-
-      // Store in Redux
       dispatch(setCurrentRoom(roomId));
-      console.log("Using consistent room ID:", roomId);
 
-      // Check if we have cached messages
-      if (
-        messageCache &&
-        messageCache[roomId] &&
-        messageCache[roomId].length > 0
-      ) {
-        console.log(
-          `Using ${messageCache[roomId].length} cached messages while fetching fresh data`
-        );
+      // Use cached messages if available
+      if (messageCache[roomId]?.length > 0) {
+        console.log(`[Cache Hit] Using ${messageCache[roomId].length} cached messages`);
+        dispatch(updateMessages(messageCache[roomId]));
         setMessagesLoading(false);
       }
 
-      // Fetch messages
-      console.log("Loading initial messages for room:", roomId);
-      await dispatch(fetchMessagesAsync(roomId)).unwrap();
-
-      // Mark messages as read
-      await dispatch(
-        markMessagesAsReadAsync({
+      // Fetch fresh messages
+      console.log("[Fetching] Loading messages for room:", roomId);
+      const result = await dispatch(fetchMessagesAsync(roomId)).unwrap();
+      
+      // Mark messages as read only if we have unread messages
+      const hasUnreadMessages = result.messages.some(
+        msg => !msg.read && msg.receiver_id === currentUserId
+      );
+      
+      if (hasUnreadMessages) {
+        console.log("[Marking Read] Found unread messages, marking as read");
+        await dispatch(markMessagesAsReadAsync({
           roomId,
           userId: currentUserId,
-        })
-      ).unwrap();
-
-      setLoading(false);
-      setMessagesLoading(false);
-    } catch (error: any) {
-      console.error("Error setting up chat room:", error);
-      setError(error.message || "Failed to load messages. Please try again.");
-      setLoading(false);
-      setMessagesLoading(false);
-      hasSetupRef.current = false; // Reset so we can try again
-    }
-  }, [currentUserId, receivedAgentId, dispatch, messageCache]);
-
-  // Improved subscription setup with stable reference
-  const setupMessageSubscription = useCallback(() => {
-    // Guard against already having a subscription
-    if (stableSubscriptionRef.current.unsubscribe) {
-      console.log("[SUBSCRIPTION] Already exists, skipping setup");
-      return;
-    }
-
-    // Guard against setup in progress
-    if (subscriptionSetupInProgress) {
-      console.log("[SUBSCRIPTION] Setup already in progress, skipping");
-      return;
-    }
-
-    const roomId = roomIdRef.current;
-
-    // Guard clause for required data
-    if (!roomId || !currentUserId) {
-      console.log("[SUBSCRIPTION] Missing required data:", {
-        roomId: !!roomId,
-        currentUserId: !!currentUserId,
-      });
-      return;
-    }
-
-    console.log(
-      "[SUBSCRIPTION] Setting up STABLE subscription for room:",
-      roomId
-    );
-    setSubscriptionSetupInProgress(true);
-
-    try {
-      // Create a new subscription with enhanced callback
-      const unsubscribe = subscribeToMessages(roomId, (newMessages) => {
-        console.log(
-          `[MESSAGE UPDATE] Room ${roomId}: Got ${newMessages.length} messages`
-        );
-
-        // Debug message variations
-        if (currentMessages.length !== newMessages.length) {
-          console.log(
-            `[MESSAGE UPDATE] Count changed: ${currentMessages.length} → ${newMessages.length}`
-          );
-        }
-
-        // Update Redux state with new messages
-        dispatch(updateMessages(newMessages));
-
-        // Force component to update even if Redux state doesn't trigger a re-render
-        setForceUpdate((prev) => prev + 1);
-      });
-
-      // Store the unsubscribe function in a stable ref
-      stableSubscriptionRef.current.unsubscribe = unsubscribe;
-
-      console.log(
-        "[SUBSCRIPTION] Successfully established stable subscription for:",
-        roomId
-      );
-    } catch (error) {
-      console.error("[SUBSCRIPTION ERROR]:", error);
-      stableSubscriptionRef.current.unsubscribe = null;
-    } finally {
-      setSubscriptionSetupInProgress(false);
-    }
-  }, [currentUserId, currentMessages.length, dispatch]);
-
-  // Single effect for subscription lifecycle management with minimal dependencies
-  useEffect(() => {
-    // Only setup when we have required data and no subscription exists
-    if (
-      roomIdRef.current &&
-      !stableSubscriptionRef.current.unsubscribe &&
-      !subscriptionSetupInProgress
-    ) {
-      console.log("[STABLE EFFECT] Setting up subscription once");
-      setupMessageSubscription();
-    }
-
-    // Return a cleanup function that will only run when component truly unmounts
-    return () => {
-      console.log("[STABLE EFFECT] Final cleanup on true unmount");
-      if (stableSubscriptionRef.current.unsubscribe) {
-        stableSubscriptionRef.current.unsubscribe();
-        stableSubscriptionRef.current.unsubscribe = null;
+        })).unwrap();
       }
-    };
-  }, [setupMessageSubscription, subscriptionSetupInProgress]);
 
-  // Initialize chat room and setup subscription
+      // Get partner profile
+      const partnerId = getChatPartner([currentUserId, receivedAgentId], currentUserId);
+      if (partnerId) {
+        dispatch(fetchChatPartnerProfileAsync({
+          participants: [partnerId, currentUserId],
+          currentUserId,
+        }));
+      }
+    } catch (error: any) {
+      console.error("[Setup Error]:", error);
+      setError(error.message || "Failed to load messages");
+      hasSetupRef.current = false; // Reset on error
+    } finally {
+      setLoading(false);
+      setMessagesLoading(false);
+    }
+  }, [currentUserId, receivedAgentId, dispatch, messageCache, generateRoomId]);
+
+  // Initialize chat room on mount
   useEffect(() => {
     if (!currentUserId || !receivedAgentId) {
       setError(
@@ -364,33 +294,73 @@ const ChatScreen = () => {
       return;
     }
 
-    // Setup chat room
     setupChatRoom();
   }, [currentUserId, receivedAgentId, setupChatRoom]);
 
-  // Mark messages as read when focused
+  // Optimize message subscription
+  useEffect(() => {
+    if (!roomIdRef.current || !currentUserId) {
+      console.log("[Subscription] Skipping - missing roomId or userId");
+      return;
+    }
+
+    console.log("[Subscription] Setting up for room:", roomIdRef.current);
+    
+    // Clean up existing subscription
+    if (stableSubscriptionRef.current.unsubscribe) {
+      console.log("[Subscription] Cleaning up existing subscription");
+      stableSubscriptionRef.current.unsubscribe();
+      stableSubscriptionRef.current.unsubscribe = null;
+    }
+
+    // Set up new subscription
+    const unsubscribe = subscribeToMessages(roomIdRef.current, (messages) => {
+      console.log("[Subscription] Received", messages.length, "messages");
+      dispatch(updateMessages(messages));
+
+      // Check for unread messages
+      const unreadMessages = messages.filter(
+        msg => !msg.read && msg.receiver_id === currentUserId
+      );
+
+      if (unreadMessages.length > 0) {
+        console.log("[Subscription] Found", unreadMessages.length, "unread messages");
+        dispatch(markMessagesAsReadAsync({
+          roomId: roomIdRef.current!,
+          userId: currentUserId,
+        })).catch(err => console.error("[Read Error]:", err));
+      }
+    });
+
+    stableSubscriptionRef.current.unsubscribe = unsubscribe;
+
+    return () => {
+      if (stableSubscriptionRef.current.unsubscribe) {
+        console.log("[Cleanup] Removing subscription");
+        stableSubscriptionRef.current.unsubscribe();
+        stableSubscriptionRef.current.unsubscribe = null;
+      }
+    };
+  }, [currentUserId, dispatch, roomIdRef.current]);
+
+  // Optimize focus effect
   useFocusEffect(
     useCallback(() => {
-      // Make sure we have a room ID and messages before attempting to mark as read
-      if (roomIdRef.current && currentUserId && currentMessages.length > 0) {
-        console.log("Screen focused, marking messages as read");
-        dispatch(
-          markMessagesAsReadAsync({
-            roomId: roomIdRef.current,
-            userId: currentUserId,
-          })
-        )
-          .unwrap()
-          .then(() => console.log("Messages marked as read on screen focus"))
-          .catch((err) =>
-            console.error("Error marking messages as read on focus:", err)
-          );
+      if (!currentUserId || !receivedAgentId) return;
+
+      console.log("[Focus] Setting up chat room");
+      
+      // Only reset setup if we don't have a room ID
+      if (!roomIdRef.current) {
+        hasSetupRef.current = false;
+        setupChatRoom();
       }
 
       return () => {
-        console.log("ChatScreen lost focus");
+        console.log("[Unfocus] Cleaning up");
+        // Don't clean up subscription on unfocus
       };
-    }, [currentUserId, currentMessages.length, dispatch])
+    }, [currentUserId, receivedAgentId, setupChatRoom])
   );
 
   // Scroll to bottom when messages change
@@ -399,6 +369,7 @@ const ChatScreen = () => {
       console.log("[SCROLL EFFECT] Scrolling to bottom:", {
         messageCount: currentMessages.length,
         forceUpdate,
+        roomId: roomIdRef.current
       });
 
       // Small delay to ensure render completes
@@ -410,7 +381,7 @@ const ChatScreen = () => {
     }
   }, [currentMessages, forceUpdate]);
 
-  // Simplified message sending function without temporary messages
+  // Simplified message sending function with immediate local update
   const handleSendMessage = async () => {
     if (!newMessage.trim() || !currentUserId || !receivedAgentId) {
       if (!currentUserId) {
@@ -419,15 +390,28 @@ const ChatScreen = () => {
       return;
     }
 
-    try {
-      // Clear input field immediately for better UX
-      const messageToSend = newMessage;
-      setNewMessage("");
+    const messageToSend = newMessage.trim();
+    setNewMessage("");
 
+    try {
       console.log("[SENDING MESSAGE] To:", receivedAgentId);
 
+      // Create temporary message for immediate display
+      const tempMessage: ChatMessage = {
+        id: `temp-${Date.now()}`,
+        sender_id: currentUserId,
+        receiver_id: receivedAgentId,
+        content: messageToSend,
+        timestamp: Date.now(),
+        read: false
+      };
+
+      // Update local state immediately with the temporary message
+      const messagesWithTemp = [...currentMessages, tempMessage];
+      dispatch(updateMessages(messagesWithTemp));
+
       // Use Redux action to send message
-      await dispatch(
+      const sentMessage = await dispatch(
         sendMessageAsync({
           senderId: currentUserId,
           receiverId: receivedAgentId,
@@ -436,12 +420,41 @@ const ChatScreen = () => {
       ).unwrap();
 
       console.log("[MESSAGE SENT] Successfully");
+
+      // Replace the temporary message with the real one
+      const finalMessages = messagesWithTemp.map(msg => 
+        msg.id === tempMessage.id ? sentMessage : msg
+      );
+
+      // Ensure the sent message is included
+      if (!finalMessages.some(msg => msg.id === sentMessage.id)) {
+        finalMessages.push(sentMessage);
+      }
+
+      // Sort messages by timestamp to ensure proper order
+      finalMessages.sort((a, b) => {
+        const timeA = typeof a.timestamp === 'number' ? a.timestamp : Date.now();
+        const timeB = typeof b.timestamp === 'number' ? b.timestamp : Date.now();
+        return timeA - timeB;
+      });
+
+      dispatch(updateMessages(finalMessages));
+
     } catch (error) {
       console.error("[SEND ERROR]:", error);
       Alert.alert(
         "Failed to Send",
         "Your message couldn't be sent. Please try again."
       );
+
+      // Remove the temporary message if send failed
+      const messagesWithoutTemp = currentMessages.filter(
+        msg => !msg.id?.startsWith('temp-')
+      );
+      dispatch(updateMessages(messagesWithoutTemp));
+
+      // Restore the message text
+      setNewMessage(messageToSend);
 
       // Reload messages to restore correct state
       if (roomIdRef.current) {
@@ -458,7 +471,7 @@ const ChatScreen = () => {
     return (
       <TouchableOpacity
         style={styles.debugContainer}
-        onPress={() => setupMessageSubscription()}
+        onPress={() => setupChatRoom()}
       >
         <Text style={styles.debugText}>
           Room: {roomIdRef.current?.slice(0, 8)}...{"\n"}
@@ -648,7 +661,7 @@ const ChatScreen = () => {
                       dispatch(fetchMessagesAsync(roomIdRef.current));
                       // Re-setup subscription after refresh
                       setTimeout(() => {
-                        setupMessageSubscription();
+                        setupChatRoom();
                       }, 500);
                     }
                   }}

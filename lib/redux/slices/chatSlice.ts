@@ -136,6 +136,27 @@ async function getUserProfile(userId: string): Promise<UserProfile | null> {
   }
 }
 
+// Helper function to convert Firestore Timestamp to number
+function convertTimestampToNumber(timestamp: any): number {
+  if (!timestamp) return Date.now();
+  if (typeof timestamp === 'number') return timestamp;
+  if (timestamp.seconds !== undefined && timestamp.nanoseconds !== undefined) {
+    return timestamp.seconds * 1000 + Math.round(timestamp.nanoseconds / 1000000);
+  }
+  return Date.now();
+}
+
+// Helper function to serialize user profile data
+function serializeUserProfile(profile: any): any {
+  if (!profile) return profile;
+  
+  return {
+    ...profile,
+    createdAt: convertTimestampToNumber(profile.createdAt),
+    updatedAt: convertTimestampToNumber(profile.updatedAt),
+  };
+}
+
 // Async thunks for chat
 export const fetchChatRoomsAsync = createAsyncThunk(
   "chat/fetchChatRooms",
@@ -246,6 +267,7 @@ export const checkIsAgentAsync = createAsyncThunk(
   "chat/checkIsAgent",
   async (userId: string, { rejectWithValue }) => {
     try {
+      // This will now use the cached result from chat-service
       const result = await checkIsAgent(userId);
       return result;
     } catch (error: any) {
@@ -275,7 +297,7 @@ export const fetchChatPartnerProfileAsync = createAsyncThunk(
 
       if (profile) {
         // Serialize the profile before storing in Redux
-        const serializedProfile = serializeFirestoreData(profile);
+        const serializedProfile = serializeUserProfile(profile);
 
         // Also update our user profiles cache in Redux
         dispatch(
@@ -285,43 +307,12 @@ export const fetchChatPartnerProfileAsync = createAsyncThunk(
         );
       }
 
-      return profile;
+      return profile ? serializeUserProfile(profile) : null;
     } catch (error: any) {
       return rejectWithValue(error.message);
     }
   }
 );
-
-// Add this utility function to your chatSlice.ts file
-function serializeFirestoreData(data: any): any {
-  if (!data) return data;
-
-  // Check if it's an array
-  if (Array.isArray(data)) {
-    return data.map((item) => serializeFirestoreData(item));
-  }
-
-  // If it's not an object or is null, return as is
-  if (typeof data !== "object" || data === null) {
-    return data;
-  }
-
-  // Handle Firestore timestamp objects
-  if (data.seconds !== undefined && data.nanoseconds !== undefined) {
-    return data.seconds * 1000 + Math.round(data.nanoseconds / 1000000);
-  }
-
-  // Handle regular objects by recursively processing their properties
-  const serialized: Record<string, any> = {};
-
-  for (const key in data) {
-    if (Object.prototype.hasOwnProperty.call(data, key)) {
-      serialized[key] = serializeFirestoreData(data[key]);
-    }
-  }
-
-  return serialized;
-}
 
 // Create chat slice
 const chatSlice = createSlice({
@@ -341,7 +332,7 @@ const chatSlice = createSlice({
     },
     setCurrentPartner: (state, action) => {
       if (action.payload) {
-        state.currentPartner = serializeFirestoreData(action.payload);
+        state.currentPartner = serializeUserProfile(action.payload);
       } else {
         state.currentPartner = null;
       }
@@ -470,7 +461,7 @@ const chatSlice = createSlice({
 
       // Serialize each profile
       for (const [id, profile] of Object.entries(action.payload)) {
-        serializedProfiles[id] = serializeFirestoreData(profile);
+        serializedProfiles[id] = serializeUserProfile(profile);
       }
 
       state.userProfiles = {
@@ -482,6 +473,25 @@ const chatSlice = createSlice({
     clearMessageCache: (state) => {
       state.messageCache = {};
       state.lastUpdated = {};
+    },
+    clearAllChatState: (state) => {
+      // Clear all chat-related state
+      state.chatRooms = [];
+      state.currentRoom = null;
+      state.currentMessages = [];
+      state.currentPartner = null;
+      state.userProfiles = {};
+      state.messageCache = {};
+      state.lastUpdated = {};
+      state.error = null;
+      // Clear any active subscriptions
+      if (typeof state.messageSubscription === "function") {
+        state.messageSubscription();
+      }
+      state.messageSubscription = null;
+    },
+    updateChatRooms: (state, action) => {
+      state.chatRooms = action.payload;
     },
   },
 });
@@ -499,6 +509,8 @@ export const {
   clearCurrentChat,
   updateUserProfiles,
   clearMessageCache,
+  clearAllChatState,
+  updateChatRooms,
 } = chatSlice.actions;
 
 // Export the reducer as default

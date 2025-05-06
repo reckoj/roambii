@@ -13,6 +13,7 @@ import {
 import { User as FirebaseUser } from "@/lib/firebase/models"; // Import the Firebase User type
 import { uploadProfileImage } from "@/lib/storage-service";
 import { createSlice, createAsyncThunk } from "@reduxjs/toolkit";
+import { clearAllChatState } from "../slices/chatSlice";
 
 // Define interfaces for Redux state
 // Make sure it's compatible with Firebase User model
@@ -181,10 +182,12 @@ export const loginWithGoogleAsync = createAsyncThunk(
 
 export const logoutAsync = createAsyncThunk(
   "auth/logout",
-  async (_, { rejectWithValue }) => {
+  async (_, { rejectWithValue, dispatch }) => {
     try {
       console.log("Auth Slice: Logging out");
       await logout();
+      // Dispatch clearAllChatState action
+      dispatch(clearAllChatState());
       console.log("Auth Slice: Logout successful");
       return null;
     } catch (error: any) {

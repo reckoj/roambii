@@ -15,7 +15,7 @@ import {
 } from "react-native";
 import { StatusBar } from "react-native";
 import { router, useFocusEffect } from "expo-router";
-import { getChatPartner } from "@/lib/chat-service";
+import { getChatPartner, subscribeToChatRooms } from "@/lib/chat-service";
 import { useGlobalContext } from "@/lib/global-provider";
 import { LinearGradient } from "expo-linear-gradient";
 import { MessageSquare, MoreVertical } from "lucide-react-native";
@@ -30,6 +30,7 @@ import {
   clearCurrentChat,
   updateUserProfiles,
   fetchChatPartnerProfileAsync,
+  updateChatRooms,
 } from "@/lib/redux/slices/chatSlice";
 import { RootState, AppDispatch } from "@/lib/redux/store/store";
 import ShimmerEffect from "@/components/LoadingShimmer";
@@ -76,6 +77,9 @@ const ChatListScreen: React.FC = () => {
   const [loadingAvatars, setLoadingAvatars] = useState<Record<string, boolean>>(
     {}
   );
+  const [chatRoomSubscription, setChatRoomSubscription] = useState<
+    (() => void) | null
+  >(null);
 
   // Check if current user is an agent using Redux
   useEffect(() => {
@@ -227,6 +231,28 @@ const ChatListScreen: React.FC = () => {
           setIsLoading(false);
         }, 500);
       });
+  }, [rawUser, isAgent, agentUserId, dispatch]);
+
+  // Add useEffect for chat room subscription
+  useEffect(() => {
+    if (!rawUser?.id) return;
+
+    const userId = isAgent && agentUserId ? agentUserId : rawUser.id;
+
+    // Subscribe to chat room updates
+    const unsubscribe = subscribeToChatRooms(userId, (updatedRooms) => {
+      // Update chat rooms in Redux
+      dispatch(updateChatRooms(updatedRooms));
+    });
+
+    setChatRoomSubscription(unsubscribe);
+
+    // Cleanup subscription on unmount
+    return () => {
+      if (unsubscribe) {
+        unsubscribe();
+      }
+    };
   }, [rawUser, isAgent, agentUserId, dispatch]);
 
   const formatTimestamp = (timestamp: any) => {
@@ -495,12 +521,23 @@ const ChatListScreen: React.FC = () => {
                         <Text style={styles.timeStamp}>
                           {formatTimestamp(item.last_updated)}
                         </Text>
-                        <TouchableOpacity
-                          style={styles.optionsButton}
-                          onPress={() => handleLongPress(item.id, partnerId)}
-                        >
-                          <MoreVertical size={16} color={COLORS.textLight} />
-                        </TouchableOpacity>
+                        <View style={styles.rightContainer}>
+                          <TouchableOpacity
+                            style={styles.optionsButton}
+                            onPress={() => handleLongPress(item.id, partnerId)}
+                          >
+                            <MoreVertical size={16} color={COLORS.textLight} />
+                          </TouchableOpacity>
+                          {hasUnread && (
+                            <View style={styles.unreadBadge}>
+                              <Text style={styles.unreadCount}>
+                                {item.unread_count?.[userId || ""] > 99
+                                  ? "99+"
+                                  : item.unread_count?.[userId || ""]}
+                              </Text>
+                            </View>
+                          )}
+                        </View>
                       </View>
 
                       <View style={styles.messageRow}>
@@ -514,17 +551,6 @@ const ChatListScreen: React.FC = () => {
                         >
                           {item.last_message || "No messages yet"}
                         </Text>
-
-                        {/* Move the unread badge here so it's in the message container */}
-                        {hasUnread && (
-                          <View style={styles.unreadBadge}>
-                            <Text style={styles.unreadCount}>
-                              {item.unread_count?.[userId || ""] > 99
-                                ? "99+"
-                                : item.unread_count?.[userId || ""]}
-                            </Text>
-                          </View>
-                        )}
                       </View>
                     </View>
                   </View>
@@ -672,38 +698,10 @@ const styles = StyleSheet.create({
     color: COLORS.textLight,
     marginLeft: 4,
   },
-  // Update these styles
-  messageRow: {
-    flexDirection: "row",
+  rightContainer: {
+    flexDirection: "column",
     alignItems: "center",
-    justifyContent: "space-between",
-    marginTop: 2, // Add a bit of spacing from the name
-  },
-  messagePreview: {
-    fontSize: 14,
-    color: COLORS.messagePreview,
-    flex: 1,
-    marginRight: 8, // Add space between message and badge
-  },
-  unreadBadge: {
-    backgroundColor: COLORS.primary,
-    minWidth: 22,
-    height: 22,
-    borderRadius: 11,
-    justifyContent: "center",
-    alignItems: "center",
-    // Remove marginLeft since it's now positioned correctly
-  },
-  boldText: {
-    fontWeight: "700",
-    color: COLORS.text,
-  },
-
-  unreadCount: {
-    color: COLORS.white,
-    fontSize: 11,
-    fontWeight: "700",
-    paddingHorizontal: 4,
+    marginLeft: 8,
   },
   optionsButton: {
     width: 32,
@@ -711,6 +709,41 @@ const styles = StyleSheet.create({
     borderRadius: 16,
     justifyContent: "center",
     alignItems: "center",
+    backgroundColor: COLORS.lightGray,
+  },
+  unreadBadge: {
+    backgroundColor: COLORS.primary,
+    minWidth: 20,
+    height: 20,
+    borderRadius: 10,
+    justifyContent: "center",
+    alignItems: "center",
+    marginTop: 4,
+    shadowColor: COLORS.primary,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.3,
+    shadowRadius: 3,
+    elevation: 3,
+  },
+  unreadCount: {
+    color: COLORS.white,
+    fontSize: 10,
+    fontWeight: "800",
+    paddingHorizontal: 4,
+  },
+  messageRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginTop: 2,
+  },
+  messagePreview: {
+    fontSize: 14,
+    color: COLORS.messagePreview,
+    flex: 1,
+  },
+  boldText: {
+    fontWeight: "700",
+    color: COLORS.text,
   },
   separator: {
     height: 10, // No visible separator, just spacing

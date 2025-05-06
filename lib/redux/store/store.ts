@@ -16,6 +16,7 @@ import packageReducer from "../slices/packageSlice";
 import itineraryReducer from "../slices/itinerarySlice";
 import chatReducer from "../slices/chatSlice";
 import bookingReducer from "../slices/bookingSlice";
+import agentProfileReducer from "../slices/agentProfileSlice";
 
 // Configure Redux Persist
 const persistConfig = {
@@ -39,6 +40,7 @@ const rootReducer = combineReducers({
   itineraries: itineraryReducer,
   chat: persistReducer(chatPersistConfig, chatReducer), // Apply persist to chat slice
   bookings: bookingReducer,
+  agentProfile: agentProfileReducer,
 });
 
 const persistedReducer = persistReducer(persistConfig, rootReducer);

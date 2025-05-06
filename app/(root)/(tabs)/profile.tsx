@@ -24,6 +24,7 @@ import {
   LogOut,
   Camera,
   ChevronRight,
+  Edit,
 } from "lucide-react-native";
 import { InviteFriends } from "@/lib/invite-friends";
 import { router } from "expo-router";
@@ -33,7 +34,7 @@ import { LinearGradient } from "expo-linear-gradient";
 import { useDispatch } from "react-redux";
 import { AppDispatch } from "@/lib/redux/store/store";
 import { logoutAsync, updateUserAsync } from "@/lib/redux/slices/authSlice";
-import { uploadProfileImage } from "@/lib/storage-service";
+import AgentProfileCard from "@/components/AgentProfileCard";
 
 // Define theme colors
 const COLORS = {
@@ -346,6 +347,18 @@ const Profile: React.FC = () => {
             />
           )}
 
+          {isAgent && <AgentProfileCard />}
+
+          {isAgent && (
+            <SettingsItem
+              icon={<Edit size={20} color={COLORS.secondary} />}
+              title="Edit Agent Profile"
+              subtitle="Edit your agent info"
+              onPress={() => router.push("/edit-agent-profile")}
+              iconBgColor="rgba(93, 109, 255, 0.1)"
+            />
+          )}
+
           <SettingsItem
             icon={<LucideShare2 size={20} color="#00D27A" />}
             title="Invite Friends"
@@ -541,5 +554,3 @@ const styles = StyleSheet.create({
     borderColor: COLORS.white,
   },
 });
-
-//  (NOBRIDGE) ERROR  Error setting up unread message tracker: [ReferenceError: Property 'firebaseDb' doesn't exist]

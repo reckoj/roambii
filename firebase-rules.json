@@ -1,0 +1,48 @@
+{
+  "rules": {
+    "chat_rooms": {
+      ".read": "auth != null",
+      ".write": "auth != null",
+      "$roomId": {
+        ".read": "auth != null && (data.child('participants').hasChild(auth.uid) || data.child('user_id').val() === auth.uid || data.child('agent_id').val() === auth.uid)",
+        ".write": "auth != null && (data.child('participants').hasChild(auth.uid) || data.child('user_id').val() === auth.uid || data.child('agent_id').val() === auth.uid)",
+        "participants": {
+          ".read": "auth != null",
+          ".write": "auth != null"
+        },
+        "last_message": {
+          ".read": "auth != null",
+          ".write": "auth != null"
+        },
+        "last_updated": {
+          ".read": "auth != null",
+          ".write": "auth != null"
+        },
+        "created_at": {
+          ".read": "auth != null",
+          ".write": "auth != null"
+        },
+        "unread_count": {
+          ".read": "auth != null",
+          ".write": "auth != null",
+          "$userId": {
+            ".read": "auth != null",
+            ".write": "auth != null"
+          }
+        }
+      }
+    },
+    "messages": {
+      ".read": "auth != null",
+      ".write": "auth != null",
+      "$roomId": {
+        ".read": "auth != null && root.child('chat_rooms').child($roomId).child('participants').hasChild(auth.uid)",
+        ".write": "auth != null && root.child('chat_rooms').child($roomId).child('participants').hasChild(auth.uid)",
+        "$messageId": {
+          ".read": "auth != null && root.child('chat_rooms').child($roomId).child('participants').hasChild(auth.uid)",
+          ".write": "auth != null && root.child('chat_rooms').child($roomId).child('participants').hasChild(auth.uid)"
+        }
+      }
+    }
+  }
+} 

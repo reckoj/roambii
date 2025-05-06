@@ -76,16 +76,7 @@ export const registerUser = async (
       throw new Error("Password must be between 8 and 20 characters.");
     }
 
-    // Check if email already exists in Firestore
-    const usersRef = collection(firestore, COLLECTIONS.USERS);
-    const emailQuery = query(usersRef, where("email", "==", email));
-    const emailExists = await getDocs(emailQuery);
-
-    if (!emailExists.empty) {
-      throw new Error("An account with this email already exists.");
-    }
-
-    // Create user in Firebase Authentication
+    // Create user in Firebase Authentication first
     const userCredential = await createUserWithEmailAndPassword(
       auth,
       email,
@@ -93,55 +84,71 @@ export const registerUser = async (
     );
     const firebaseUser = userCredential.user;
 
-    // Update profile with name
-    await updateProfile(firebaseUser, { displayName: trimmedName });
+    try {
+      // Update profile with name
+      await updateProfile(firebaseUser, { displayName: trimmedName });
 
-    // Create user document in Firestore
-    const userData: Omit<User, "id"> = {
-      name: trimmedName,
-      email,
-      isAgent,
-      isEmailVerified: false,
-      createdAt: new Date(),
-      updatedAt: new Date(),
-      $id: "",
-    };
-
-    await setDoc(doc(firestore, COLLECTIONS.USERS, firebaseUser.uid), userData);
-
-    // If user is an agent, create agent document
-    if (isAgent) {
-      const agentData: Omit<Agent, "id"> = {
-        ...userData,
-        niche: niche || "",
-        rating: 0,
-        reviewCount: 0,
+      // Create user document in Firestore
+      const userData = {
+        id: firebaseUser.uid,
+        name: trimmedName,
+        email,
+        isAgent,
+        isEmailVerified: false,
+        createdAt: new Date(),
+        updatedAt: new Date(),
       };
 
-      await setDoc(
-        doc(firestore, COLLECTIONS.AGENTS, firebaseUser.uid),
-        agentData
-      );
+      // Create user document
+      await setDoc(doc(firestore, COLLECTIONS.USERS, firebaseUser.uid), userData);
+
+      // If user is an agent, create agent document
+      if (isAgent) {
+        const agentData = {
+          id: firebaseUser.uid,
+          userId: firebaseUser.uid,
+          name: trimmedName,
+          email,
+          bio: "",
+          yearsOfExperience: 0,
+          region: "",
+          languages: [],
+          specialties: [],
+          niche: niche || "",
+          rating: 0,
+          reviewCount: 0,
+          isProfileComplete: false,
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        };
+
+        // Create agent document
+        await setDoc(doc(firestore, COLLECTIONS.AGENTS, firebaseUser.uid), agentData);
+      }
+
+      // Send verification email
+      const continuationUrl =
+        Platform.OS === "web"
+          ? `${window.location.origin}/verify-email`
+          : `https://${process.env.EXPO_PUBLIC_FIREBASE_PROJECT_ID}.firebaseapp.com/verify-email`;
+
+      await sendEmailVerification(firebaseUser, {
+        url: continuationUrl,
+        handleCodeInApp: true,
+      });
+
+      return {
+        success: true,
+        message: "Registration successful! Please check your email to verify your account.",
+        userId: firebaseUser.uid,
+      };
+    } catch (error) {
+      // If anything fails after user creation, delete the user
+      await firebaseUser.delete();
+      throw error;
     }
-
-    // Send verification email
-    const continuationUrl =
-      Platform.OS === "web"
-        ? `${window.location.origin}/verify-email`
-        : `https://${process.env.EXPO_PUBLIC_FIREBASE_PROJECT_ID}.firebaseapp.com/verify-email`;
-
-    await sendEmailVerification(firebaseUser, {
-      url: continuationUrl,
-      handleCodeInApp: true,
-    });
-
-    return {
-      success: true,
-      message:
-        "Registration successful! Please check your email to verify your account.",
-      userId: firebaseUser.uid,
-    };
   } catch (error: any) {
+    console.error("Registration error:", error);
     return { success: false, message: error.message };
   }
 };
