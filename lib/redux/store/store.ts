@@ -61,7 +61,12 @@ export const store = configureStore({
           PURGE,
           REGISTER,
         ],
-        ignoredPaths: ["chat.messageSubscription"],
+        // Ignore these paths in the state
+        ignoredPaths: [
+          "chat.messageSubscription",
+          "chat.currentPartner.updatedAt",
+          "chat.userProfiles",
+        ],
       },
     }),
 });

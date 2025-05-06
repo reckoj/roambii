@@ -1,11 +1,11 @@
-// ChatBubble.tsx - Complete component with CheckCheck indicator
+// ChatBubble.tsx
 import React, { useEffect, useRef } from "react";
 import { View, Text, StyleSheet, Animated } from "react-native";
 import { CheckCheck } from "lucide-react-native";
-import { FirebaseMessage } from "@/lib/chatService";
+import { ChatMessage } from "@/lib/chat-service"; // Update this import to use the right type
 
 interface ChatBubbleProps {
-  message: FirebaseMessage;
+  message: ChatMessage;
   isFromCurrentUser: boolean;
   isConsecutive: boolean;
 }
@@ -23,22 +23,15 @@ const ChatBubble: React.FC<ChatBubbleProps> = ({
       duration: 300,
       useNativeDriver: true,
     }).start();
-  }, [fadeAnim]);
+  }, []);
 
   const bubbleStyle = () => {
-    if (isFromCurrentUser) {
-      return isConsecutive
-        ? [styles.bubbleBase, styles.bubbleUser, styles.bubbleUserConsecutive]
-        : [styles.bubbleBase, styles.bubbleUser];
-    } else {
-      return isConsecutive
-        ? [
-            styles.bubbleBase,
-            styles.bubblePartner,
-            styles.bubblePartnerConsecutive,
-          ]
-        : [styles.bubbleBase, styles.bubblePartner];
-    }
+    const baseStyles = [
+      styles.bubbleBase,
+      isFromCurrentUser ? styles.bubbleUser : styles.bubblePartner,
+    ];
+
+    return baseStyles;
   };
 
   const textColor = isFromCurrentUser ? styles.textUser : styles.textPartner;
@@ -55,7 +48,7 @@ const ChatBubble: React.FC<ChatBubbleProps> = ({
       return (
         <View style={styles.readIndicator}>
           <CheckCheck
-            size={22}
+            size={16}
             color="#34B7F1" // Blue color for read messages
             strokeWidth={2}
           />
@@ -66,7 +59,7 @@ const ChatBubble: React.FC<ChatBubbleProps> = ({
       return (
         <View style={styles.readIndicator}>
           <CheckCheck
-            size={22}
+            size={16}
             color="rgba(255, 255, 255, 0.7)" // Gray color for unread messages
             strokeWidth={2}
           />
@@ -81,14 +74,6 @@ const ChatBubble: React.FC<ChatBubbleProps> = ({
         alignSelf: isFromCurrentUser ? "flex-end" : "flex-start",
         marginBottom: 8,
         opacity: fadeAnim,
-        transform: [
-          {
-            translateY: fadeAnim.interpolate({
-              inputRange: [0, 1],
-              outputRange: [10, 0],
-            }),
-          },
-        ],
       }}
     >
       <View style={bubbleStyle()}>
@@ -118,7 +103,7 @@ const styles = StyleSheet.create({
     maxWidth: "80%",
     minWidth: "30%",
     justifyContent: "center",
-    paddingVertical: 2,
+    paddingVertical: 8,
     paddingHorizontal: 12,
     borderRadius: 18,
     shadowColor: "#000",
@@ -141,6 +126,9 @@ const styles = StyleSheet.create({
   bubblePartnerConsecutive: {
     borderTopLeftRadius: 18,
   },
+  bubblePending: {
+    opacity: 0.7,
+  },
   textUser: {
     color: "#FFFFFF",
     fontSize: 16,
@@ -161,7 +149,7 @@ const styles = StyleSheet.create({
     marginRight: 5,
   },
   metaTextPartner: {
-    color: "rgba(0, 0, 0, 0.5)",
+    color: "rgba(255, 255, 255, 0.7)",
     fontSize: 12,
   },
   readIndicator: {

@@ -13,6 +13,7 @@ import {
   Alert,
   StyleSheet,
   ImageBackground,
+  RefreshControl,
 } from "react-native";
 import { StatusBar } from "react-native";
 import { router, useLocalSearchParams, useFocusEffect } from "expo-router";
@@ -73,7 +74,14 @@ const ChatScreen = () => {
   const flatListRef = useRef<FlatList<ChatMessage>>(null);
   const roomIdRef = useRef<string | null>(null);
   const hasSetupRef = useRef(false);
-  const subscriptionRef = useRef<(() => void) | null>(null);
+
+  // Add a stable ref that won't be affected by re-renders
+  const stableSubscriptionRef = useRef<{ unsubscribe: (() => void) | null }>({
+    unsubscribe: null,
+  });
+  const [subscriptionSetupInProgress, setSubscriptionSetupInProgress] =
+    useState(false);
+  const [forceUpdate, setForceUpdate] = useState(0);
 
   // Fetch partner profile from Redux cache first, then Appwrite
   const fetchPartnerProfile = useCallback(async () => {
@@ -255,61 +263,94 @@ const ChatScreen = () => {
     }
   }, [currentUserId, receivedAgentId, dispatch, messageCache]);
 
-  // In your ChatScreen component, modify the subscription setup:
-
-  // Setup subscription separately
-  const setupSubscription = useCallback(() => {
-    // Only set up subscription if we have a room and don't already have one
-    if (!roomIdRef.current || subscriptionRef.current || !currentUserId) {
+  // Improved subscription setup with stable reference
+  const setupMessageSubscription = useCallback(() => {
+    // Guard against already having a subscription
+    if (stableSubscriptionRef.current.unsubscribe) {
+      console.log("[SUBSCRIPTION] Already exists, skipping setup");
       return;
     }
 
-    console.log("Setting up message subscription for:", roomIdRef.current);
+    // Guard against setup in progress
+    if (subscriptionSetupInProgress) {
+      console.log("[SUBSCRIPTION] Setup already in progress, skipping");
+      return;
+    }
+
+    const roomId = roomIdRef.current;
+
+    // Guard clause for required data
+    if (!roomId || !currentUserId) {
+      console.log("[SUBSCRIPTION] Missing required data:", {
+        roomId: !!roomId,
+        currentUserId: !!currentUserId,
+      });
+      return;
+    }
+
+    console.log(
+      "[SUBSCRIPTION] Setting up STABLE subscription for room:",
+      roomId
+    );
+    setSubscriptionSetupInProgress(true);
 
     try {
-      // Create a subscription and store in ref
-      subscriptionRef.current = subscribeToMessages(
-        roomIdRef.current,
-        (updatedMessages: ChatMessage[]) => {
+      // Create a new subscription with enhanced callback
+      const unsubscribe = subscribeToMessages(roomId, (newMessages) => {
+        console.log(
+          `[MESSAGE UPDATE] Room ${roomId}: Got ${newMessages.length} messages`
+        );
+
+        // Debug message variations
+        if (currentMessages.length !== newMessages.length) {
           console.log(
-            `Received ${updatedMessages.length} messages from subscription`
+            `[MESSAGE UPDATE] Count changed: ${currentMessages.length} → ${newMessages.length}`
           );
-
-          // Immediately update Redux state with new messages
-          dispatch(updateMessages(updatedMessages));
-
-          // Mark messages as read since the chat is open
-          if (currentUserId) {
-            dispatch(
-              markMessagesAsReadAsync({
-                roomId: roomIdRef.current!,
-                userId: currentUserId,
-              })
-            ).catch((err) =>
-              console.error("Error marking messages as read on update:", err)
-            );
-          }
-
-          // Force a render by updating a local state
-          setLastMessageUpdate(Date.now());
         }
+
+        // Update Redux state with new messages
+        dispatch(updateMessages(newMessages));
+
+        // Force component to update even if Redux state doesn't trigger a re-render
+        setForceUpdate((prev) => prev + 1);
+      });
+
+      // Store the unsubscribe function in a stable ref
+      stableSubscriptionRef.current.unsubscribe = unsubscribe;
+
+      console.log(
+        "[SUBSCRIPTION] Successfully established stable subscription for:",
+        roomId
       );
     } catch (error) {
-      console.error("Error setting up subscription:", error);
+      console.error("[SUBSCRIPTION ERROR]:", error);
+      stableSubscriptionRef.current.unsubscribe = null;
+    } finally {
+      setSubscriptionSetupInProgress(false);
     }
-  }, [currentUserId, dispatch]);
+  }, [currentUserId, currentMessages.length, dispatch]);
 
-  // Add a state to force re-renders when new messages arrive
-  const [lastMessageUpdate, setLastMessageUpdate] = useState<number>(0);
-
-  // Make sure useEffect dependencies include lastMessageUpdate
+  // Single effect for subscription lifecycle management with minimal dependencies
   useEffect(() => {
-    if (currentMessages.length > 0) {
-      setTimeout(() => {
-        flatListRef.current?.scrollToEnd({ animated: true });
-      }, 100);
+    // Only setup when we have required data and no subscription exists
+    if (
+      roomIdRef.current &&
+      !stableSubscriptionRef.current.unsubscribe &&
+      !subscriptionSetupInProgress
+    ) {
+      console.log("[STABLE EFFECT] Setting up subscription once");
+      setupMessageSubscription();
     }
-  }, [currentMessages, lastMessageUpdate]); // Add lastMessageUpdate here
+
+    // Return a cleanup function that will only run when component truly unmounts
+    return () => {
+      console.log("[STABLE EFFECT] Final cleanup on true unmount");
+      if (stableSubscriptionRef.current.unsubscribe) {
+        stableSubscriptionRef.current.unsubscribe();
+        stableSubscriptionRef.current.unsubscribe = null;
+      }
+    };
+  }, [setupMessageSubscription, subscriptionSetupInProgress]);
 
   // Initialize chat room and setup subscription
   useEffect(() => {
@@ -325,24 +366,7 @@ const ChatScreen = () => {
 
     // Setup chat room
     setupChatRoom();
-
-    // Clean up function
-    return () => {
-      // Only clean up subscription when component unmounts completely
-      if (subscriptionRef.current) {
-        console.log("Component unmounting, cleaning up subscription");
-        subscriptionRef.current();
-        subscriptionRef.current = null;
-      }
-    };
   }, [currentUserId, receivedAgentId, setupChatRoom]);
-
-  // Setup subscription after room is set up
-  useEffect(() => {
-    if (roomIdRef.current && !subscriptionRef.current) {
-      setupSubscription();
-    }
-  }, [roomIdRef.current, setupSubscription]);
 
   // Mark messages as read when focused
   useFocusEffect(
@@ -372,13 +396,21 @@ const ChatScreen = () => {
   // Scroll to bottom when messages change
   useEffect(() => {
     if (currentMessages.length > 0) {
+      console.log("[SCROLL EFFECT] Scrolling to bottom:", {
+        messageCount: currentMessages.length,
+        forceUpdate,
+      });
+
+      // Small delay to ensure render completes
       setTimeout(() => {
-        flatListRef.current?.scrollToEnd({ animated: true });
+        if (flatListRef.current) {
+          flatListRef.current.scrollToEnd({ animated: true });
+        }
       }, 100);
     }
-  }, [currentMessages]);
+  }, [currentMessages, forceUpdate]);
 
-  // Use Redux to send messages
+  // Simplified message sending function without temporary messages
   const handleSendMessage = async () => {
     if (!newMessage.trim() || !currentUserId || !receivedAgentId) {
       if (!currentUserId) {
@@ -392,7 +424,7 @@ const ChatScreen = () => {
       const messageToSend = newMessage;
       setNewMessage("");
 
-      console.log("Sending message to:", receivedAgentId);
+      console.log("[SENDING MESSAGE] To:", receivedAgentId);
 
       // Use Redux action to send message
       await dispatch(
@@ -403,15 +435,41 @@ const ChatScreen = () => {
         })
       ).unwrap();
 
-      // No need to manually update messages array as subscription will handle it
-      console.log("Message sent successfully");
+      console.log("[MESSAGE SENT] Successfully");
     } catch (error) {
-      console.error("Error sending message:", error);
+      console.error("[SEND ERROR]:", error);
       Alert.alert(
         "Failed to Send",
         "Your message couldn't be sent. Please try again."
       );
+
+      // Reload messages to restore correct state
+      if (roomIdRef.current) {
+        dispatch(fetchMessagesAsync(roomIdRef.current));
+      }
     }
+  };
+
+  const DebugInfo = () => {
+    const [showDebug, setShowDebug] = useState(__DEV__); // Only show in dev by default
+
+    if (!showDebug) return null;
+
+    return (
+      <TouchableOpacity
+        style={styles.debugContainer}
+        onPress={() => setupMessageSubscription()}
+      >
+        <Text style={styles.debugText}>
+          Room: {roomIdRef.current?.slice(0, 8)}...{"\n"}
+          Messages: {currentMessages.length}
+          {"\n"}
+          Sub Active: {!!stableSubscriptionRef.current.unsubscribe ? "✓" : "✗"}
+          {"\n"}
+          Updates: {forceUpdate}
+        </Text>
+      </TouchableOpacity>
+    );
   };
 
   // Check if a partner name is just an ID (no proper name found)
@@ -487,9 +545,9 @@ const ChatScreen = () => {
               hasSetupRef.current = false;
 
               // Clean up existing subscription
-              if (subscriptionRef.current) {
-                subscriptionRef.current();
-                subscriptionRef.current = null;
+              if (stableSubscriptionRef.current.unsubscribe) {
+                stableSubscriptionRef.current.unsubscribe();
+                stableSubscriptionRef.current.unsubscribe = null;
               }
 
               setupChatRoom();
@@ -507,6 +565,9 @@ const ChatScreen = () => {
   return (
     <SafeAreaView className="flex-1 bg-white">
       <StatusBar backgroundColor="#f8f9fa" barStyle="dark-content" />
+
+      {/* Debug overlay */}
+      <DebugInfo />
 
       {/* Header */}
       <View className="flex-row items-center p-4 border-b border-primary-300">
@@ -549,7 +610,7 @@ const ChatScreen = () => {
           <View style={styles.overlayLight} />
 
           {/* Messages Content */}
-          {/* {isLoadingState && currentMessages.length === 0 ? (
+          {isLoadingState && currentMessages.length === 0 ? (
             <View style={styles.loadingContainer}>
               <ActivityIndicator size="large" color="#1ABC9C" />
               <Text style={styles.loadingText}>Loading messages...</Text>
@@ -563,38 +624,54 @@ const ChatScreen = () => {
                 </Text>
               </View>
             </View>
-          ) : ( */}
-          <FlatList
-            ref={flatListRef}
-            data={currentMessages}
-            keyExtractor={(item) =>
-              item.id || `${item.timestamp}-${item.sender_id}`
-            }
-            contentContainerStyle={{ padding: 16 }}
-            // ListFooterComponent={
-            //   messagesLoading ? (
-            //     <View style={styles.inlineLoadingContainer}>
-            //       <ActivityIndicator size="small" color="#1ABC9C" />
-            //     </View>
-            //   ) : null
-            // }
-            renderItem={({ item, index }) => {
-              // Determine if this message is from the same sender as the previous one
-              const isConsecutive =
-                index > 0 &&
-                currentMessages[index - 1].sender_id === item.sender_id;
-              const isFromCurrentUser = item.sender_id === currentUserId;
+          ) : (
+            <FlatList
+              ref={flatListRef}
+              data={currentMessages}
+              keyExtractor={(item) =>
+                item.id || `${item.timestamp}-${item.sender_id}`
+              }
+              contentContainerStyle={{ padding: 16 }}
+              refreshControl={
+                <RefreshControl
+                  refreshing={false}
+                  onRefresh={() => {
+                    console.log("[MANUAL REFRESH] Resetting subscription");
+                    // Clean up existing subscription
+                    if (stableSubscriptionRef.current.unsubscribe) {
+                      stableSubscriptionRef.current.unsubscribe();
+                      stableSubscriptionRef.current.unsubscribe = null;
+                    }
 
-              return (
-                <ChatBubble
-                  message={item}
-                  isFromCurrentUser={isFromCurrentUser}
-                  isConsecutive={isConsecutive}
+                    // Force re-fetch messages
+                    if (roomIdRef.current) {
+                      dispatch(fetchMessagesAsync(roomIdRef.current));
+                      // Re-setup subscription after refresh
+                      setTimeout(() => {
+                        setupMessageSubscription();
+                      }, 500);
+                    }
+                  }}
+                  colors={["#1ABC9C"]}
                 />
-              );
-            }}
-          />
-          {/* )} */}
+              }
+              renderItem={({ item, index }) => {
+                // Determine if this message is from the same sender as the previous one
+                const isConsecutive =
+                  index > 0 &&
+                  currentMessages[index - 1].sender_id === item.sender_id;
+                const isFromCurrentUser = item.sender_id === currentUserId;
+
+                return (
+                  <ChatBubble
+                    message={item}
+                    isFromCurrentUser={isFromCurrentUser}
+                    isConsecutive={isConsecutive}
+                  />
+                );
+              }}
+            />
+          )}
         </ImageBackground>
       </View>
 
@@ -784,6 +861,19 @@ const styles = StyleSheet.create({
   },
   sendButtonDisabled: {
     backgroundColor: "#A5D6CD",
+  },
+  debugContainer: {
+    position: "absolute",
+    top: 70,
+    right: 10,
+    backgroundColor: "rgba(0,0,0,0.7)",
+    padding: 5,
+    borderRadius: 5,
+    zIndex: 9999,
+  },
+  debugText: {
+    color: "white",
+    fontSize: 10,
   },
 });
 

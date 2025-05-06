@@ -274,10 +274,13 @@ export const fetchChatPartnerProfileAsync = createAsyncThunk(
       const profile = await getUserProfile(partnerId);
 
       if (profile) {
+        // Serialize the profile before storing in Redux
+        const serializedProfile = serializeFirestoreData(profile);
+
         // Also update our user profiles cache in Redux
         dispatch(
           updateUserProfiles({
-            [partnerId]: profile,
+            [partnerId]: serializedProfile,
           })
         );
       }
@@ -288,6 +291,37 @@ export const fetchChatPartnerProfileAsync = createAsyncThunk(
     }
   }
 );
+
+// Add this utility function to your chatSlice.ts file
+function serializeFirestoreData(data: any): any {
+  if (!data) return data;
+
+  // Check if it's an array
+  if (Array.isArray(data)) {
+    return data.map((item) => serializeFirestoreData(item));
+  }
+
+  // If it's not an object or is null, return as is
+  if (typeof data !== "object" || data === null) {
+    return data;
+  }
+
+  // Handle Firestore timestamp objects
+  if (data.seconds !== undefined && data.nanoseconds !== undefined) {
+    return data.seconds * 1000 + Math.round(data.nanoseconds / 1000000);
+  }
+
+  // Handle regular objects by recursively processing their properties
+  const serialized: Record<string, any> = {};
+
+  for (const key in data) {
+    if (Object.prototype.hasOwnProperty.call(data, key)) {
+      serialized[key] = serializeFirestoreData(data[key]);
+    }
+  }
+
+  return serialized;
+}
 
 // Create chat slice
 const chatSlice = createSlice({
@@ -306,7 +340,11 @@ const chatSlice = createSlice({
       }
     },
     setCurrentPartner: (state, action) => {
-      state.currentPartner = action.payload;
+      if (action.payload) {
+        state.currentPartner = serializeFirestoreData(action.payload);
+      } else {
+        state.currentPartner = null;
+      }
     },
     updateUnreadCount: (state, action) => {
       state.unreadCount = action.payload;
@@ -336,21 +374,55 @@ const chatSlice = createSlice({
         }
       }
     },
+    // In your chatSlice.ts - update the updateMessages reducer
     updateMessages: (state, action) => {
       // This is for real-time updates via Firebase listeners
       const messages = action.payload as ChatMessage[];
       const roomId = state.currentRoom;
 
-      if (messages && messages.length > 0 && roomId) {
-        // Important: Replace current messages with the updated messages
+      if (messages && roomId) {
+        console.log(
+          `[REDUX UPDATE] Room ${roomId}: Updating ${messages.length} messages`
+        );
+
+        // Always set the current messages to the new messages
         state.currentMessages = messages;
 
-        // Also update the message cache
-        state.messageCache[roomId] = messages;
+        // Update the message cache for this room
+        state.messageCache[roomId] = [...messages];
         state.lastUpdated[roomId] = Date.now();
 
-        // Log for debugging
-        console.log(`Updated ${messages.length} messages in Redux state`);
+        // Find the last message for the room banner
+        if (messages.length > 0) {
+          const lastMsg = messages[messages.length - 1];
+
+          // Update the corresponding chat room's last message if it exists
+          const roomIndex = state.chatRooms.findIndex((r) => r.id === roomId);
+          if (roomIndex >= 0) {
+            state.chatRooms[roomIndex] = {
+              ...state.chatRooms[roomIndex],
+              last_message: lastMsg.content,
+              last_updated:
+                typeof lastMsg.timestamp === "number"
+                  ? lastMsg.timestamp
+                  : Date.now(),
+            };
+
+            // Re-sort rooms to keep most recent on top
+            state.chatRooms.sort((a, b) => {
+              const timeA =
+                typeof a.last_updated === "number" ? a.last_updated : 0;
+              const timeB =
+                typeof b.last_updated === "number" ? b.last_updated : 0;
+              return timeB - timeA;
+            });
+          }
+        }
+      } else {
+        console.log(`[REDUX UPDATE] Skipped - invalid data:`, {
+          hasMessages: !!messages,
+          roomId,
+        });
       }
     },
     setMessageSubscription: (state, action) => {
@@ -394,9 +466,16 @@ const chatSlice = createSlice({
     },
     // New action to update user profiles
     updateUserProfiles: (state, action) => {
+      const serializedProfiles: Record<string, any> = {};
+
+      // Serialize each profile
+      for (const [id, profile] of Object.entries(action.payload)) {
+        serializedProfiles[id] = serializeFirestoreData(profile);
+      }
+
       state.userProfiles = {
         ...state.userProfiles,
-        ...action.payload,
+        ...serializedProfiles,
       };
     },
     // Clear all message caches (useful when logging out)
