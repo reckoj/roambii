@@ -10,13 +10,20 @@ import {
 } from "react-native";
 import { getAllAgents } from "@/lib/agent-service";
 import images from "@/constants/images"; // Import default images
+import { useAuth } from "@/lib/auth-context";
 
 const RecommendedAgents = () => {
   const [agents, setAgents] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const { user } = useAuth();
 
   useEffect(() => {
     const fetchAgents = async () => {
+      if (!user) {
+        setLoading(false);
+        return;
+      }
+
       try {
         setLoading(true);
         // Use Firebase function to get all agents, limit to 10 for recommended list
@@ -31,7 +38,7 @@ const RecommendedAgents = () => {
     };
 
     fetchAgents();
-  }, []);
+  }, [user]);
 
   const handleAgentPress = (agentId: string) => {
     console.log("Navigating to:", `/agents/${agentId}`);
@@ -76,53 +83,57 @@ const RecommendedAgents = () => {
       .substring(0, 2);
   };
 
+  if (!user) {
+    return null;
+  }
+
   if (loading) {
     return (
-      <View className="py-4 flex items-center justify-center">
-        <ActivityIndicator size="small" color="#1ABC9C" />
+      <View className="items-center justify-center py-4">
+        <ActivityIndicator size="large" color="#1ABC9C" />
       </View>
     );
   }
 
   if (agents.length === 0) {
     return (
-      <View className="py-4 px-2">
-        <Text className="text-gray-500 text-center">
-          No agents available at the moment
-        </Text>
+      <View className="py-4">
+        <Text className="text-center text-gray-500">No agents found</Text>
       </View>
     );
   }
 
   return (
-    <ScrollView
-      horizontal
-      showsHorizontalScrollIndicator={false}
-      className="mt-5 mb-5"
-    >
-      {agents.map((agent) => (
-        <TouchableOpacity
-          key={agent.id} // Firebase uses 'id' instead of '$id'
-          onPress={() => handleAgentPress(agent.id)}
-          className="flex flex-col items-center mr-4 px-4"
-        >
-          {/* Avatar with error handling */}
-          <View className="size-16 rounded-full overflow-hidden bg-gray-200 flex items-center justify-center">
+    <View className="py-4">
+      <Text className="text-xl font-rubik-bold mb-4">Recommended Agents</Text>
+      <ScrollView
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        className="flex-row"
+      >
+        {agents.map((agent) => (
+          <TouchableOpacity
+            key={agent.id}
+            onPress={() => handleAgentPress(agent.id)}
+            className="mr-4 w-40"
+          >
             <Image
               source={getAvatarSource(agent)}
-              className="size-16 rounded-full"
-              defaultSource={images.avatar}
-              onError={() =>
-                console.log(`Failed to load avatar for agent ${agent.id}`)
-              }
+              className="w-40 h-40 rounded-lg mb-2"
+              resizeMode="cover"
             />
-          </View>
-          <Text className="text-sm text-text font-rubik mt-1">
-            {agent.name ? agent.name.split(" ")[0] : "Agent"}
-          </Text>
-        </TouchableOpacity>
-      ))}
-    </ScrollView>
+            <Text className="font-rubik-medium text-base" numberOfLines={1}>
+              {agent.name}
+            </Text>
+            {agent.niche && (
+              <Text className="text-gray-500 text-sm" numberOfLines={1}>
+                {agent.niche}
+              </Text>
+            )}
+          </TouchableOpacity>
+        ))}
+      </ScrollView>
+    </View>
   );
 };
 

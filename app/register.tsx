@@ -17,16 +17,10 @@ import {
   Platform,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-
 import icons from "@/constants/icons";
 import { router } from "expo-router";
 import { EyeClosedIcon, EyeIcon } from "lucide-react-native";
-import { useDispatch, useSelector } from "react-redux";
-import {
-  registerUserAsync,
-  clearAuthError,
-} from "@/lib/redux/slices/authSlice";
-import { AppDispatch, RootState } from "@/lib/redux/store/store";
+import { useAuthOperations } from "@/lib/use-auth-operations";
 
 // Define niche options
 const NICHE_OPTIONS = [
@@ -39,8 +33,7 @@ const NICHE_OPTIONS = [
 ];
 
 const Register = () => {
-  const dispatch = useDispatch<AppDispatch>();
-  const { isLoading, error } = useSelector((state: RootState) => state.auth);
+  const { register, loading, error } = useAuthOperations();
 
   const [email, setEmail] = useState("");
   const [name, setName] = useState("");
@@ -51,14 +44,6 @@ const Register = () => {
   const [isAgent, setIsAgent] = useState(false);
   const [selectedNiche, setSelectedNiche] = useState<string>("");
   const [licenseNumber, setLicenseNumber] = useState("");
-
-  // Clear any auth errors when component mounts or unmounts
-  React.useEffect(() => {
-    dispatch(clearAuthError());
-    return () => {
-      dispatch(clearAuthError());
-    };
-  }, [dispatch]);
 
   const handleRegister = async () => {
     if (!name || !email || !password || !confirmPassword) {
@@ -77,34 +62,19 @@ const Register = () => {
     }
 
     try {
-      // Register using Redux thunk
-      const resultAction = await dispatch(
-        registerUserAsync({
-          name,
-          email,
-          password,
-          isAgent,
-          cPassword: confirmPassword,
-          niche: selectedNiche,
-        })
-      )
-        .unwrap()
-        .catch((error) => {
-          Alert.alert(
-            "Registration Failed",
-            error || "An unknown error occurred."
-          );
-          return null;
-        });
+      const response = await register(email, password, name, isAgent, selectedNiche);
 
-      if (resultAction) {
+      if (response.success) {
         // Registration was successful, navigate to verification screen
         router.push({
           pathname: "/verificationScreen",
           params: {
             email: email,
+            userId: response.userId,
           },
         });
+      } else {
+        Alert.alert("Registration Failed", response.message);
       }
     } catch (error: any) {
       Alert.alert(
@@ -142,7 +112,8 @@ const Register = () => {
                   value={name}
                   onChangeText={setName}
                   keyboardType="default"
-                  autoCapitalize="words" // Changed to capitalize words
+                  autoCapitalize="words"
+                  editable={!loading}
                 />
 
                 <Text className="text-text font-rubik-medium">Email</Text>
@@ -152,6 +123,7 @@ const Register = () => {
                   onChangeText={setEmail}
                   keyboardType="email-address"
                   autoCapitalize="none"
+                  editable={!loading}
                 />
 
                 <View className="relative mb-4">
@@ -161,10 +133,12 @@ const Register = () => {
                     value={password}
                     onChangeText={setPassword}
                     secureTextEntry={!showPassword}
+                    editable={!loading}
                   />
                   <TouchableOpacity
                     className="absolute right-4 top-8"
                     onPress={() => setShowPassword(!showPassword)}
+                    disabled={loading}
                   >
                     {showPassword ? (
                       <EyeClosedIcon color="#1ABC9C" size={22} />
@@ -183,10 +157,12 @@ const Register = () => {
                     value={confirmPassword}
                     onChangeText={setConfirmPassword}
                     secureTextEntry={!showCPassword}
+                    editable={!loading}
                   />
                   <TouchableOpacity
                     className="absolute right-4 top-8"
                     onPress={() => setShowCPassword(!showCPassword)}
+                    disabled={loading}
                   >
                     {showCPassword ? (
                       <EyeClosedIcon color="#1ABC9C" size={22} />
@@ -197,92 +173,67 @@ const Register = () => {
                 </View>
 
                 <View className="mb-4">
-                  <Text className="mb-2">
-                    {!isAgent ? (
-                      "Register as an agent"
-                    ) : (
-                      <View className="w-full">
-                        <Text className="text-text font-rubik-medium">
-                          License Number
-                        </Text>
-                        <TextInput
-                          className="h-12 px-4 mb-4 border border-gray-300 rounded-md"
-                          value={licenseNumber}
-                          onChangeText={setLicenseNumber}
-                          keyboardType="default"
-                          autoCapitalize="characters"
-                        />
-                        <Text className="text-danger">
-                          You will be required to verify your agent status
-                        </Text>
-                      </View>
-                    )}{" "}
-                  </Text>
+                  <Text className="mb-2">Are you a travel agent?</Text>
                   <Switch
-                    trackColor={{ false: "#95A5A6", true: "#1ABC9C" }}
-                    thumbColor={isAgent ? "#FFFFFF" : "#FFFFFF"}
                     value={isAgent}
                     onValueChange={setIsAgent}
+                    disabled={loading}
                   />
                 </View>
-              </View>
 
-              {isAgent && (
-                <View style={styles.container}>
-                  <Text style={styles.title}>Select Your Travel Niche</Text>
-
-                  <Text style={styles.subtitle}>
-                    Choose the travel category you specialize in
-                  </Text>
-                  <View style={styles.pillsContainer}>
-                    {NICHE_OPTIONS.map((niche) => (
-                      <TouchableOpacity
-                        key={niche}
-                        style={[
-                          styles.pill,
-                          selectedNiche === niche && styles.selectedPill,
-                        ]}
-                        onPress={() => handleSelectNiche(niche)}
-                      >
-                        <Text
-                          style={[
-                            styles.pillText,
-                            selectedNiche === niche && styles.selectedPillText,
-                          ]}
+                {isAgent && (
+                  <View className="mb-4">
+                    <Text className="mb-2">Select your niche:</Text>
+                    <View className="flex-row flex-wrap">
+                      {NICHE_OPTIONS.map((niche) => (
+                        <TouchableOpacity
+                          key={niche}
+                          onPress={() => handleSelectNiche(niche)}
+                          className={`mr-2 mb-2 px-3 py-2 rounded-full ${
+                            selectedNiche === niche
+                              ? "bg-primary-300"
+                              : "bg-gray-200"
+                          }`}
+                          disabled={loading}
                         >
-                          {niche}
-                        </Text>
-                      </TouchableOpacity>
-                    ))}
+                          <Text
+                            className={`${
+                              selectedNiche === niche
+                                ? "text-white"
+                                : "text-gray-700"
+                            }`}
+                          >
+                            {niche}
+                          </Text>
+                        </TouchableOpacity>
+                      ))}
+                    </View>
                   </View>
-                </View>
-              )}
-
-              {/* Display error from Redux state if any */}
-              {error && (
-                <Text className="text-red-500 mb-4 text-center">{error}</Text>
-              )}
-
-              {/* Register Button */}
-              <TouchableOpacity
-                className="h-12 mb-4 bg-primary-300 rounded-md items-center justify-center"
-                onPress={handleRegister}
-                disabled={isLoading}
-              >
-                {isLoading ? (
-                  <ActivityIndicator color="#ffffff" size="small" />
-                ) : (
-                  <Text className="text-lg font-rubik-bold text-white">
-                    Create Account
-                  </Text>
                 )}
-              </TouchableOpacity>
 
-              {/* Sign In Link */}
-              <View className="flex-row justify-center my-6">
-                <Text className="text-gray-600">Already have an account? </Text>
-                <TouchableOpacity onPress={() => router.push("/login")}>
-                  <Text className="text-emerald-500">Log In</Text>
+                <TouchableOpacity
+                  onPress={handleRegister}
+                  className="bg-primary-300 py-4 rounded-md mt-4"
+                  disabled={loading}
+                >
+                  {loading ? (
+                    <ActivityIndicator color="white" />
+                  ) : (
+                    <Text className="text-white text-center font-rubik-medium">
+                      Register
+                    </Text>
+                  )}
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  onPress={() => router.push("/login")}
+                  className="mt-4"
+                  disabled={loading}
+                >
+                  <Text className="text-center text-gray-600">
+                    Already have an account?{" "}
+                    <Text className="text-primary-300">Login</Text>
+                  </Text>
                 </TouchableOpacity>
               </View>
             </View>

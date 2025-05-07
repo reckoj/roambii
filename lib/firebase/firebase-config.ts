@@ -31,10 +31,12 @@ try {
   throw error;
 }
 
-// Initialize and export services
+// Initialize Auth
 const auth = getAuth(app);
+
+// Initialize and export services
 const firestore = getFirestore(app);
-const firebaseDb = getDatabase(app); // Properly export the database instance
+const firebaseDb = getDatabase(app);
 const storage = getStorage(app);
 
 export { app, auth, firestore, firebaseDb, storage };
@@ -46,8 +48,8 @@ export const COLLECTIONS = {
   PACKAGES: "package_info",
   BOOKINGS: "bookings",
   REVIEWS: "agent_reviews",
-  CHAT_ROOMS: "chat_rooms", // Will be stored in Realtime Database
-  MESSAGES: "messages", // Will be stored in Realtime Database
+  CHAT_ROOMS: "chat_rooms",
+  MESSAGES: "messages",
   ITINERARIES: "itineraries",
   DAY_PLANS: "day_plans",
   ACTIVITIES: "activities",
@@ -58,10 +60,7 @@ export const COLLECTIONS = {
 
 // Export Firebase collection paths for easier access
 export const FIREBASE_PATHS = {
-  // Realtime Database paths
   CHAT_ROOMS: "chat_rooms",
   MESSAGES: "messages",
   USER_STATUSES: "user_statuses",
-
-  // Firestore collection paths match the COLLECTIONS object
 };

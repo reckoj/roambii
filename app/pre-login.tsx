@@ -10,31 +10,30 @@ import {
   ActivityIndicator,
 } from "react-native";
 import { useRouter } from "expo-router";
-import { useDispatch, useSelector } from "react-redux";
-
-import { loginWithGoogleAsync } from "@/lib/redux/slices/authSlice";
-import { RootState, AppDispatch } from "@/lib/redux/store/store";
+import { useAuth } from "@/lib/auth-context";
+import { useAuthOperations } from "@/lib/use-auth-operations";
 import icons from "@/constants/icons";
 import images from "@/constants/images";
 
 const PreAuth = () => {
-  const dispatch = useDispatch<AppDispatch>();
   const router = useRouter();
-  const { isLoading, isAuthenticated, user } = useSelector(
-    (state: RootState) => state.auth
-  );
+  const { user, loading } = useAuth();
+  const { loginWithGoogle } = useAuthOperations();
 
   // Use useEffect for navigation instead of conditional rendering with Redirect
   useEffect(() => {
     // Only redirect if authenticated and not already loading
-    if (isAuthenticated && user && !isLoading) {
+    if (user && !loading) {
       router.replace("/");
     }
-  }, [isAuthenticated, user, isLoading, router]);
+  }, [user, loading, router]);
 
   const handleGoogleLogin = async () => {
     try {
-      await dispatch(loginWithGoogleAsync());
+      const response = await loginWithGoogle();
+      if (!response.success) {
+        Alert.alert("Error", response.message);
+      }
       // Navigation will be handled by the useEffect
     } catch (error) {
       console.error("Google login error:", error);
@@ -43,7 +42,7 @@ const PreAuth = () => {
   };
 
   // Show loading indicator if still checking auth
-  if (isLoading) {
+  if (loading) {
     return (
       <SafeAreaView className="flex-1 items-center justify-center bg-white">
         <ActivityIndicator size="large" color="#1ABC9C" />
@@ -81,7 +80,7 @@ const PreAuth = () => {
           <TouchableOpacity
             onPress={() => router.push("/login")}
             className="border border-gray-300 rounded-md w-full py-4 mt-5"
-            disabled={isLoading}
+            disabled={loading}
           >
             <View className="flex flex-row items-center justify-center">
               <Image
@@ -98,7 +97,7 @@ const PreAuth = () => {
           <TouchableOpacity
             onPress={handleGoogleLogin}
             className="border border-gray-300 rounded-md w-full py-4 mt-5"
-            disabled={isLoading}
+            disabled={loading}
           >
             <View className="flex flex-row items-center justify-center">
               <Image
@@ -114,7 +113,7 @@ const PreAuth = () => {
 
           <TouchableOpacity
             className="border border-gray-300 rounded-md w-full py-4 mt-5"
-            disabled={isLoading}
+            disabled={loading}
           >
             <View className="flex flex-row items-center justify-center">
               <Image

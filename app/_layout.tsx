@@ -3,69 +3,21 @@ import { router, SplashScreen, Stack } from "expo-router";
 import "./global.css";
 import { useFonts } from "expo-font";
 import { useEffect } from "react";
-import { useDispatch, useSelector } from "react-redux";
-import GlobalProvider from "@/lib/global-provider";
+import { AuthProvider } from "@/lib/auth-context";
 import StripeProvider from "@/app/StripeProvider";
-import ReduxProvider from "@/lib/redux/provider";
-import { AppDispatch, RootState } from "@/lib/redux/store/store";
-import { fetchCurrentUserAsync } from "@/lib/redux/slices/authSlice";
-import { verifyEmail } from "@/lib/auth-service";
-import { Alert } from "react-native";
 import { setupUnreadMessageTracker } from "@/lib/firebase/chat-notifications";
+import { handleDeepLink } from "@/lib/deep-link-handler";
+import * as Linking from "expo-linking";
+import ReduxProvider from "@/lib/redux/provider";
+import { GlobalProvider } from "@/lib/global-provider";
 
 // Prevent auto-hiding of splash screen
 SplashScreen.preventAutoHideAsync().catch(() => {
   /* ignore if already prevented */
 });
 
-function AppInitializer() {
-  const dispatch = useDispatch<AppDispatch>();
-  const { isAuthenticated, user } = useSelector(
-    (state: RootState) => state.auth
-  );
-
-  useEffect(() => {
-    const initialize = async () => {
-      try {
-        // Add a small delay to ensure services are initialized
-        await new Promise((resolve) => setTimeout(resolve, 500));
-
-        // Attempt to fetch current user
-        const result = await dispatch(fetchCurrentUserAsync()).unwrap();
-        console.log("User session restored:", !!result);
-
-        // Setup chat notifications if authenticated
-        if (result && result.id) {
-          setupUnreadMessageTracker(result.id);
-        }
-      } catch (error) {
-        console.log("No active session:", error);
-      } finally {
-        // Always hide splash screen
-        SplashScreen.hideAsync().catch(console.error);
-      }
-    };
-
-    initialize();
-
-    // Cleanup function
-    return () => {
-      // Any cleanup needed for app initialization
-    };
-  }, [dispatch]);
-
-  // Also set up chat notifications when user logs in
-  useEffect(() => {
-    if (isAuthenticated && user?.id) {
-      setupUnreadMessageTracker(user.id);
-    }
-  }, [isAuthenticated, user?.id]);
-
-  return null;
-}
-
 export default function RootLayout() {
-  const [fontsLoaded] = useFonts({
+  const [fontsLoaded, fontError] = useFonts({
     "Rubik-Bold": require("../assets/fonts/Rubik-Bold.ttf"),
     "Rubik-ExtraBold": require("../assets/fonts/Rubik-ExtraBold.ttf"),
     "Rubik-Medium": require("../assets/fonts/Rubik-Medium.ttf"),
@@ -75,82 +27,46 @@ export default function RootLayout() {
   });
 
   useEffect(() => {
-    if (fontsLoaded) {
-      // Don't hide splash screen here - we'll hide it after auth check
+    if (fontsLoaded || fontError) {
+      SplashScreen.hideAsync();
     }
-  }, [fontsLoaded]);
+  }, [fontsLoaded, fontError]);
 
-  if (!fontsLoaded) return null;
+  // Handle deep links
+  useEffect(() => {
+    const subscription = Linking.addEventListener("url", ({ url }) => {
+      handleDeepLink(url);
+    });
+
+    // Handle initial URL
+    Linking.getInitialURL().then((url) => {
+      if (url) {
+        handleDeepLink(url);
+      }
+    });
+
+    return () => {
+      subscription.remove();
+    };
+  }, []);
+
+  if (!fontsLoaded && !fontError) {
+    return null;
+  }
 
   return (
     <ReduxProvider>
-      <GlobalProvider>
-        <AppInitializer />
-        <StripeProvider>
-          <Stack screenOptions={{ headerShown: false }} />
-        </StripeProvider>
-      </GlobalProvider>
+      <AuthProvider>
+        <GlobalProvider>
+          <StripeProvider>
+            <Stack
+              screenOptions={{
+                headerShown: false,
+              }}
+            />
+          </StripeProvider>
+        </GlobalProvider>
+      </AuthProvider>
     </ReduxProvider>
   );
 }
-
-/**
- * Handles deep links for password reset and other functionality
- */
-const handleDeepLink = (url: string) => {
-  console.log("Deep link received:", url);
-
-  try {
-    // Parse the URL
-    const parsedUrl = new URL(url);
-    const path = parsedUrl.pathname;
-    const searchParams = parsedUrl.searchParams;
-
-    // Check for password reset links - typical format: /reset-password?oobCode=xyz
-    if (path.includes("reset-password") || path.includes("resetPassword")) {
-      const oobCode = searchParams.get("oobCode") || searchParams.get("code");
-
-      if (oobCode) {
-        console.log("Password reset code detected:", oobCode);
-        // Navigate to the reset password screen with the code
-        router.push({
-          pathname: "/reset-password",
-          params: { oobCode },
-        });
-        return;
-      }
-    }
-
-    // Check for email verification links
-    if (path.includes("verify-email") || path.includes("verifyEmail")) {
-      const oobCode = searchParams.get("oobCode") || searchParams.get("code");
-
-      // if (oobCode) {
-      //   console.log("Email verification code detected:", oobCode);
-      //   // Navigate to the email verification screen with the code
-      //   router.push({
-      //     pathname: "/verify-email",
-      //     params: { oobCode },
-      //   });
-      //   return;
-      // }
-
-      verifyEmail(oobCode!).then((response) => {
-        if (response.success) {
-          Alert.alert(
-            "Success",
-            "Email verified successfully. You can now log in."
-          );
-        } else {
-          Alert.alert("Error", response.message);
-        }
-        router.replace("/login");
-      });
-    }
-
-    // Handle other types of deep links here
-    console.log("Unhandled deep link path:", path);
-  } catch (error) {
-    console.error("Error handling deep link:", error);
-  }
-};
