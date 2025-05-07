@@ -146,8 +146,31 @@ const AgentProfile = () => {
   }
 
   const handleContact = async () => {
-    if (!agent || !rawUser) {
-      Alert.alert("Error", "Cannot start chat. Missing user or agent data.");
+    console.log("Starting chat with agent:", agent?.id);
+    console.log("Current user:", rawUser?.id);
+
+    if (!agent) {
+      console.error("Agent data is missing");
+      Alert.alert("Error", "Cannot start chat. Agent data is missing.");
+      return;
+    }
+
+    if (!rawUser) {
+      console.error("User data is missing");
+      Alert.alert(
+        "Error",
+        "Please sign in to start a chat with the agent.",
+        [
+          {
+            text: "Sign In",
+            onPress: () => router.push("/pre-login"),
+          },
+          {
+            text: "Cancel",
+            style: "cancel",
+          },
+        ]
+      );
       return;
     }
 
@@ -155,6 +178,8 @@ const AgentProfile = () => {
       // Generate consistent room ID between user and agent
       const userID = rawUser.id;
       const agentID = agent.id;
+
+      console.log("Creating chat room with IDs:", { userID, agentID });
 
       router.push({
         pathname: "/chatScreen",
@@ -169,7 +194,7 @@ const AgentProfile = () => {
       });
     } catch (error) {
       console.error("Error starting chat:", error);
-      Alert.alert("Error", "Failed to start chat.");
+      Alert.alert("Error", "Failed to start chat. Please try again.");
     }
   };
 
@@ -377,7 +402,7 @@ const AgentProfile = () => {
                   />
                 </View>
               )}
-              keyExtractor={(item) => item.id}
+              keyExtractor={(item) => item.$id || item.id}
               showsHorizontalScrollIndicator={false}
               contentContainerStyle={styles.packagesList}
             />

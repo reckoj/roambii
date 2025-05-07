@@ -19,11 +19,6 @@ const RecommendedAgents = () => {
 
   useEffect(() => {
     const fetchAgents = async () => {
-      if (!user) {
-        setLoading(false);
-        return;
-      }
-
       try {
         setLoading(true);
         // Use Firebase function to get all agents, limit to 10 for recommended list
@@ -38,7 +33,7 @@ const RecommendedAgents = () => {
     };
 
     fetchAgents();
-  }, [user]);
+  }, []);
 
   const handleAgentPress = (agentId: string) => {
     console.log("Navigating to:", `/agents/${agentId}`);
@@ -83,10 +78,6 @@ const RecommendedAgents = () => {
       .substring(0, 2);
   };
 
-  if (!user) {
-    return null;
-  }
-
   if (loading) {
     return (
       <View className="items-center justify-center py-4">
@@ -104,36 +95,33 @@ const RecommendedAgents = () => {
   }
 
   return (
-    <View className="py-4">
-      <Text className="text-xl font-rubik-bold mb-4">Recommended Agents</Text>
-      <ScrollView
-        horizontal
-        showsHorizontalScrollIndicator={false}
-        className="flex-row"
-      >
-        {agents.map((agent) => (
-          <TouchableOpacity
-            key={agent.id}
-            onPress={() => handleAgentPress(agent.id)}
-            className="mr-4 w-40"
-          >
-            <Image
-              source={getAvatarSource(agent)}
-              className="w-40 h-40 rounded-lg mb-2"
-              resizeMode="cover"
-            />
-            <Text className="font-rubik-medium text-base" numberOfLines={1}>
-              {agent.name}
+    <ScrollView
+      horizontal
+      showsHorizontalScrollIndicator={false}
+      className="flex-row"
+    >
+      {agents.map((agent) => (
+        <TouchableOpacity
+          key={agent.id}
+          onPress={() => handleAgentPress(agent.id)}
+          className="mr-4 w-40"
+        >
+          <Image
+            source={getAvatarSource(agent)}
+            className="w-40 h-40 rounded-lg mb-2"
+            resizeMode="cover"
+          />
+          <Text className="font-rubik-medium text-base" numberOfLines={1}>
+            {agent.name}
+          </Text>
+          {agent.niche && (
+            <Text className="text-gray-500 text-sm" numberOfLines={1}>
+              {agent.niche}
             </Text>
-            {agent.niche && (
-              <Text className="text-gray-500 text-sm" numberOfLines={1}>
-                {agent.niche}
-              </Text>
-            )}
-          </TouchableOpacity>
-        ))}
-      </ScrollView>
-    </View>
+          )}
+        </TouchableOpacity>
+      ))}
+    </ScrollView>
   );
 };
 
