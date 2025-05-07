@@ -138,6 +138,7 @@ export const getItineraryWithDetails = async (
 
     const itinerary: Itinerary = {
       id: itineraryDoc.id,
+      userId: itineraryData.userId,
       ...itineraryData,
       startDate: convertTimestampToDate(itineraryData.startDate),
       endDate: convertTimestampToDate(itineraryData.endDate),
@@ -212,62 +213,127 @@ export const getUserItineraries = async (
   userId: string
 ): Promise<Itinerary[]> => {
   try {
+    if (!userId) {
+      console.warn("getUserItineraries called with no userId");
+      return [];
+    }
+
+    console.log(`Fetching itineraries for user: ${userId}`);
+
     const itinerariesRef = collection(firestore, COLLECTIONS.ITINERARIES);
 
-    // Get itineraries where user is the owner OR is in the sharedWith array
-    const userItinerariesQuery = query(
-      itinerariesRef,
-      where("userId", "==", userId),
-      orderBy("createdAt", "desc")
-    );
+    try {
+      // First try the optimized query with both conditions
+      const userItinerariesQuery = query(
+        itinerariesRef,
+        where("userId", "==", userId),
+        orderBy("createdAt", "desc")
+      );
 
-    const sharedItinerariesQuery = query(
-      itinerariesRef,
-      where("sharedWith", "array-contains", userId),
-      orderBy("createdAt", "desc")
-    );
+      const sharedItinerariesQuery = query(
+        itinerariesRef,
+        where("sharedWith", "array-contains", userId),
+        orderBy("createdAt", "desc")
+      );
 
-    // Execute both queries
-    const [userSnapshot, sharedSnapshot] = await Promise.all([
-      getDocs(userItinerariesQuery),
-      getDocs(sharedItinerariesQuery),
-    ]);
+      // Execute both queries
+      const [userSnapshot, sharedSnapshot] = await Promise.all([
+        getDocs(userItinerariesQuery),
+        getDocs(sharedItinerariesQuery),
+      ]);
 
-    const itineraries: Itinerary[] = [];
-    const processedIds = new Set<string>();
+      const itineraries: Itinerary[] = [];
+      const processedIds = new Set<string>();
 
-    // Process user's own itineraries
-    userSnapshot.forEach((doc) => {
-      const itineraryData = doc.data() as Omit<Itinerary, "id">;
-      processedIds.add(doc.id);
+      // Process user's own itineraries
+      userSnapshot.forEach((doc) => {
+        try {
+          const itineraryData = doc.data() as Omit<Itinerary, "id">;
+          processedIds.add(doc.id);
 
-      itineraries.push({
-        id: doc.id,
-        ...itineraryData,
-        startDate: convertTimestampToDate(itineraryData.startDate),
-        endDate: convertTimestampToDate(itineraryData.endDate),
-        createdAt: convertTimestampToDate(itineraryData.createdAt),
-        updatedAt: convertTimestampToDate(itineraryData.updatedAt),
+          itineraries.push({
+            id: doc.id,
+            ...itineraryData,
+            startDate: convertTimestampToDate(itineraryData.startDate),
+            endDate: convertTimestampToDate(itineraryData.endDate),
+            createdAt: convertTimestampToDate(itineraryData.createdAt),
+            updatedAt: convertTimestampToDate(itineraryData.updatedAt),
+          });
+        } catch (error) {
+          console.error(`Error processing itinerary ${doc.id}:`, error);
+        }
       });
-    });
 
-    // Process shared itineraries (avoiding duplicates)
-    sharedSnapshot.forEach((doc) => {
-      if (!processedIds.has(doc.id)) {
-        const itineraryData = doc.data() as Omit<Itinerary, "id">;
+      // Process shared itineraries (avoiding duplicates)
+      sharedSnapshot.forEach((doc) => {
+        try {
+          if (!processedIds.has(doc.id)) {
+            const itineraryData = doc.data() as Omit<Itinerary, "id">;
 
-        itineraries.push({
-          id: doc.id,
-          ...itineraryData,
-          startDate: convertTimestampToDate(itineraryData.startDate),
-          endDate: convertTimestampToDate(itineraryData.endDate),
-          createdAt: convertTimestampToDate(itineraryData.createdAt),
-          updatedAt: convertTimestampToDate(itineraryData.updatedAt),
+            itineraries.push({
+              id: doc.id,
+              ...itineraryData,
+              startDate: convertTimestampToDate(itineraryData.startDate),
+              endDate: convertTimestampToDate(itineraryData.endDate),
+              createdAt: convertTimestampToDate(itineraryData.createdAt),
+              updatedAt: convertTimestampToDate(itineraryData.updatedAt),
+            });
+          }
+        } catch (error) {
+          console.error(`Error processing shared itinerary ${doc.id}:`, error);
+        }
+      });
+
+      console.log(`Successfully fetched ${itineraries.length} itineraries for user ${userId}`);
+      return itineraries;
+    } catch (error: any) {
+      // If the error is about missing index, fall back to simpler queries
+      if (error.code === 'failed-precondition' && error.message.includes('requires an index')) {
+        console.log('Falling back to simpler queries due to missing index');
+        
+        // Fallback: Get all itineraries and filter client-side
+        const allItinerariesSnapshot = await getDocs(itinerariesRef);
+        const itineraries: Itinerary[] = [];
+        const processedIds = new Set<string>();
+
+        allItinerariesSnapshot.forEach((doc) => {
+          try {
+            const itineraryData = doc.data() as Omit<Itinerary, "id">;
+            
+            // Check if this itinerary belongs to the user or is shared with them
+            if (itineraryData.userId === userId || 
+                (Array.isArray(itineraryData.sharedWith) && 
+                 itineraryData.sharedWith.includes(userId))) {
+              
+              if (!processedIds.has(doc.id)) {
+                processedIds.add(doc.id);
+                itineraries.push({
+                  id: doc.id,
+                  ...itineraryData,
+                  startDate: convertTimestampToDate(itineraryData.startDate),
+                  endDate: convertTimestampToDate(itineraryData.endDate),
+                  createdAt: convertTimestampToDate(itineraryData.createdAt),
+                  updatedAt: convertTimestampToDate(itineraryData.updatedAt),
+                });
+              }
+            }
+          } catch (error) {
+            console.error(`Error processing itinerary ${doc.id}:`, error);
+          }
         });
-      }
-    });
 
-    return itineraries;
+        // Sort by createdAt
+        itineraries.sort((a, b) => 
+          b.createdAt.getTime() - a.createdAt.getTime()
+        );
+
+        console.log(`Successfully fetched ${itineraries.length} itineraries using fallback method`);
+        return itineraries;
+      }
+      
+      // If it's not an index error, rethrow
+      throw error;
+    }
   } catch (error) {
     console.error("Error getting user itineraries:", error);
     return [];

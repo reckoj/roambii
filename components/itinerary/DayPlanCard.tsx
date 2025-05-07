@@ -23,13 +23,14 @@ import {
   updateDayPlan,
   saveActivity,
   deleteItinerary,
-} from "@/lib/itineraryService";
+  deleteActivity,
+} from "@/lib/itinerary-service";
 import {
   Itinerary,
   DayPlan,
   Activity,
   ItineraryWithDetails,
-} from "@/lib/models";
+} from "@/lib/firebase/models";
 import CustomHeader from "@/components/HeaderComponent";
 import {
   Calendar,
@@ -51,7 +52,6 @@ import {
   MoreVertical,
 } from "lucide-react-native";
 import { LinearGradient } from "expo-linear-gradient";
-import { config, databases } from "@/lib/appwrite";
 
 const { width, height } = Dimensions.get("window");
 
@@ -241,7 +241,7 @@ const ItineraryDetail = () => {
 
   // Delete activity
   const handleDeleteActivity = async (activity: Activity) => {
-    if (!activity.$id) return;
+    if (!activity.id) return;
 
     Alert.alert(
       "Delete Activity",
@@ -253,12 +253,7 @@ const ItineraryDetail = () => {
           style: "destructive",
           onPress: async () => {
             try {
-              await databases.deleteDocument(
-                config.databaseId!,
-                config.activitiesCollectionId!,
-                activity.$id as string
-              );
-
+              await deleteActivity(activity.id);
               fetchItineraryData(); // Refresh data
             } catch (error) {
               console.error("Error deleting activity:", error);
@@ -280,12 +275,16 @@ const ItineraryDetail = () => {
     }
 
     try {
-      await updateItinerary(id, {
+      const updatedItinerary = await updateItinerary(id, {
         title: editedTitle.trim(),
       });
 
-      setEditing(false);
-      fetchItineraryData(); // Refresh data
+      if (updatedItinerary) {
+        setEditing(false);
+        fetchItineraryData(); // Refresh data
+      } else {
+        throw new Error("Failed to update itinerary");
+      }
     } catch (error) {
       console.error("Error updating itinerary:", error);
       Alert.alert("Error", "Failed to update itinerary");
@@ -343,7 +342,7 @@ const ItineraryDetail = () => {
   // Check if user is authorized
   const isAuthorized = () => {
     if (!rawUser || !itineraryData) return false;
-    return rawUser.$id === itineraryData.itinerary.userId;
+    return rawUser.id === itineraryData.itinerary.userId;
   };
 
   if (loading) {

@@ -16,8 +16,8 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { router } from "expo-router";
 import DateTimePicker from "@react-native-community/datetimepicker";
 import { useGlobalContext } from "@/lib/global-provider";
-import { createItinerary } from "@/lib/itineraryService";
-import { Itinerary, DayPlan, Activity } from "@/lib/models";
+import { createItinerary } from "@/lib/itinerary-service";
+import { Itinerary, DayPlan, Activity } from "@/lib/firebase/models";
 import CustomHeader from "@/components/HeaderComponent";
 import {
   ArrowLeft,
@@ -138,7 +138,7 @@ const CreateItineraryScreen = () => {
       return;
     }
 
-    if (!rawUser?.$id) {
+    if (!rawUser?.id) {
       Alert.alert("Error", "You must be logged in to create an itinerary");
       return;
     }
@@ -149,26 +149,22 @@ const CreateItineraryScreen = () => {
       const daysCount = calculateDays();
 
       // Prepare itinerary data
-      const itineraryData: Itinerary = {
+      const itineraryData: Omit<Itinerary, "id" | "createdAt" | "updatedAt"> = {
         title: title.trim(),
-        userId: rawUser.$id,
-        start_date: startDate.toISOString(),
-        end_date: endDate.toISOString(),
+        userId: rawUser.id,
+        startDate: startDate,
+        endDate: endDate,
         destinations: filteredDestinations,
-        $createdBy: function (arg0: string, $createdBy: any): unknown {
-          throw new Error("Function not implemented.");
-        },
-        $permissions: undefined,
       };
 
-      // Prepare day plans - IMPORTANT: don't include itinerary_Id here as it will be set by the service
-      const dayPlans: Omit<DayPlan, "itineraries_Id">[] = [];
+      // Prepare day plans
+      const dayPlans: Omit<DayPlan, "id" | "itineraryId" | "createdAt" | "updatedAt">[] = [];
       const currentDate = new Date(startDate);
 
       for (let i = 0; i < daysCount; i++) {
         dayPlans.push({
           day: i + 1,
-          date: new Date(currentDate).toISOString(),
+          date: new Date(currentDate),
         });
 
         // Move to next day
@@ -178,16 +174,18 @@ const CreateItineraryScreen = () => {
       // Create itinerary with day plans
       const createdItinerary = await createItinerary(itineraryData, dayPlans);
 
-      Alert.alert("Success!", "Your itinerary has been created successfully!", [
-        {
-          text: "View Itinerary",
-          onPress: () => {
-            if (createdItinerary.$id) {
-              router.push(`/itinerary/${createdItinerary.$id}`);
-            }
+      if (createdItinerary) {
+        Alert.alert("Success!", "Your itinerary has been created successfully!", [
+          {
+            text: "View Itinerary",
+            onPress: () => {
+              router.push(`/itinerary/${createdItinerary.id}`);
+            },
           },
-        },
-      ]);
+        ]);
+      } else {
+        throw new Error("Failed to create itinerary");
+      }
     } catch (error) {
       console.error("Error creating itinerary:", error);
       Alert.alert(

@@ -13,8 +13,8 @@ import {
 } from "react-native";
 import { router, useFocusEffect } from "expo-router";
 import { useGlobalContext } from "@/lib/global-provider";
-import { getUserItineraries } from "@/lib/itineraryService";
-import { Itinerary } from "@/lib/models";
+import { getUserItineraries } from "@/lib/itinerary-service";
+import { Itinerary } from "@/lib/firebase/models";
 import {
   Calendar,
   MapPin,
@@ -45,17 +45,26 @@ const ItineraryTabScreen = () => {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [lastRefreshTime, setLastRefreshTime] = useState<Date | null>(null);
+  const [error, setError] = useState<string | null>(null);
 
   // Fetch itineraries using a useCallback to prevent unnecessary function recreations
   const fetchItineraries = useCallback(async () => {
-    if (!rawUser?.$id) return;
+    if (!rawUser?.id) {
+      console.log("No user ID available, skipping fetch");
+      setLoading(false);
+      setError("Please sign in to view your itineraries");
+      return;
+    }
 
     try {
-      const data = await getUserItineraries(rawUser.$id);
-      setItineraries(data);
+      setError(null);
+      const data = await getUserItineraries(rawUser.id);
+      console.log(`Fetched ${data.length} itineraries`);
+      setItineraries(data || []);
       setLastRefreshTime(new Date());
     } catch (error) {
       console.error("Error fetching itineraries:", error);
+      setError("Failed to load itineraries. Pull down to try again.");
       Alert.alert(
         "Error",
         "Failed to load itineraries. Pull down to try again."
@@ -68,16 +77,18 @@ const ItineraryTabScreen = () => {
 
   // Initial load
   useEffect(() => {
-    if (rawUser?.$id) {
+    if (rawUser?.id) {
       setLoading(true);
       fetchItineraries();
+    } else {
+      setLoading(false);
+      setError("Please sign in to view your itineraries");
     }
   }, [rawUser, fetchItineraries]);
 
   useFocusEffect(
     useCallback(() => {
-      if (rawUser?.$id) {
-        // Set refreshing state to show loading indicator
+      if (rawUser?.id) {
         setRefreshing(true);
         fetchItineraries();
       }
@@ -97,6 +108,7 @@ const ItineraryTabScreen = () => {
     }
 
     setRefreshing(true);
+    setError(null);
     fetchItineraries();
   }, [fetchItineraries, lastRefreshTime]);
 
@@ -144,7 +156,7 @@ const ItineraryTabScreen = () => {
     return (
       <TouchableOpacity
         style={styles.itineraryCard}
-        onPress={() => handleViewItinerary(item.$id!)}
+        onPress={() => handleViewItinerary(item.id)}
         activeOpacity={0.7}
       >
         <LinearGradient
@@ -161,7 +173,7 @@ const ItineraryTabScreen = () => {
             </Text>
             <View style={styles.durationBadge}>
               <Text style={styles.durationText}>
-                {calculateDuration(item.start_date, item.end_date)}
+                {calculateDuration(item.startDate.toString(), item.endDate.toString())}
               </Text>
             </View>
           </View>
@@ -169,7 +181,7 @@ const ItineraryTabScreen = () => {
           <View style={styles.infoRow}>
             <Calendar size={16} color={COLORS.primary} />
             <Text style={styles.infoText}>
-              {formatDateRange(item.start_date, item.end_date)}
+              {formatDateRange(item.startDate.toString(), item.endDate.toString())}
             </Text>
           </View>
 
@@ -232,10 +244,20 @@ const ItineraryTabScreen = () => {
         showBackButton={false}
       />
 
-      {loading && !refreshing ? (
+      {loading ? (
         <View style={styles.loadingContainer}>
           <ActivityIndicator size="large" color={COLORS.primary} />
           <Text style={styles.loadingText}>Loading itineraries...</Text>
+        </View>
+      ) : error ? (
+        <View style={styles.errorContainer}>
+          <Text style={styles.errorText}>{error}</Text>
+          <TouchableOpacity
+            style={styles.retryButton}
+            onPress={handleRefresh}
+          >
+            <Text style={styles.retryButtonText}>Retry</Text>
+          </TouchableOpacity>
         </View>
       ) : itineraries.length === 0 ? (
         <EmptyState />
@@ -243,7 +265,7 @@ const ItineraryTabScreen = () => {
         <FlatList
           data={itineraries}
           renderItem={renderItineraryCard}
-          keyExtractor={(item) => item.$id!}
+          keyExtractor={(item) => item.id}
           contentContainerStyle={styles.listContainer}
           showsVerticalScrollIndicator={false}
           refreshControl={
@@ -427,6 +449,29 @@ const styles = StyleSheet.create({
     fontWeight: "600",
     color: COLORS.white,
     marginLeft: 8,
+  },
+  errorContainer: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
+    padding: 20,
+  },
+  errorText: {
+    fontSize: 16,
+    color: COLORS.textLight,
+    textAlign: "center",
+    marginBottom: 16,
+  },
+  retryButton: {
+    backgroundColor: COLORS.primary,
+    paddingHorizontal: 20,
+    paddingVertical: 10,
+    borderRadius: 8,
+  },
+  retryButtonText: {
+    color: COLORS.white,
+    fontSize: 16,
+    fontWeight: "600",
   },
 });
 

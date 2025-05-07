@@ -26,13 +26,14 @@ import {
   saveActivity,
   deleteItinerary,
   shareItinerary,
-} from "@/lib/itineraryService";
+  deleteActivity,
+} from "@/lib/itinerary-service";
 import {
   Itinerary,
   DayPlan,
   Activity,
   ItineraryWithDetails,
-} from "@/lib/models";
+} from "@/lib/firebase/models";
 import CustomHeader from "@/components/HeaderComponent";
 import {
   Calendar,
@@ -65,7 +66,6 @@ import {
   Share,
 } from "lucide-react-native";
 import { LinearGradient } from "expo-linear-gradient";
-import { config, databases } from "@/lib/appwrite";
 import { BlurView } from "expo-blur";
 
 const { width, height } = Dimensions.get("window");
@@ -194,6 +194,7 @@ const ItineraryDetail = () => {
   const [shareEmail, setShareEmail] = useState("");
   // Add this state variable along with your other state declarations
   const [isDeleting, setIsDeleting] = useState(false);
+  const [isUpdating, setIsUpdating] = useState(false);
   const [snackbarVisible, setSnackbarVisible] = useState(false);
   const [snackbarMessage, setSnackbarMessage] = useState("");
 
@@ -225,14 +226,19 @@ const ItineraryDetail = () => {
     setLoading(true);
     try {
       const data = await getItineraryWithDetails(id);
+      if (!data) {
+        Alert.alert("Error", "Failed to load itinerary details");
+        return;
+      }
+      
       setItineraryData(data);
       setEditedTitle(data.itinerary.title);
 
       // Initialize expanded state for all days
       const expanded: Record<string, boolean> = {};
       data.dayPlans.forEach((dayPlan) => {
-        if (dayPlan.$id) {
-          expanded[dayPlan.$id] = true; // Start with all days expanded
+        if (dayPlan.id) {
+          expanded[dayPlan.id] = true; // Start with all days expanded
         }
       });
       setExpandedDays(expanded);
@@ -287,7 +293,7 @@ const ItineraryDetail = () => {
     setActivityTitle(activity.title);
     setActivityTime(activity.time);
     setActivityType(activity.type);
-    setActivityNotes(activity.notes);
+    setActivityNotes(activity.notes || "");
     setActivityModal(true);
   };
 
@@ -298,11 +304,19 @@ const ItineraryDetail = () => {
     setActivityType("activity");
     setActivityNotes("");
     setSearchQuery("");
+    setCurrentActivity(null);
+    setSelectedDayPlan(null);
+  };
+
+  // Show snackbar message
+  const showMessage = (message: string) => {
+    setSnackbarMessage(message);
+    setSnackbarVisible(true);
   };
 
   // Save activity
   const handleSaveActivity = async () => {
-    if (!selectedDayPlan || !selectedDayPlan.$id) return;
+    if (!selectedDayPlan || !selectedDayPlan.id) return;
 
     if (!activityTitle.trim()) {
       Alert.alert("Error", "Please enter an activity title");
@@ -310,31 +324,38 @@ const ItineraryDetail = () => {
     }
 
     try {
-      // Capitalize the first letter of the activity type
-      const capitalizedType =
-        activityType.charAt(0).toUpperCase() + activityType.slice(1);
+      setIsUpdating(true);
+      const capitalizedType = activityType.charAt(0).toUpperCase() + activityType.slice(1);
 
-      const activityData: Activity = {
-        dayPlansId: selectedDayPlan.$id,
+      const activityData = {
+        dayPlanId: selectedDayPlan.id,
         time: activityTime,
         title: activityTitle.trim(),
-        type: capitalizedType, // Use the capitalized version
-        notes: activityNotes.trim(),
-        ...(currentActivity?.$id ? { $id: currentActivity.$id } : {}),
+        type: capitalizedType,
+        notes: activityNotes.trim() || undefined,
+        ...(currentActivity?.id ? { id: currentActivity.id } : {})
       };
 
-      await saveActivity(activityData);
-      setActivityModal(false);
-      fetchItineraryData(); // Refresh data
+      const savedActivity = await saveActivity(activityData);
+      if (savedActivity) {
+        setActivityModal(false);
+        showMessage(currentActivity ? "Activity updated" : "Activity added");
+        // Refresh the data to show the new activity
+        await fetchItineraryData();
+      } else {
+        throw new Error("Failed to save activity");
+      }
     } catch (error) {
       console.error("Error saving activity:", error);
-      Alert.alert("Error", "Failed to save activity");
+      showMessage("Failed to save activity");
+    } finally {
+      setIsUpdating(false);
     }
   };
 
   // Delete activity
   const handleDeleteActivity = async (activity: Activity) => {
-    if (!activity.$id) return;
+    if (!activity.id) return;
 
     Alert.alert(
       "Delete Activity",
@@ -346,16 +367,20 @@ const ItineraryDetail = () => {
           style: "destructive",
           onPress: async () => {
             try {
-              await databases.deleteDocument(
-                config.databaseId!,
-                config.activitiesCollectionId!,
-                activity.$id as string
-              );
-
-              fetchItineraryData(); // Refresh data
+              setIsUpdating(true);
+              const success = await deleteActivity(activity.id);
+              if (success) {
+                showMessage("Activity deleted");
+                // Refresh the data to update the list
+                await fetchItineraryData();
+              } else {
+                showMessage("Failed to delete activity");
+              }
             } catch (error) {
               console.error("Error deleting activity:", error);
-              Alert.alert("Error", "Failed to delete activity");
+              showMessage("Failed to delete activity");
+            } finally {
+              setIsUpdating(false);
             }
           },
         },
@@ -373,12 +398,16 @@ const ItineraryDetail = () => {
     }
 
     try {
-      await updateItinerary(id, {
+      const updatedItinerary = await updateItinerary(id, {
         title: editedTitle.trim(),
       });
 
-      setEditing(false);
-      fetchItineraryData(); // Refresh data
+      if (updatedItinerary) {
+        setEditing(false);
+        fetchItineraryData(); // Refresh data
+      } else {
+        throw new Error("Failed to update itinerary");
+      }
     } catch (error) {
       console.error("Error updating itinerary:", error);
       Alert.alert("Error", "Failed to update itinerary");
@@ -422,16 +451,6 @@ const ItineraryDetail = () => {
     );
   };
 
-  // Add this right before the return statement in your component:
-  // if (isDeleting) {
-  //   return (
-  //     <View style={styles.overlayContainer}>
-  //       <ActivityIndicator size="large" color={COLORS.white} />
-  //       <Text style={styles.overlayText}>Deleting itinerary...</Text>
-  //     </View>
-  //   );
-  // }
-
   // Get sorted activities for a day plan
   const getSortedActivities = (activities: Activity[]) => {
     return [...activities].sort((a, b) => {
@@ -455,23 +474,8 @@ const ItineraryDetail = () => {
     }
   };
 
-  // Check if user is authorized
-  const isAuthorized = () => {
-    if (!rawUser || !itineraryData) {
-      return false;
-    }
-
-    const currentUserId = rawUser.$id;
-
-    // Check permissions directly
-    const hasPermissions = itineraryData.itinerary.$permissions?.some(
-      (permission: string) =>
-        permission.includes(`user:${currentUserId}`) &&
-        (permission.startsWith("update") || permission.startsWith("delete"))
-    );
-
-    return hasPermissions;
-  };
+  // Remove the isAuthorized function and replace its usage with direct comparison
+  const canEdit = rawUser && itineraryData && rawUser.id === itineraryData.itinerary.userId;
 
   // Render activity type item for the grid
   const renderActivityTypeItem = ({
@@ -607,7 +611,7 @@ const ItineraryDetail = () => {
         title={editing ? "Edit Itinerary" : "Itinerary Details"}
         showBackButton={true}
         rightIcon={
-          isAuthorized() ? (
+          canEdit ? (
             editing ? (
               <Save color="#FFF" size={20} />
             ) : (
@@ -618,7 +622,6 @@ const ItineraryDetail = () => {
                 >
                   <Share color="#FFF" size={20} />
                 </TouchableOpacity>
-                {/* <Edit2 color="#FFF" size={20} /> */}
               </View>
             )
           ) : undefined
@@ -667,11 +670,11 @@ const ItineraryDetail = () => {
           showsVerticalScrollIndicator={false}
         >
           {itineraryData.dayPlans.map((dayPlan, index) => (
-            <View key={dayPlan.$id || index} style={styles.dayCard}>
+            <View key={dayPlan.id || index} style={styles.dayCard}>
               {/* Day Header */}
               <TouchableOpacity
                 style={styles.dayHeader}
-                onPress={() => dayPlan.$id && toggleDayExpansion(dayPlan.$id)}
+                onPress={() => dayPlan.id && toggleDayExpansion(dayPlan.id)}
               >
                 <View style={styles.dayNumberBadge}>
                   <Text style={styles.dayNumberText}>Day {dayPlan.day}</Text>
@@ -679,7 +682,7 @@ const ItineraryDetail = () => {
 
                 <View style={styles.dayHeaderContent}>
                   <Text style={styles.dayDateText}>
-                    {formatDate(dayPlan.date)}
+                    {formatDate(dayPlan.date.toString())}
                   </Text>
 
                   <View style={styles.dayHeaderRight}>
@@ -689,7 +692,7 @@ const ItineraryDetail = () => {
                         ? "activity"
                         : "activities"}
                     </Text>
-                    {dayPlan.$id && expandedDays[dayPlan.$id] ? (
+                    {dayPlan.id && expandedDays[dayPlan.id] ? (
                       <ChevronUp size={16} color={COLORS.textLight} />
                     ) : (
                       <ChevronDown size={16} color={COLORS.textLight} />
@@ -699,7 +702,7 @@ const ItineraryDetail = () => {
               </TouchableOpacity>
 
               {/* Activities List */}
-              {dayPlan.$id && expandedDays[dayPlan.$id] && (
+              {dayPlan.id && expandedDays[dayPlan.id] && (
                 <View style={styles.activitiesContainer}>
                   {dayPlan.activities.length === 0 ? (
                     <Text style={styles.noActivitiesText}>
@@ -708,13 +711,13 @@ const ItineraryDetail = () => {
                   ) : (
                     getSortedActivities(dayPlan.activities).map((activity) => (
                       <TouchableOpacity
-                        key={activity.$id || `temp-${Math.random()}`}
+                        key={activity.id || `temp-${Math.random()}`}
                         style={styles.activityItem}
                         onPress={() =>
-                          isAuthorized() &&
+                          canEdit &&
                           openEditActivityModal(activity, dayPlan)
                         }
-                        activeOpacity={isAuthorized() ? 0.7 : 1}
+                        activeOpacity={canEdit ? 0.7 : 1}
                       >
                         <View style={styles.activityTimeColumn}>
                           <Text style={styles.activityTimeText}>
@@ -748,7 +751,7 @@ const ItineraryDetail = () => {
                           ) : null}
                         </View>
 
-                        {isAuthorized() && activity.$id && (
+                        {canEdit && activity.id && (
                           <TouchableOpacity
                             style={styles.activityDeleteButton}
                             onPress={() => handleDeleteActivity(activity)}
@@ -760,7 +763,7 @@ const ItineraryDetail = () => {
                     ))
                   )}
 
-                  {isAuthorized() && (
+                  {canEdit && (
                     <TouchableOpacity
                       style={styles.addActivityButton}
                       onPress={() => openAddActivityModal(dayPlan)}
@@ -777,7 +780,7 @@ const ItineraryDetail = () => {
           ))}
 
           {/* Delete Itinerary Button */}
-          {isAuthorized() && (
+          {canEdit && (
             <TouchableOpacity
               style={styles.deleteItineraryButton}
               onPress={handleDeleteItinerary}
@@ -792,11 +795,6 @@ const ItineraryDetail = () => {
                   </Text>
                 </>
               )}
-
-              {/* <Trash2 size={16} color={COLORS.white} />
-              <Text style={styles.deleteItineraryButtonText}>
-                Delete Itinerary
-              </Text> */}
             </TouchableOpacity>
           )}
 
@@ -1037,20 +1035,28 @@ const ItineraryDetail = () => {
               <TouchableOpacity
                 style={styles.cancelButton}
                 onPress={() => setActivityModal(false)}
+                disabled={isUpdating}
               >
                 <Text style={styles.cancelButtonText}>Cancel</Text>
               </TouchableOpacity>
 
               <TouchableOpacity
-                style={styles.saveButton}
+                style={[styles.saveButton, isUpdating && styles.saveButtonDisabled]}
                 onPress={handleSaveActivity}
+                disabled={isUpdating}
               >
-                <Text style={styles.saveButtonText}>Save</Text>
+                {isUpdating ? (
+                  <ActivityIndicator size="small" color={COLORS.white} />
+                ) : (
+                  <Text style={styles.saveButtonText}>Save</Text>
+                )}
               </TouchableOpacity>
             </View>
           </View>
         </View>
       </Modal>
+
+      {/* Snackbar for feedback */}
       <Snackbar
         visible={snackbarVisible}
         onDismiss={() => setSnackbarVisible(false)}
@@ -1063,6 +1069,13 @@ const ItineraryDetail = () => {
       >
         {snackbarMessage}
       </Snackbar>
+
+      {/* Loading overlay - only show when updating */}
+      {isUpdating && (
+        <View style={styles.loadingOverlay}>
+          <ActivityIndicator size="large" color={COLORS.primary} />
+        </View>
+      )}
     </View>
   );
 };
@@ -1484,29 +1497,19 @@ const styles = StyleSheet.create({
     fontWeight: "600",
     color: COLORS.white,
   },
-  overlayContainer: {
-    position: "absolute",
+  loadingOverlay: {
+    position: 'absolute',
     top: 0,
     left: 0,
     right: 0,
     bottom: 0,
-    backgroundColor: "rgba(0, 0, 0, 0.5)",
-    justifyContent: "center",
-    alignItems: "center",
+    backgroundColor: 'rgba(255, 255, 255, 0.7)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    zIndex: 1000,
   },
-  loadingBox: {
-    backgroundColor: COLORS.white,
-    borderRadius: 10,
-    padding: 20,
-    alignItems: "center",
-    width: 200,
-  },
-
-  overlayText: {
-    color: COLORS.white,
-    marginTop: 12,
-    fontSize: 16,
-    fontWeight: "500",
+  saveButtonDisabled: {
+    opacity: 0.7,
   },
 });
 
