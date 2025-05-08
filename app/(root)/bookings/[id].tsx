@@ -12,7 +12,8 @@ import {
   Alert,
 } from "react-native";
 import { router, useLocalSearchParams } from "expo-router";
-import { databases, config } from "@/lib/appwrite";
+import { doc, getDoc } from "firebase/firestore";
+import { db } from "@/lib/firebase/firebase-config";
 import CustomHeader from "@/components/HeaderComponent";
 import {
   Calendar,
@@ -34,8 +35,8 @@ import images from "@/constants/images";
 import { cancelBooking } from "@/lib/bookingService";
 
 interface BookingDetail {
-  $id: string;
-  userId: string[]; // Updated to array for relationship
+  id: string;
+  userId: string;
   packageId: string;
   packageInfoId?: string;
   packageDetails?: any;
@@ -50,11 +51,8 @@ interface BookingDetail {
   paymentMethod: string;
   isActive?: boolean;
   metadata?: string;
-  $collectionId?: string;
-  $databaseId?: string;
-  $createdAt?: string;
-  $updatedAt?: string;
-  $permissions?: string[];
+  createdAt?: string;
+  updatedAt?: string;
 }
 
 const BookingDetailsScreen = () => {
@@ -76,22 +74,25 @@ const BookingDetailsScreen = () => {
       try {
         setLoading(true);
 
-        // Fetch booking from users_bookings collection using direct ID
-        const bookingData = await databases.getDocument(
-          config.databaseId!,
-          "67f2a49a00243903ad7d",
-          id
-        );
+        // Fetch booking from Firestore
+        const bookingRef = doc(db, "bookings", id);
+        const bookingSnap = await getDoc(bookingRef);
+
+        if (!bookingSnap.exists()) {
+          throw new Error("Booking not found");
+        }
+
+        const bookingData = bookingSnap.data();
 
         // If there's a packageId, fetch the package details
         let packageDetails = null;
         if (bookingData.packageId) {
           try {
-            packageDetails = await databases.getDocument(
-              config.databaseId!,
-              config.packagesCollectionId!,
-              bookingData.packageId
-            );
+            const packageRef = doc(db, "packages", bookingData.packageId);
+            const packageSnap = await getDoc(packageRef);
+            if (packageSnap.exists()) {
+              packageDetails = packageSnap.data();
+            }
           } catch (e) {
             console.error("Error fetching package details:", e);
           }
@@ -109,8 +110,8 @@ const BookingDetailsScreen = () => {
 
         // Create a properly typed booking detail object
         const bookingDetail: BookingDetail = {
-          $id: bookingData.$id,
-          userId: bookingData.userId || [], // Updated to handle array
+          id: bookingSnap.id,
+          userId: bookingData.userId || "",
           packageId: bookingData.packageId || "",
           packageInfoId: bookingData.packageInfoId,
           packageDetails: packageDetails,
@@ -125,11 +126,8 @@ const BookingDetailsScreen = () => {
           paymentMethod: bookingData.paymentMethod || "card",
           isActive: isActive,
           metadata: bookingData.metadata,
-          $collectionId: bookingData.$collectionId,
-          $databaseId: bookingData.$databaseId,
-          $createdAt: bookingData.$createdAt,
-          $updatedAt: bookingData.$updatedAt,
-          $permissions: bookingData.$permissions,
+          createdAt: bookingData.createdAt,
+          updatedAt: bookingData.updatedAt,
         };
 
         setBooking(bookingDetail);
@@ -202,7 +200,7 @@ const BookingDetailsScreen = () => {
             try {
               setLoading(true);
               // Call the service function
-              await cancelBooking(booking.$id);
+              await cancelBooking(booking.id);
 
               // Update local state
               setBooking({

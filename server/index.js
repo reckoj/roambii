@@ -37,7 +37,7 @@ app.post("/create-payment-intent", async (req, res) => {
       },
       receipt_email: email,
     });
-
+    // hhh?
     // Return the client secret to the client
     res.json({ clientSecret: paymentIntent.client_secret });
   } catch (error) {

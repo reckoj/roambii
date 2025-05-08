@@ -96,7 +96,7 @@ const PaymentComponent: React.FC<PaymentComponentProps> = ({
       });
 
       if (result.success) {
-        // Create a booking record in Appwrite
+        // Create a booking record in Firebase
         try {
           // Calculate checkout date based on default 7-day stay
           const checkInDate = new Date(
@@ -110,15 +110,16 @@ const PaymentComponent: React.FC<PaymentComponentProps> = ({
           const transactionId = "stripe_" + Date.now();
 
           // Create booking
-          const bookingResult = await createBooking(
-            rawUser?.$id!,
+          const bookingResult = await createBooking({
+            userId: rawUser?.id!,
             packageId,
-            total, // Use the total amount including tax
+            amount: total, // Use the total amount including tax
             transactionId,
             checkInDate,
             checkOutDate,
-            guessCount
-          );
+            guestCount: guessCount,
+            status: "pending"
+          });
 
           // Close modal before navigation
           setShowFullModal(false);
@@ -127,7 +128,7 @@ const PaymentComponent: React.FC<PaymentComponentProps> = ({
           onSuccess && onSuccess();
 
           // Navigate to booking confirmation
-          if (bookingResult && bookingResult.$id) {
+          if (bookingResult) {
             router.replace(`/bookingConfirmation`);
           }
         } catch (bookingError) {

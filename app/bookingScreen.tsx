@@ -48,7 +48,8 @@ import {
   Modal,
 } from "react-native";
 import { router, useLocalSearchParams } from "expo-router";
-import { getPackageById } from "@/lib/appwrite";
+import { doc, getDoc } from "firebase/firestore";
+import { firestore, COLLECTIONS } from "@/lib/firebase/firebase-config";
 import { useGlobalContext } from "@/lib/global-provider";
 import { useStripePayment } from "@/lib/stripeService";
 import { createBooking } from "@/lib/bookingService";
@@ -101,8 +102,11 @@ const BookingScreen = () => {
 
     const fetchPackage = async () => {
       try {
-        const data = await getPackageById(id);
-        if (data) {
+        const packageRef = doc(firestore, COLLECTIONS.PACKAGES, id);
+        const packageSnap = await getDoc(packageRef);
+        
+        if (packageSnap.exists()) {
+          const data = { id: packageSnap.id, ...packageSnap.data() };
           setPackageData(data);
         } else {
           Alert.alert("Error", "Package not found");
@@ -164,7 +168,7 @@ const BookingScreen = () => {
       });
 
       if (result.success) {
-        // Create a booking record in Appwrite
+        // Create a booking record in Firebase
         try {
           // Use either package data dates or defaults
           const checkInDate = packageData?.checkInDate || bookingStartDate;
@@ -175,7 +179,7 @@ const BookingScreen = () => {
 
           // Create booking
           const bookingResult = await createBooking(
-            rawUser?.$id!,
+            rawUser?.id!,
             id,
             total, // Use the total amount including tax
             transactionId,
@@ -188,7 +192,7 @@ const BookingScreen = () => {
           setShowFullModal(false);
 
           // Navigate to booking confirmation
-          if (bookingResult && bookingResult.$id) {
+          if (bookingResult && bookingResult.id) {
             router.replace({
               pathname: "/bookingConfirmation",
               params: { id, reset: "true" },

@@ -1,71 +1,41 @@
-import { databases, config } from "@/lib/appwrite";
-import { ID } from "appwrite"; // Direct import from appwrite package
+import { collection, addDoc, updateDoc, doc, getDoc, query, where, getDocs } from "firebase/firestore";
+import { firestore, COLLECTIONS } from "./firebase/firebase-config";
 
 /**
  * Creates a new booking in the database
- * @param userId - The ID of the user making the booking
- * @param packageId - The ID of the package being booked
- * @param amount - The total amount paid
- * @param transactionId - The ID from the payment processor
- * @param checkInDate - The check-in date in ISO format
- * @param checkOutDate - The check-out date in ISO format
- * @param guestCount - The number of guests
- * @returns The created booking document
+ * @param bookingData - The data for the new booking
+ * @returns The ID of the created booking
  */
-export const createBooking = async (
-  userId: string,
-  packageId: string,
-  amount: number,
-  transactionId: string,
-  checkInDate: string,
-  checkOutDate: string,
-  guestCount: number
-) => {
-  // Generate a booking reference
-  const bookingReference =
-    "BK" + Math.random().toString(36).substring(2, 10).toUpperCase();
-
-  // Create booking document with correct userId array that contains the user ID
-  return await databases.createDocument(
-    config.databaseId!,
-    "67f2a49a00243903ad7d", // users_bookings collection ID
-    ID.unique(),
-    {
-      // Ensure userId is an array containing the user ID
-      userId: [userId], // This should not be empty
-      packageId,
-      amount,
-      transactionId,
-      bookingReference,
-      bookingDate: new Date().toISOString(),
-      checkInDate,
-      checkOutDate,
-      guestCount,
-      status: "confirmed",
-      paymentMethod: "stripe",
-    }
-  );
+export const createBooking = async (bookingData: any) => {
+  try {
+    const bookingRef = await addDoc(collection(firestore, COLLECTIONS.BOOKINGS), {
+      ...bookingData,
+      createdAt: new Date(),
+      status: "pending"
+    });
+    return bookingRef.id;
+  } catch (error) {
+    console.error("Error creating booking:", error);
+    throw error;
+  }
 };
 
 /**
- * Gets all bookings for a specific user
- * @param userId - The ID of the user
- * @returns An array of booking documents
+ * Updates an existing booking in the database
+ * @param bookingId - The ID of the booking to update
+ * @param updateData - The data to update in the booking
+ * @returns True if the booking was updated successfully
  */
-export const getUserBookings = async (userId: string) => {
+export const updateBooking = async (bookingId: string, updateData: any) => {
   try {
-    const response = await databases.listDocuments(
-      config.databaseId!,
-      "67f2a49a00243903ad7d", // Direct collection ID for users_bookings
-      [
-        // Using the correct relationship field name
-        // Query.equal("userId", userId) // Uncomment this when implementing filtering
-      ]
-    );
-
-    return response.documents;
+    const bookingRef = doc(firestore, COLLECTIONS.BOOKINGS, bookingId);
+    await updateDoc(bookingRef, {
+      ...updateData,
+      updatedAt: new Date()
+    });
+    return true;
   } catch (error) {
-    console.error("Error fetching user bookings:", error);
+    console.error("Error updating booking:", error);
     throw error;
   }
 };
@@ -75,15 +45,38 @@ export const getUserBookings = async (userId: string) => {
  * @param bookingId - The ID of the booking
  * @returns The booking document
  */
-export const getBookingById = async (bookingId: string) => {
+export const getBooking = async (bookingId: string) => {
   try {
-    return await databases.getDocument(
-      config.databaseId!,
-      "67f2a49a00243903ad7d", // Direct collection ID for users_bookings
-      bookingId
-    );
+    const bookingRef = doc(firestore, COLLECTIONS.BOOKINGS, bookingId);
+    const bookingSnap = await getDoc(bookingRef);
+    if (bookingSnap.exists()) {
+      return { id: bookingSnap.id, ...bookingSnap.data() };
+    }
+    return null;
   } catch (error) {
-    console.error("Error fetching booking:", error);
+    console.error("Error getting booking:", error);
+    throw error;
+  }
+};
+
+/**
+ * Gets all bookings for a specific user
+ * @param userId - The ID of the user
+ * @returns An array of booking documents
+ */
+export const getUserBookings = async (userId: string) => {
+  try {
+    const bookingsQuery = query(
+      collection(firestore, COLLECTIONS.BOOKINGS),
+      where("userId", "==", userId)
+    );
+    const bookingsSnap = await getDocs(bookingsQuery);
+    return bookingsSnap.docs.map(doc => ({
+      id: doc.id,
+      ...doc.data()
+    }));
+  } catch (error) {
+    console.error("Error getting user bookings:", error);
     throw error;
   }
 };
@@ -96,14 +89,11 @@ export const getBookingById = async (bookingId: string) => {
 export const cancelBooking = async (bookingId: string) => {
   try {
     // Update the booking status to cancelled
-    return await databases.updateDocument(
-      config.databaseId!,
-      "67f2a49a00243903ad7d", // users_bookings collection ID
-      bookingId,
-      {
-        status: "cancelled",
-      }
-    );
+    const bookingRef = doc(firestore, COLLECTIONS.BOOKINGS, bookingId);
+    await updateDoc(bookingRef, {
+      status: "cancelled"
+    });
+    return true;
   } catch (error) {
     console.error("Error cancelling booking:", error);
     throw error;

@@ -1,6 +1,6 @@
 import { searchPackagesByAgentName } from "./agentSearchHelper";
-import { databases, config } from "./appwrite";
-import { Query } from "react-native-appwrite";
+import { collection, query, where, getDocs, orderBy, QueryConstraint } from "firebase/firestore";
+import { firestore, COLLECTIONS } from "./firebase/firebase-config";
 
 // Define interfaces for type safety - export for reuse
 export interface AgentInfo {
@@ -10,12 +10,7 @@ export interface AgentInfo {
 }
 
 export interface PackageWithAgent {
-  $id: string;
-  $collectionId?: string;
-  $databaseId?: string;
-  $createdAt?: string;
-  $updatedAt?: string;
-  $permissions?: string[];
+  id: string;
   name?: string;
   price?: number;
   type?: string;
@@ -27,63 +22,52 @@ export interface PackageWithAgent {
 
 /**
  * Search packages by query, region, and package type
- * @param {string} query - Search query string
+ * @param {string} searchQuery - Search query string
  * @param {string} region - Region filter (or 'All')
  * @param {string} packageType - Package type filter (or 'All')
  * @param {number} limit - Maximum number of results to return
  * @returns {Promise<Array>} - Array of package documents with agent information
  */
 export const searchPackages = async (
-  query = "",
+  searchQuery = "",
   region = "All",
   packageType = "All",
   limit = 20
 ): Promise<PackageWithAgent[]> => {
   try {
-    // Build query filters
-    const queryFilters = [];
+    // Build query constraints
+    const queryConstraints: QueryConstraint[] = [];
 
     // Add search query if provided
-    if (query && query.trim() !== "") {
-      // We'll search for packages by name and type
-      const searchQueries = [
-        Query.search("name", query),
-        Query.search("type", query),
-      ];
-
-      // Get all packages that match the query
-      queryFilters.push(Query.or(searchQueries));
-
-      // Note: We'll handle agent name filtering after fetching results
-    } else {
-      // If no query, just get all packages (limited by other filters)
-      // No need to add a specific query filter here
+    if (searchQuery && searchQuery.trim() !== "") {
+      queryConstraints.push(where("name", ">=", searchQuery));
+      queryConstraints.push(where("name", "<=", searchQuery + "\uf8ff"));
     }
 
     // Add region filter if selected
     if (region !== "All") {
-      queryFilters.push(Query.equal("region", region));
+      queryConstraints.push(where("region", "==", region));
     }
 
     // Add type filter if selected
     if (packageType !== "All") {
-      queryFilters.push(Query.equal("type", packageType));
+      queryConstraints.push(where("type", "==", packageType));
     }
 
     // Set default ordering and limit
-    queryFilters.push(Query.orderDesc("$createdAt"));
-    queryFilters.push(Query.limit(limit));
+    queryConstraints.push(orderBy("createdAt", "desc"));
 
     // Execute search query
-    const result = await databases.listDocuments(
-      config.databaseId!,
-      config.packagesCollectionId!,
-      queryFilters
+    const packagesQuery = query(
+      collection(firestore, COLLECTIONS.PACKAGES),
+      ...queryConstraints
     );
+    const result = await getDocs(packagesQuery);
 
-    // First search for packages by name and type
+    // Process results
     let enhancedResults = await Promise.all(
-      result.documents.map(async (pkg) => {
+      result.docs.map(async (pkg) => {
+        const data = pkg.data();
         // Default agent information
         const agentInfo: AgentInfo = {
           name: "Unknown Agent",
@@ -92,33 +76,31 @@ export const searchPackages = async (
         };
 
         // If package has an agent relationship, fetch agent details
-        if (pkg.agent && pkg.agent.$id) {
+        if (data.agentId) {
           try {
-            const agentData = await databases.getDocument(
-              config.databaseId!,
-              config.agentsCollectionId!,
-              pkg.agent.$id
+            const agentDoc = await getDocs(
+              query(collection(firestore, COLLECTIONS.AGENTS), where("id", "==", data.agentId))
             );
-
-            agentInfo.name = agentData.name || "Unknown Agent";
-            agentInfo.id = agentData.$id || null;
-            agentInfo.avatar = agentData.avatar || null;
+            if (!agentDoc.empty) {
+              const agentData = agentDoc.docs[0].data();
+              agentInfo.name = agentData.name || "Unknown Agent";
+              agentInfo.id = agentData.id || null;
+              agentInfo.avatar = agentData.avatar || null;
+            }
           } catch (error) {
             console.error("Error fetching agent data:", error);
           }
         }
 
-        // Get image URL if available
-        const imageUrl = pkg.image || null;
-
         // Create a properly typed object
         const typedPackage: PackageWithAgent = {
-          ...pkg,
+          id: pkg.id,
+          name: data.name,
+          price: data.price,
+          type: data.type,
+          imageUrl: data.image || null,
           agent: agentInfo,
-          imageUrl,
-          name: pkg.name,
-          price: pkg.price,
-          type: pkg.type,
+          ...data
         };
 
         return typedPackage;
@@ -126,27 +108,23 @@ export const searchPackages = async (
     );
 
     // Then search for packages by agent name
-    if (query && query.trim() !== "") {
+    if (searchQuery && searchQuery.trim() !== "") {
       try {
-        const agentNameResults = await searchPackagesByAgentName(query);
-
+        const agentNameResults = await searchPackagesByAgentName(searchQuery);
         if (agentNameResults.length > 0) {
-          // Combine results, removing duplicates by $id
+          // Combine results, removing duplicates by id
           const allPackages = [...enhancedResults, ...agentNameResults];
           const uniquePackages: PackageWithAgent[] = [];
           const seenIds = new Set();
 
           for (const pkg of allPackages) {
-            if (!seenIds.has(pkg.$id)) {
-              seenIds.add(pkg.$id);
+            if (!seenIds.has(pkg.id)) {
+              seenIds.add(pkg.id);
               uniquePackages.push(pkg);
             }
           }
 
           enhancedResults = uniquePackages;
-          console.log(
-            `Combined search found ${enhancedResults.length} unique packages`
-          );
         }
       } catch (error) {
         console.error("Error in agent name search:", error);
@@ -169,54 +147,49 @@ export const getFeaturedPackages = async (
   limit = 5
 ): Promise<PackageWithAgent[]> => {
   try {
-    const result = await databases.listDocuments(
-      config.databaseId!,
-      config.packagesCollectionId!,
-      [
-        Query.equal("isFeatured", true),
-        Query.orderDesc("$createdAt"),
-        Query.limit(limit),
-      ]
+    const featuredQuery = query(
+      collection(firestore, COLLECTIONS.PACKAGES),
+      where("isFeatured", "==", true),
+      orderBy("createdAt", "desc")
     );
 
-    // Process results same as searchPackages
+    const result = await getDocs(featuredQuery);
+    const limitedResults = result.docs.slice(0, limit);
+
     return await Promise.all(
-      result.documents.map(async (pkg) => {
+      limitedResults.map(async (pkg) => {
+        const data = pkg.data();
         const agentInfo: AgentInfo = {
           name: "Unknown Agent",
           id: null,
           avatar: null,
         };
 
-        if (pkg.agent && pkg.agent.$id) {
+        if (data.agentId) {
           try {
-            const agentData = await databases.getDocument(
-              config.databaseId!,
-              config.agentsCollectionId!,
-              pkg.agent.$id
+            const agentDoc = await getDocs(
+              query(collection(firestore, COLLECTIONS.AGENTS), where("id", "==", data.agentId))
             );
-
-            agentInfo.name = agentData.name || "Unknown Agent";
-            agentInfo.id = agentData.$id || null;
-            agentInfo.avatar = agentData.avatar || null;
+            if (!agentDoc.empty) {
+              const agentData = agentDoc.docs[0].data();
+              agentInfo.name = agentData.name || "Unknown Agent";
+              agentInfo.id = agentData.id || null;
+              agentInfo.avatar = agentData.avatar || null;
+            }
           } catch (error) {
             console.error("Error fetching agent data:", error);
           }
         }
 
-        const imageUrl = pkg.image || null;
-
-        // Create a properly typed object
-        const typedPackage: PackageWithAgent = {
-          ...pkg,
+        return {
+          id: pkg.id,
+          name: data.name,
+          price: data.price,
+          type: data.type,
+          imageUrl: data.image || null,
           agent: agentInfo,
-          imageUrl,
-          name: pkg.name,
-          price: pkg.price,
-          type: pkg.type,
+          ...data
         };
-
-        return typedPackage;
       })
     );
   } catch (error) {

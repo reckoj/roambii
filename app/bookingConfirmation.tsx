@@ -45,7 +45,8 @@ import {
   ActivityIndicator,
 } from "react-native";
 import { router, useLocalSearchParams } from "expo-router";
-import { getPackageById } from "@/lib/appwrite";
+import { doc, getDoc } from "firebase/firestore";
+import { db } from "@/lib/firebase/firebase-config";
 import CustomHeader from "@/components/HeaderComponent";
 import { Check, Calendar, Users, MapPin } from "lucide-react-native";
 
@@ -58,8 +59,13 @@ const BookingConfirmationScreen = () => {
     const fetchPackage = async () => {
       if (id) {
         try {
-          const data = await getPackageById(id);
-          setPackageData(data);
+          const packageRef = doc(db, "packages", id);
+          const packageSnap = await getDoc(packageRef);
+          
+          if (packageSnap.exists()) {
+            const data = { id: packageSnap.id, ...packageSnap.data() };
+            setPackageData(data);
+          }
         } catch (error) {
           console.error("Error fetching package:", error);
         } finally {

@@ -28,8 +28,8 @@ import {
 } from "@/lib/chat-service";
 import { useGlobalContext } from "@/lib/global-provider";
 import images from "@/constants/images";
-import { databases, config } from "@/lib/appwrite";
-import { Query } from "react-native-appwrite";
+import { doc, getDoc, collection, query, where, getDocs } from "firebase/firestore";
+import { db } from "@/lib/firebase/firebase-config";
 import ChatBubble from "@/components/ChatBubble";
 import { Ionicons } from "@expo/vector-icons";
 import ShimmerEffect from "@/components/LoadingShimmer";
@@ -110,7 +110,7 @@ const ChatScreen = () => {
     }
   }, [currentUserId, receivedAgentId]);
 
-  // Fetch partner profile from Redux cache first, then Appwrite
+  // Fetch partner profile from Redux cache first, then Firebase
   const fetchPartnerProfile = useCallback(async () => {
     if (!receivedAgentId) return;
 
@@ -129,42 +129,27 @@ const ChatScreen = () => {
       let foundProfile = null;
 
       // 1. Try to fetch from users collection first
-      if (config.usersCollectionId) {
-        try {
-          const userProfile = await databases
-            .getDocument(
-              config.databaseId!,
-              config.usersCollectionId,
-              receivedAgentId
-            )
-            .catch(() => null);
+      try {
+        const userRef = doc(db, "users", receivedAgentId);
+        const userSnap = await getDoc(userRef);
 
-          if (userProfile) {
-            console.log("Found partner in users collection:", userProfile.$id);
-            foundProfile = userProfile;
-          }
-        } catch (err) {
-          console.warn("Could not find user in main users collection");
+        if (userSnap.exists()) {
+          console.log("Found partner in users collection:", userSnap.id);
+          foundProfile = { id: userSnap.id, ...userSnap.data() };
         }
+      } catch (err) {
+        console.warn("Could not find user in main users collection");
       }
 
       // 2. Try agents collection if needed
-      if (!foundProfile && config.agentsCollectionId) {
+      if (!foundProfile) {
         try {
-          const agentProfile = await databases
-            .getDocument(
-              config.databaseId!,
-              config.agentsCollectionId,
-              receivedAgentId
-            )
-            .catch(() => null);
+          const agentRef = doc(db, "agents", receivedAgentId);
+          const agentSnap = await getDoc(agentRef);
 
-          if (agentProfile) {
-            console.log(
-              "Found partner in agents collection:",
-              agentProfile.$id
-            );
-            foundProfile = agentProfile;
+          if (agentSnap.exists()) {
+            console.log("Found partner in agents collection:", agentSnap.id);
+            foundProfile = { id: agentSnap.id, ...agentSnap.data() };
           }
         } catch (err) {
           console.warn("Could not find user in agents collection");
@@ -172,21 +157,17 @@ const ChatScreen = () => {
       }
 
       // 3. Try searching users by equality if ID lookup failed
-      if (!foundProfile && config.usersCollectionId) {
+      if (!foundProfile) {
         try {
           // Try to find by userId field if it's an agent ID
-          const userDocs = await databases.listDocuments(
-            config.databaseId!,
-            config.usersCollectionId,
-            [Query.equal("userId", receivedAgentId)]
-          );
+          const usersRef = collection(db, "users");
+          const q = query(usersRef, where("userId", "==", receivedAgentId));
+          const querySnapshot = await getDocs(q);
 
-          if (userDocs.documents.length > 0) {
-            console.log(
-              "Found partner through userId query:",
-              userDocs.documents[0].$id
-            );
-            foundProfile = userDocs.documents[0];
+          if (!querySnapshot.empty) {
+            const userDoc = querySnapshot.docs[0];
+            console.log("Found partner through userId query:", userDoc.id);
+            foundProfile = { id: userDoc.id, ...userDoc.data() };
           }
         } catch (err) {
           console.warn("Query for user by userId failed");
@@ -248,39 +229,28 @@ const ChatScreen = () => {
       }
 
       // Fetch fresh messages
-      console.log("[Fetching] Loading messages for room:", roomId);
-      const result = await dispatch(fetchMessagesAsync(roomId)).unwrap();
-      
-      // Mark messages as read only if we have unread messages
-      const hasUnreadMessages = result.messages.some(
-        msg => !msg.read && msg.receiver_id === currentUserId
-      );
-      
-      if (hasUnreadMessages) {
-        console.log("[Marking Read] Found unread messages, marking as read");
-        await dispatch(markMessagesAsReadAsync({
-          roomId,
-          userId: currentUserId,
-        })).unwrap();
+      await dispatch(fetchMessagesAsync(roomId));
+
+      // Setup real-time subscription
+      if (stableSubscriptionRef.current.unsubscribe) {
+        stableSubscriptionRef.current.unsubscribe();
       }
 
-      // Get partner profile
-      const partnerId = getChatPartner([currentUserId, receivedAgentId], currentUserId);
-      if (partnerId) {
-        dispatch(fetchChatPartnerProfileAsync({
-          participants: [partnerId, currentUserId],
-          currentUserId,
-        }));
-      }
-    } catch (error: any) {
+      const unsubscribe = subscribeToMessages(roomId, (messages) => {
+        dispatch(updateMessages(messages));
+      });
+
+      stableSubscriptionRef.current.unsubscribe = unsubscribe;
+
+      setLoading(false);
+      setMessagesLoading(false);
+    } catch (error) {
       console.error("[Setup Error]:", error);
-      setError(error.message || "Failed to load messages");
-      hasSetupRef.current = false; // Reset on error
-    } finally {
+      setError(error instanceof Error ? error.message : "Failed to setup chat room");
       setLoading(false);
       setMessagesLoading(false);
     }
-  }, [currentUserId, receivedAgentId, dispatch, messageCache, generateRoomId]);
+  }, [currentUserId, receivedAgentId, dispatch, messageCache]);
 
   // Initialize chat room on mount
   useEffect(() => {
@@ -381,85 +351,27 @@ const ChatScreen = () => {
     }
   }, [currentMessages, forceUpdate]);
 
-  // Simplified message sending function with immediate local update
+  // Handle sending a new message
   const handleSendMessage = async () => {
-    if (!newMessage.trim() || !currentUserId || !receivedAgentId) {
-      if (!currentUserId) {
-        Alert.alert("Error", "You must be logged in to send messages");
-      }
-      return;
-    }
-
-    const messageToSend = newMessage.trim();
-    setNewMessage("");
+    if (!newMessage.trim() || !currentUserId || !roomIdRef.current) return;
 
     try {
-      console.log("[SENDING MESSAGE] To:", receivedAgentId);
-
-      // Create temporary message for immediate display
-      const tempMessage: ChatMessage = {
-        id: `temp-${Date.now()}`,
-        sender_id: currentUserId,
-        receiver_id: receivedAgentId,
-        content: messageToSend,
-        timestamp: Date.now(),
-        read: false
+      const messageData = {
+        text: newMessage.trim(),
+        senderId: currentUserId,
+        timestamp: new Date().toISOString(),
+        status: "sent",
       };
 
-      // Update local state immediately with the temporary message
-      const messagesWithTemp = [...currentMessages, tempMessage];
-      dispatch(updateMessages(messagesWithTemp));
+      await dispatch(sendMessageAsync({
+        roomId: roomIdRef.current,
+        message: messageData,
+      }));
 
-      // Use Redux action to send message
-      const sentMessage = await dispatch(
-        sendMessageAsync({
-          senderId: currentUserId,
-          receiverId: receivedAgentId,
-          content: messageToSend,
-        })
-      ).unwrap();
-
-      console.log("[MESSAGE SENT] Successfully");
-
-      // Replace the temporary message with the real one
-      const finalMessages = messagesWithTemp.map(msg => 
-        msg.id === tempMessage.id ? sentMessage : msg
-      );
-
-      // Ensure the sent message is included
-      if (!finalMessages.some(msg => msg.id === sentMessage.id)) {
-        finalMessages.push(sentMessage);
-      }
-
-      // Sort messages by timestamp to ensure proper order
-      finalMessages.sort((a, b) => {
-        const timeA = typeof a.timestamp === 'number' ? a.timestamp : Date.now();
-        const timeB = typeof b.timestamp === 'number' ? b.timestamp : Date.now();
-        return timeA - timeB;
-      });
-
-      dispatch(updateMessages(finalMessages));
-
+      setNewMessage("");
     } catch (error) {
-      console.error("[SEND ERROR]:", error);
-      Alert.alert(
-        "Failed to Send",
-        "Your message couldn't be sent. Please try again."
-      );
-
-      // Remove the temporary message if send failed
-      const messagesWithoutTemp = currentMessages.filter(
-        msg => !msg.id?.startsWith('temp-')
-      );
-      dispatch(updateMessages(messagesWithoutTemp));
-
-      // Restore the message text
-      setNewMessage(messageToSend);
-
-      // Reload messages to restore correct state
-      if (roomIdRef.current) {
-        dispatch(fetchMessagesAsync(roomIdRef.current));
-      }
+      console.error("Error sending message:", error);
+      Alert.alert("Error", "Failed to send message. Please try again.");
     }
   };
 

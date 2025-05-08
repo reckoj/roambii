@@ -11,8 +11,8 @@ import {
   ScrollView,
 } from "react-native";
 import { router } from "expo-router";
-import { databases, config } from "@/lib/appwrite";
-import { Query } from "appwrite";
+import { collection, query, where, getDocs, doc, getDoc } from "firebase/firestore";
+import { db } from "@/lib/firebase/firebase-config";
 import { useGlobalContext } from "@/lib/global-provider";
 import CustomHeader from "@/components/HeaderComponent";
 import { Calendar, MapPin } from "lucide-react-native";
@@ -54,8 +54,8 @@ const formatDateTime = (
 };
 
 interface Booking {
-  $id: string;
-  userId: any; // Changed to any to handle both string and array cases
+  id: string;
+  userId: string;
   packageId: string;
   packageInfoId?: string;
   packageDetails?: any;
@@ -72,11 +72,8 @@ interface Booking {
   metadata?: string;
   isCancelled: boolean;
   statusDisplay: string;
-  $collectionId?: string;
-  $databaseId?: string;
-  $createdAt?: string;
-  $updatedAt?: string;
-  $permissions?: string[];
+  createdAt?: string;
+  updatedAt?: string;
 }
 
 type TabType = "active" | "cancelled";
@@ -106,76 +103,34 @@ const UserBookingsScreen = () => {
       );
 
       // Fetch all bookings without filtering at first
-      const response = await databases.listDocuments(
-        config.databaseId!,
-        "67f2a49a00243903ad7d" // users_bookings collection ID
+      const response = await getDocs(
+        query(collection(db, "users_bookings"), where("userId", "array-contains", rawUser.$id))
       );
 
-      console.log("Total documents found:", response.documents.length);
+      console.log("Total documents found:", response.docs.length);
       setDebugInfo(
-        (prev) => prev + `\nTotal documents found: ${response.documents.length}`
+        (prev) => prev + `\nTotal documents found: ${response.docs.length}`
       );
 
-      if (response.documents.length > 0) {
+      if (response.docs.length > 0) {
         console.log(
           "First document structure:",
-          JSON.stringify(response.documents[0], null, 2)
+          JSON.stringify(response.docs[0].data(), null, 2)
         );
         setDebugInfo(
           (prev) =>
             prev +
             `\nFirst document structure: ${JSON.stringify(
-              response.documents[0],
+              response.docs[0].data(),
               null,
               2
             )}`
         );
 
-        // Check which documents would pass the filter
-        const matchingDocs = response.documents.filter((doc) => {
-          // More flexible check for userId that handles both array and string
-          let matches = false;
-
-          // Check if userId is empty, fallback to checking document permissions
-          if (Array.isArray(doc.userId) && doc.userId.length === 0) {
-            // Check if the document permissions include the current user
-            return doc.$permissions.some((perm) =>
-              perm.includes(`user:${rawUser.$id}`)
-            );
-          } else if (typeof doc.userId === "string") {
-            // If userId is a string, check if it equals the current user ID
-            matches = doc.userId === rawUser.$id;
-          } else if (doc.userId && doc.userId.hasOwnProperty(rawUser.$id)) {
-            // If userId is an object with user IDs as keys
-            matches = true;
-          }
-
-          console.log(
-            `Document ${doc.$id} userId:`,
-            doc.userId,
-            "Matches current user:",
-            matches
-          );
-          setDebugInfo(
-            (prev) =>
-              prev +
-              `\nDocument ${doc.$id} userId: ${JSON.stringify(
-                doc.userId
-              )} Matches: ${matches}`
-          );
-          return matches;
-        });
-
-        console.log("Documents matching current user:", matchingDocs.length);
-        setDebugInfo(
-          (prev) =>
-            prev + `\nDocuments matching current user: ${matchingDocs.length}`
-        );
-
         // Process bookings to determine if they're active
         const now = new Date();
         const processedBookings: Booking[] = await Promise.all(
-          matchingDocs.map(async (doc) => {
+          response.docs.map(async (doc) => {
             // Initialize status variables
             let isActive = false;
             let isCancelled = false;
@@ -183,10 +138,10 @@ const UserBookingsScreen = () => {
 
             try {
               // Check if booking is explicitly cancelled
-              isCancelled = doc.status === "cancelled";
+              isCancelled = doc.data().status === "cancelled";
 
               // Check if the checkout date is in the future
-              const checkOutDate = new Date(doc.checkOutDate);
+              const checkOutDate = new Date(doc.data().checkOutDate);
 
               // A booking is active if checkout date is in the future and not cancelled
               isActive = checkOutDate >= now && !isCancelled;
@@ -201,7 +156,7 @@ const UserBookingsScreen = () => {
               }
 
               console.log(
-                `Booking ${doc.$id} - checkOutDate: ${checkOutDate}, now: ${now}, isActive: ${isActive}, statusDisplay: ${statusDisplay}`
+                `Booking ${doc.id} - checkOutDate: ${checkOutDate}, now: ${now}, isActive: ${isActive}, statusDisplay: ${statusDisplay}`
               );
             } catch (e) {
               console.error("Error processing booking status:", e);
@@ -210,13 +165,9 @@ const UserBookingsScreen = () => {
             // Try to fetch the package details
             let packageDetails = null;
             try {
-              if (doc.packageId) {
-                const packageData = await databases.getDocument(
-                  config.databaseId!,
-                  config.packagesCollectionId!,
-                  doc.packageId
-                );
-                packageDetails = packageData;
+              if (doc.data().packageId) {
+                const packageData = await getDoc(doc(db, "packages", doc.data().packageId));
+                packageDetails = packageData.data();
               }
             } catch (e) {
               console.error("Error fetching package:", e);
@@ -224,29 +175,26 @@ const UserBookingsScreen = () => {
 
             // Create a properly typed booking object
             const booking: Booking = {
-              $id: doc.$id,
-              userId: doc.userId, // Keep original format
-              packageId: doc.packageId || "",
-              packageInfoId: doc.packageInfoId,
+              id: doc.id,
+              userId: doc.data().userId,
+              packageId: doc.data().packageId || "",
+              packageInfoId: doc.data().packageInfoId,
               packageDetails: packageDetails,
-              amount: doc.amount || 0,
-              status: doc.status || "completed",
-              bookingReference: doc.bookingReference || "",
-              bookingDate: doc.bookingDate || new Date().toISOString(),
-              checkInDate: doc.checkInDate || new Date().toISOString(),
-              checkOutDate: doc.checkOutDate || new Date().toISOString(),
-              guestCount: doc.guestCount || 1,
+              amount: doc.data().amount || 0,
+              status: doc.data().status || "completed",
+              bookingReference: doc.data().bookingReference || "",
+              bookingDate: doc.data().bookingDate || new Date().toISOString(),
+              checkInDate: doc.data().checkInDate || new Date().toISOString(),
+              checkOutDate: doc.data().checkOutDate || new Date().toISOString(),
+              guestCount: doc.data().guestCount || 1,
               isActive: isActive,
-              transactionId: doc.transactionId || "",
-              paymentMethod: doc.paymentMethod || "stripe",
-              metadata: doc.metadata,
-              $collectionId: doc.$collectionId,
-              $databaseId: doc.$databaseId,
-              $createdAt: doc.$createdAt,
-              $updatedAt: doc.$updatedAt,
-              $permissions: doc.$permissions,
+              transactionId: doc.data().transactionId || "",
+              paymentMethod: doc.data().paymentMethod || "stripe",
+              metadata: doc.data().metadata,
               isCancelled: isCancelled,
               statusDisplay: statusDisplay,
+              createdAt: doc.data().createdAt,
+              updatedAt: doc.data().updatedAt,
             };
 
             return booking;
@@ -256,8 +204,8 @@ const UserBookingsScreen = () => {
         // Sort bookings by creation date (newest first)
         const sortedBookings = processedBookings.sort((a, b) => {
           return (
-            new Date(b.$createdAt || 0).getTime() -
-            new Date(a.$createdAt || 0).getTime()
+            new Date(b.createdAt || 0).getTime() -
+            new Date(a.createdAt || 0).getTime()
           );
         });
 
@@ -339,7 +287,7 @@ const UserBookingsScreen = () => {
     return (
       <TouchableOpacity
         style={[styles.bookingCard, statusStyles.card]}
-        onPress={() => navigateToBookingDetails(item.$id)}
+        onPress={() => navigateToBookingDetails(item.id)}
       >
         <View style={styles.statusContainer}>
           <View style={statusStyles.badge}>
@@ -438,7 +386,7 @@ const UserBookingsScreen = () => {
       <FlatList
         data={currentBookings}
         renderItem={renderBookingItem}
-        keyExtractor={(item) => item.$id}
+        keyExtractor={(item) => item.id}
         contentContainerStyle={styles.listContainer}
         refreshControl={
           <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />

@@ -1,5 +1,5 @@
-import { databases, config } from "./appwrite";
-import { Query } from "react-native-appwrite";
+import { collection, query, where, getDocs } from "firebase/firestore";
+import { firestore, COLLECTIONS } from "./firebase/firebase-config";
 import { PackageWithAgent } from "./searchFunctions";
 
 /**
@@ -10,28 +10,17 @@ import { PackageWithAgent } from "./searchFunctions";
  */
 export const findAgentsByName = async (searchTerm: string): Promise<any[]> => {
   try {
-    // Get all agents (or as many as reasonable)
-    const allAgents = await databases.listDocuments(
-      config.databaseId!,
-      config.agentsCollectionId!,
-      [Query.limit(100)]
+    const agentsQuery = query(
+      collection(firestore, COLLECTIONS.AGENTS),
+      where("name", ">=", searchTerm),
+      where("name", "<=", searchTerm + "\uf8ff")
     );
 
-    // Filter the agents by name manually
-    const matchingAgents = allAgents.documents.filter((agent) => {
-      if (!agent.name) return false;
-
-      const agentNameLower = agent.name.toLowerCase();
-      const searchTermLower = searchTerm.toLowerCase();
-
-      // Check if the agent name contains the search term
-      return agentNameLower.includes(searchTermLower);
-    });
-
-    console.log(
-      `Found ${matchingAgents.length} agents matching "${searchTerm}"`
-    );
-    return matchingAgents;
+    const agentsSnapshot = await getDocs(agentsQuery);
+    return agentsSnapshot.docs.map(doc => ({
+      id: doc.id,
+      ...doc.data()
+    }));
   } catch (error) {
     console.error("Error finding agents by name:", error);
     return [];
@@ -45,56 +34,49 @@ export const findAgentsByName = async (searchTerm: string): Promise<any[]> => {
  * @param searchTerm - The agent name to search for
  * @returns Array of packages associated with matching agents
  */
-export const searchPackagesByAgentName = async (
-  searchTerm: string
-): Promise<PackageWithAgent[]> => {
+export const searchPackagesByAgentName = async (agentName: string): Promise<PackageWithAgent[]> => {
   try {
-    // First find agents with matching names
-    const matchingAgents = await findAgentsByName(searchTerm);
+    // Query agents collection to find matching agent
+    const agentsQuery = query(
+      collection(firestore, COLLECTIONS.AGENTS),
+      where("name", ">=", agentName),
+      where("name", "<=", agentName + "\uf8ff")
+    );
 
-    if (matchingAgents.length === 0) {
-      console.log("No agents found matching the search term:", searchTerm);
+    const agentsSnapshot = await getDocs(agentsQuery);
+    const agentIds = agentsSnapshot.docs.map(doc => doc.id);
+
+    if (agentIds.length === 0) {
       return [];
     }
 
-    // Create a Set of agent IDs for faster lookups
-    const agentIds = new Set(matchingAgents.map((agent) => agent.$id));
-
-    // Get all packages (or a reasonable number)
-    const allPackages = await databases.listDocuments(
-      config.databaseId!,
-      config.packagesCollectionId!,
-      [Query.limit(100)]
+    // Query packages collection for packages by these agents
+    const packagesQuery = query(
+      collection(firestore, COLLECTIONS.PACKAGES),
+      where("agentId", "in", agentIds)
     );
 
-    // Filter packages by matching agent IDs
-    const matchingPackages = allPackages.documents.filter(
-      (pkg) => pkg.agent && agentIds.has(pkg.agent.$id)
-    );
-
-    console.log(
-      `Found ${matchingPackages.length} packages from agents matching "${searchTerm}"`
-    );
-
-    // Process packages with agent info
-    return matchingPackages.map((pkg) => {
-      // Find the matching agent
-      const matchingAgent = matchingAgents.find(
-        (agent) => agent.$id === pkg.agent?.$id
-      );
-
+    const packagesSnapshot = await getDocs(packagesQuery);
+    
+    // Map the results to match PackageWithAgent interface
+    return packagesSnapshot.docs.map(doc => {
+      const data = doc.data();
       return {
-        ...pkg,
+        id: doc.id,
+        name: data.name,
+        price: data.price,
+        type: data.type,
+        imageUrl: data.image || null,
         agent: {
-          name: matchingAgent?.name || "Unknown Agent",
-          id: matchingAgent?.$id || null,
-          avatar: matchingAgent?.avatar || null,
+          name: data.agentName || "Unknown Agent",
+          id: data.agentId || null,
+          avatar: data.agentAvatar || null
         },
-        imageUrl: pkg.image || null,
+        ...data
       };
     });
   } catch (error) {
-    console.error("Error in agent name search:", error);
+    console.error("Error searching packages by agent name:", error);
     return [];
   }
 };
