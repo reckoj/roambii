@@ -1,5 +1,5 @@
 import icons from "@/constants/icons";
-import { Image, Text, TouchableOpacity, View } from "react-native";
+import { Image, Text, TouchableOpacity, View, StyleSheet } from "react-native";
 import { Models } from "react-native-appwrite";
 import { storage, config } from "@/lib/appwrite";
 import images from "@/constants/images";
@@ -60,52 +60,75 @@ export const FeaturedCard = ({ item, onPress }: Props) => {
 export const Card = ({ item, onPress }: Props) => {
   return (
     <TouchableOpacity
-      className="flex-1 w-full mt-4 px-3 py-4 rounded-lg border border-gray-200 shadow-lg shadow-black-100/70 relative bg-white/55"
+      style={styles.card}
       onPress={onPress}
     >
-      {/* <View className="flex flex-row items-center absolute px-2 top-5 right-5 bg-white/90 p-1 rounded-full z-50">
-        <Image source={icons.star} className="size-2.5" />
-        <Text className="text-xs font-rubik-bold text-primary-300 ml-0.5">
-          {item.rating}
-        </Text>
-      </View> */}
+      <Image 
+        source={{ uri: item.image }} 
+        style={styles.cardImage} 
+      />
 
-      <Image source={{ uri: item.image }} className="w-full h-40 rounded-lg" />
-
-      <View className="flex flex-col mt-2">
-        <Text className="text-base font-rubik-bold text-black-300">
+      <View style={styles.cardContent}>
+        <Text style={styles.cardTitle} numberOfLines={1}>
           {item.name}
         </Text>
-        <Text className="text-base font-rubik-bold text-black-300">
+        <Text style={styles.cardType} numberOfLines={1}>
           {item.type}
         </Text>
-        {/* <Text className="text-base font-rubik-bold text-black-300">
-          {item.description}
-        </Text>
-        <Text className="text-base font-rubik-bold text-black-300">
-          {item.bathrooms}
-        </Text>
-        <Text className="text-base font-rubik-bold text-black-300">
-          {item.bedrooms}
-        </Text>
-        <Text className="text-xs font-rubik text-black-100">
-          {item.address}
-        </Text> */}
-        <View>
-          <Image source={{ uri: item.image }} />
-        </View>
 
-        <View className="flex flex-row items-center justify-between mt-2">
-          <Text className="text-base font-rubik-bold text-primary-300">
+        <View style={styles.priceContainer}>
+          <Text style={styles.priceText}>
             ${item.price}
           </Text>
-          {/* <Image
-            source={icons.heart}
-            className="w-5 h-5 mr-2"
-            tintColor="#191D31"
-          /> */}
         </View>
       </View>
     </TouchableOpacity>
   );
 };
+
+const styles = StyleSheet.create({
+  card: {
+    flex: 1,
+    width: "100%",
+    marginTop: 16,
+    padding: 12,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: "#E5E7EB",
+    backgroundColor: "rgba(255, 255, 255, 0.9)",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 2,
+  },
+  cardImage: {
+    width: "100%",
+    height: 160,
+    borderRadius: 8,
+  },
+  cardContent: {
+    marginTop: 8,
+  },
+  cardTitle: {
+    fontSize: 16,
+    fontWeight: "bold",
+    color: "#333",
+  },
+  cardType: {
+    fontSize: 16,
+    fontWeight: "bold",
+    color: "#333",
+  },
+  priceContainer: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    marginTop: 8,
+  },
+  priceText: {
+    fontSize: 16,
+    fontWeight: "bold",
+    color: "#1ABC9C",
+  },
+});

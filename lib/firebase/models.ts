@@ -22,11 +22,54 @@ export interface User extends FirebaseDocument {
   isEmailVerified: boolean;
 }
 
-export interface Agent extends User {
-  niche?: string;
+export interface Agent {
+  id: string;
+  name: string;
+  email: string;
+  avatar?: string;
   bio?: string;
   rating?: number;
   reviewCount?: number;
+  niche?: string;
+  isProfileComplete?: boolean;
+  createdAt?: Date;
+  updatedAt?: Date;
+  // Add missing properties
+  yearsOfExperience?: number;
+  region?: string;
+  languages?: string[];
+  specialties?: string[];
+  phoneNumber?: string;
+  website?: string;
+  socialLinks?: {
+    facebook?: string;
+    twitter?: string;
+    instagram?: string;
+    linkedin?: string;
+  };
+  certifications?: string[];
+  isVerified?: boolean;
+  isActive?: boolean;
+  lastActive?: Date;
+  totalBookings?: number;
+  totalReviews?: number;
+  averageRating?: number;
+  responseTime?: number; // in minutes
+  preferredLanguages?: string[];
+  serviceAreas?: string[];
+  workingHours?: {
+    start: string;
+    end: string;
+    timezone: string;
+  };
+  commissionRate?: number;
+  paymentMethods?: string[];
+  documents?: {
+    id: string;
+    type: string;
+    url: string;
+    verified: boolean;
+  }[];
 }
 
 // Package models

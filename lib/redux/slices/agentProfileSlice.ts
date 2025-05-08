@@ -58,28 +58,50 @@ const initialState: AgentProfileState = {
 
 // Helper function to convert Firestore data to AgentProfile
 const convertToAgentProfile = (id: string, data: any): AgentProfile => {
-  return {
+  // Convert Firebase Timestamp to milliseconds
+  const convertTimestamp = (timestamp: any) => {
+    if (!timestamp) return Date.now();
+    if (timestamp.seconds) {
+      return timestamp.seconds * 1000 + (timestamp.nanoseconds || 0) / 1000000;
+    }
+    return timestamp;
+  };
+
+  // Helper to check if a value is empty
+  const isEmpty = (value: any): boolean => {
+    if (value === undefined || value === null) return true;
+    if (typeof value === 'string') return value.trim() === '';
+    if (Array.isArray(value)) return value.length === 0;
+    if (typeof value === 'object') return Object.keys(value).length === 0;
+    return false;
+  };
+
+  // Create base profile with required fields
+  const profile: AgentProfile = {
     id,
     userId: data.userId || id,
-    name: data.name || "",
+    name: data.name || "Unnamed Agent",
     email: data.email || "",
-    avatar: data.avatar === null ? undefined : data.avatar, // Convert null to undefined
     yearsOfExperience: data.yearsOfExperience || 0,
     region: data.region || "",
     languages: data.languages || [],
     bio: data.bio || "",
     specialties: data.specialties || [],
-    phoneNumber: data.phoneNumber === null ? undefined : data.phoneNumber, // Convert null to undefined
-    website: data.website === null ? undefined : data.website, // Convert null to undefined
-    socialLinks: data.socialLinks === null ? undefined : data.socialLinks, // Convert null to undefined
-    certifications:
-      data.certifications === null ? undefined : data.certifications, // Convert null to undefined
-    rating: data.rating || 0,
-    reviewCount: data.reviewCount || 0,
     isProfileComplete: data.isProfileComplete || false,
-    createdAt: data.createdAt || serverTimestamp(),
-    updatedAt: data.updatedAt || serverTimestamp(),
+    createdAt: convertTimestamp(data.createdAt),
+    updatedAt: convertTimestamp(data.updatedAt),
   };
+
+  // Add optional fields only if they have values
+  if (!isEmpty(data.avatar)) profile.avatar = data.avatar;
+  if (!isEmpty(data.phoneNumber)) profile.phoneNumber = data.phoneNumber;
+  if (!isEmpty(data.website)) profile.website = data.website;
+  if (!isEmpty(data.socialLinks)) profile.socialLinks = data.socialLinks;
+  if (!isEmpty(data.certifications)) profile.certifications = data.certifications;
+  if (!isEmpty(data.rating)) profile.rating = data.rating;
+  if (!isEmpty(data.reviewCount)) profile.reviewCount = data.reviewCount;
+
+  return profile;
 };
 
 // Get agent profile from Firestore
@@ -204,45 +226,75 @@ export const updateAgentProfileAsync = createAsyncThunk(
     { rejectWithValue }
   ) => {
     try {
-      let avatarUrl = profileData.avatar;
+      if (!agentId) {
+        return rejectWithValue("Agent ID is required");
+      }
+
+      // First verify the agent exists
+      const agentRef = doc(firestore, COLLECTIONS.AGENTS, agentId);
+      const agentDoc = await getDoc(agentRef);
+      
+      if (!agentDoc.exists()) {
+        return rejectWithValue("Agent profile not found");
+      }
+
+      let avatarUrl: string | undefined = profileData.avatar;
 
       // Upload avatar if provided
-      //   if (avatarUri) {
-      //     avatarUrl = await uploadProfileImage(agentId, avatarUri);
-      //   }
+      if (avatarUri) {
+        try {
+          const uploadedUrl = await uploadProfileImage(agentId, avatarUri);
+          avatarUrl = uploadedUrl || undefined;
+        } catch (error) {
+          console.error("Error uploading avatar:", error);
+          return rejectWithValue("Failed to upload profile image");
+        }
+      }
 
-      // Handle null to undefined conversion for optional fields
-      const sanitizedData = { ...profileData };
-      if (sanitizedData.avatar === null) sanitizedData.avatar = undefined;
-      if (sanitizedData.phoneNumber === null)
-        sanitizedData.phoneNumber = undefined;
-      if (sanitizedData.website === null) sanitizedData.website = undefined;
-      if (sanitizedData.socialLinks === null)
-        sanitizedData.socialLinks = undefined;
-      if (sanitizedData.certifications === null)
-        sanitizedData.certifications = undefined;
+      // Sanitize and validate the update data
+      const sanitizedData: Partial<AgentProfile> = {};
+      
+      // Only include fields that are actually being updated and have values
+      Object.entries(profileData).forEach(([key, value]) => {
+        if (value !== undefined && value !== null && value !== "") {
+          sanitizedData[key as keyof AgentProfile] = value;
+        }
+      });
 
-      // Prepare update data with avatar URL
+      // Prepare update data
       const updateData = {
         ...sanitizedData,
-        avatar: avatarUrl || sanitizedData.avatar,
+        avatar: avatarUrl,
         updatedAt: serverTimestamp(),
       };
 
+      // Remove any undefined or null values to prevent Firestore errors
+      Object.keys(updateData).forEach(key => {
+        const value = updateData[key as keyof typeof updateData];
+        if (value === undefined || value === null || value === "") {
+          delete updateData[key as keyof typeof updateData];
+        }
+      });
+
       // Update agent document
-      const agentRef = doc(firestore, COLLECTIONS.AGENTS, agentId);
       await updateDoc(agentRef, updateData);
 
       // Fetch and return the updated profile
       const updatedDoc = await getDoc(agentRef);
       if (!updatedDoc.exists()) {
-        return rejectWithValue("Failed to update agent profile");
+        return rejectWithValue("Failed to fetch updated profile");
       }
 
       const updatedData = updatedDoc.data();
-      return convertToAgentProfile(agentId, updatedData);
+      const profile = convertToAgentProfile(agentId, updatedData);
+
+      return {
+        ...profile,
+        isNewAgent: false,
+      };
     } catch (error: any) {
-      return rejectWithValue(error.message);
+      console.error("Error updating agent profile:", error);
+      return rejectWithValue(error.message || "Failed to update agent profile");
     }
   }
 );

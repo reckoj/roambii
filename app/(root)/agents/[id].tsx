@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import React, { useEffect, useState } from "react";
 import { router, useLocalSearchParams } from "expo-router";
 import {
   Image,
@@ -32,6 +32,7 @@ import { useGlobalContext } from "@/lib/global-provider";
 import { getAgentById, getAgentPackages } from "@/lib/agent-service";
 import { Agent } from "@/lib/firebase/models";
 import ReviewsList from "@/components/ReviewsList";
+import { Fragment } from "react";
 
 // Define theme colors
 const COLORS = {
@@ -157,20 +158,16 @@ const AgentProfile = () => {
 
     if (!rawUser) {
       console.error("User data is missing");
-      Alert.alert(
-        "Error",
-        "Please sign in to start a chat with the agent.",
-        [
-          {
-            text: "Sign In",
-            onPress: () => router.push("/pre-login"),
-          },
-          {
-            text: "Cancel",
-            style: "cancel",
-          },
-        ]
-      );
+      Alert.alert("Error", "Please sign in to start a chat with the agent.", [
+        {
+          text: "Sign In",
+          onPress: () => router.push("/pre-login"),
+        },
+        {
+          text: "Cancel",
+          style: "cancel",
+        },
+      ]);
       return;
     }
 
@@ -230,12 +227,13 @@ const AgentProfile = () => {
     return (
       <View style={styles.starContainer}>
         {[...Array(5)].map((_, i) => (
-          <Star
-            key={i}
-            size={16}
-            color={i < Math.floor(rating) ? COLORS.gold : COLORS.secondary}
-            fill={i < Math.floor(rating) ? COLORS.gold : "none"}
-          />
+          <View key={i}>
+            <Star
+              size={16}
+              color={i < Math.floor(rating) ? COLORS.gold : COLORS.secondary}
+              fill={i < Math.floor(rating) ? COLORS.gold : "none"}
+            />
+          </View>
         ))}
       </View>
     );
@@ -256,15 +254,28 @@ const AgentProfile = () => {
   };
 
   const getAgentExperience = () => {
-    return "3+ years";
+    if (!agent?.yearsOfExperience) return "No experience listed";
+    return `${agent.yearsOfExperience} ${
+      agent.yearsOfExperience === 1 ? "year" : "years"
+    } experience`;
   };
 
   const getAgentLocation = () => {
-    return "International";
+    return agent?.region || "Location not specified";
   };
 
   const getAgentLanguages = () => {
-    return "English, Spanish";
+    if (!agent?.languages?.length) return "Languages not specified";
+    return agent.languages.join(", ");
+  };
+
+  const getAgentSpecialties = () => {
+    if (!agent?.specialties?.length) return "Travel";
+    return agent.specialties.join(", ");
+  };
+
+  const getAgentBio = () => {
+    return agent?.bio || "No bio available";
   };
 
   return (
@@ -314,20 +325,25 @@ const AgentProfile = () => {
             />
           </View>
 
-          <Text style={styles.agentName}>{agent.name}</Text>
+          <Text style={styles.agentName}>{agent?.name || "Unnamed Agent"}</Text>
           <Text style={styles.agentSpecialty}>
-            {agent.niche || "Travel"} Specialist
+            {getAgentSpecialties()}
+            Specialist
           </Text>
 
           <View style={styles.agentRatingContainer}>
-            <View style={styles.badgeContainer}>
-              <Award size={14} color={COLORS.gold} />
-              <Text style={styles.badgeText}>Top Agent</Text>
-            </View>
-            {renderStars(agent.rating || 4.5)}
-            <Text style={styles.ratingText}>
-              {agent.rating || 4.5} ({agent.reviewCount || 0} reviews)
-            </Text>
+            {agent?.rating && (
+              <Fragment>
+                <View style={styles.badgeContainer}>
+                  <Award size={14} color={COLORS.gold} />
+                  <Text style={styles.badgeText}>Top Agent</Text>
+                </View>
+                {renderStars(agent.rating)}
+                <Text style={styles.ratingText}>
+                  {agent.rating.toFixed(1)} ({agent.reviewCount || 0} reviews)
+                </Text>
+              </Fragment>
+            )}
           </View>
 
           <TouchableOpacity
@@ -377,6 +393,14 @@ const AgentProfile = () => {
           </View>
         </View>
 
+        {/* Bio Section */}
+        {agent?.bio && (
+          <View style={styles.sectionContainer}>
+            <Text style={styles.sectionTitle}>About</Text>
+            <Text style={styles.bioText}>{getAgentBio()}</Text>
+          </View>
+        )}
+
         {/* Agent's Packages Section */}
         <View style={styles.sectionContainer}>
           <Text style={styles.sectionTitle}>Available Packages</Text>
@@ -409,7 +433,7 @@ const AgentProfile = () => {
           )}
         </View>
 
-        {/* Reviews Section - Now uses the ReviewsList component */}
+        {/* Reviews Section */}
         <View style={styles.sectionContainer}>
           {agent && <ReviewsList agentId={agent.id} />}
         </View>
@@ -659,6 +683,12 @@ const styles = StyleSheet.create({
   packagesList: {
     paddingBottom: 8,
     paddingRight: 20,
+  },
+  bioText: {
+    fontSize: 15,
+    color: COLORS.text,
+    lineHeight: 22,
+    marginTop: 8,
   },
 });
 
