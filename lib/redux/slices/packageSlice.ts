@@ -130,9 +130,27 @@ export const fetchPackagesAsync = createAsyncThunk(
       offset?: number;
       reset?: boolean;
     },
-    { rejectWithValue }
+    { rejectWithValue, getState }
   ) => {
     try {
+      // Get current state
+      const state = getState() as { packages: PackageState };
+      const currentFilter = state.packages.filter;
+      const currentQuery = state.packages.query;
+      const currentPackages = state.packages.packages;
+
+      // If we're not resetting and we already have packages, check if we need to fetch more
+      if (!reset && currentPackages.length > 0) {
+        // If filter/query hasn't changed and we have more packages than the offset, return empty array
+        if (filter === currentFilter && query === currentQuery && currentPackages.length >= offset) {
+          return {
+            packages: [],
+            reset: false,
+            hasMore: state.packages.hasMore,
+          };
+        }
+      }
+
       const result = await searchPackages(query || "", filter || "All", limit);
 
       if (!result || !Array.isArray(result)) {
@@ -142,8 +160,15 @@ export const fetchPackagesAsync = createAsyncThunk(
       // Transform and serialize each package
       const serializedPackages = result.map((pkg) => serializePackage(pkg));
 
+      // If we're not resetting, filter out duplicates
+      const newPackages = reset 
+        ? serializedPackages 
+        : serializedPackages.filter(
+            (pkg) => !currentPackages.some((existingPkg) => existingPkg.id === pkg.id)
+          );
+
       return {
-        packages: serializedPackages,
+        packages: newPackages,
         reset,
         hasMore: result.length === limit,
       };
@@ -271,14 +296,17 @@ const packageSlice = createSlice({
         if (reset) {
           state.packages = packages;
           state.offset = packages.length;
-        } else {
-          // Filter out duplicates when adding more packages
-          const newPackages = packages.filter(
-            (pkg) =>
-              !state.packages.some((existingPkg) => existingPkg.id === pkg.id)
-          );
-          state.packages = [...state.packages, ...newPackages];
-          state.offset += packages.length;
+        } else if (packages.length > 0) {
+          // Create a map of existing packages for quick lookup
+          const existingPackagesMap = new Map(state.packages.map(pkg => [pkg.id, pkg]));
+          
+          // Add only new packages that don't exist in the map
+          const uniqueNewPackages = packages.filter(pkg => !existingPackagesMap.has(pkg.id));
+          
+          if (uniqueNewPackages.length > 0) {
+            state.packages = [...state.packages, ...uniqueNewPackages];
+            state.offset = state.packages.length;
+          }
         }
       })
       .addCase(fetchPackagesAsync.rejected, (state, action) => {

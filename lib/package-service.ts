@@ -237,23 +237,34 @@ export const getPackageById = async (
       }
     }
 
-    // Get agent info
+    // Get agent data
     let agentData: DocumentData | null = null;
     if (packageData.agent) {
       try {
-        const agentDoc = await getDoc(packageData.agent);
-        if (agentDoc.exists()) {
-          const agentDocData = agentDoc.data() as DocumentData;
-          agentData = {
-            id: agentDoc.id,
-            ...(agentDocData || {}),
-            // Add userId explicitly for permission checks
-            userId: agentDocData.userId || agentDoc.id,
-          };
+        // If agent data is already in the correct format (has id, name, avatar), use it directly
+        if (typeof packageData.agent === 'object' && 
+            'id' in packageData.agent && 
+            'name' in packageData.agent) {
+          agentData = packageData.agent;
+        } else {
+          // Handle DocumentReference case
+          let agentRef;
+          if (typeof packageData.agent === 'object' && 'path' in packageData.agent) {
+            agentRef = packageData.agent;
+            const agentDoc = await getDoc(agentRef);
+            if (agentDoc.exists()) {
+              const agentDocData = agentDoc.data() as DocumentData;
+              agentData = {
+                id: agentDoc.id,
+                ...(agentDocData || {}),
+              };
+            }
+          } else {
+            console.warn('Invalid agent reference format:', packageData.agent);
+          }
         }
       } catch (error) {
-        console.error("Error fetching agent info:", error);
-        // Continue without agent info
+        console.error("Error fetching agent data:", error);
       }
     }
 
@@ -513,13 +524,31 @@ export const searchPackages = async (
       // Get agent data
       let agentData: DocumentData | null = null;
       if (packageData.agent) {
-        const agentDoc = await getDoc(packageData.agent);
-        if (agentDoc.exists()) {
-          const agentDocData = agentDoc.data() as DocumentData;
-          agentData = {
-            id: agentDoc.id,
-            ...(agentDocData || {}),
-          };
+        try {
+          // If agent data is already in the correct format (has id, name, avatar), use it directly
+          if (typeof packageData.agent === 'object' && 
+              'id' in packageData.agent && 
+              'name' in packageData.agent) {
+            agentData = packageData.agent;
+          } else {
+            // Handle DocumentReference case
+            let agentRef;
+            if (typeof packageData.agent === 'object' && 'path' in packageData.agent) {
+              agentRef = packageData.agent;
+              const agentDoc = await getDoc(agentRef);
+              if (agentDoc.exists()) {
+                const agentDocData = agentDoc.data() as DocumentData;
+                agentData = {
+                  id: agentDoc.id,
+                  ...(agentDocData || {}),
+                };
+              }
+            } else {
+              console.warn('Invalid agent reference format:', packageData.agent);
+            }
+          }
+        } catch (error) {
+          console.error("Error fetching agent data:", error);
         }
       }
 

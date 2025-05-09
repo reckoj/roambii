@@ -77,20 +77,36 @@ const HomeScreen = () => {
 
   const [refreshing, setRefreshing] = useState(false);
   const scrollY = useRef(new Animated.Value(0)).current;
+  const listRef = useRef<FlatList>(null);
+  const isScrolling = useRef(false);
+  const scrollTimeout = useRef<NodeJS.Timeout>();
+  const lastLoadMoreTime = useRef(0);
 
   // Initial Fetch
   useEffect(() => {
     if (packages.length === 0) {
       dispatch(fetchPackagesAsync({ limit: 6, offset: 0, reset: true }));
     }
-
-    // Fetch featured packages
     dispatch(fetchFeaturedPackagesAsync());
+
+    return () => {
+      if (scrollTimeout.current) {
+        clearTimeout(scrollTimeout.current);
+      }
+    };
   }, [dispatch]);
 
   // Load More Data When Reaching Bottom
-  const handleLoadMore = () => {
-    if (!loadingMore && hasMore) {
+  const handleLoadMore = useCallback(() => {
+    const now = Date.now();
+    if (
+      !loadingMore && 
+      hasMore && 
+      !refreshing && 
+      !isScrolling.current &&
+      now - lastLoadMoreTime.current > 1000 // Prevent multiple loads within 1 second
+    ) {
+      lastLoadMoreTime.current = now;
       dispatch(
         fetchPackagesAsync({
           filter,
@@ -101,39 +117,61 @@ const HomeScreen = () => {
         })
       );
     }
-  };
+  }, [dispatch, loadingMore, hasMore, refreshing, filter, query, offset]);
 
   // Pull-to-Refresh Function
   const handleRefresh = useCallback(() => {
-    setRefreshing(true);
+    if (!refreshing) {
+      setRefreshing(true);
+      Promise.all([
+        dispatch(
+          fetchPackagesAsync({
+            filter,
+            query,
+            limit: 6,
+            offset: 0,
+            reset: true,
+          })
+        ),
+        dispatch(fetchFeaturedPackagesAsync()),
+      ]).finally(() => {
+        setRefreshing(false);
+      });
+    }
+  }, [dispatch, filter, query, refreshing]);
 
-    // Reset packages list
-    dispatch(
-      fetchPackagesAsync({
-        filter,
-        query,
-        limit: 6,
-        offset: 0,
-        reset: true,
-      })
-    ).finally(() => setRefreshing(false));
-
-    // Also refresh featured packages
-    dispatch(fetchFeaturedPackagesAsync());
-  }, [dispatch, filter, query]);
+  // Handle scroll events
+  const handleScroll = useCallback(
+    Animated.event(
+      [{ nativeEvent: { contentOffset: { y: scrollY } } }],
+      {
+        useNativeDriver: true,
+        listener: () => {
+          isScrolling.current = true;
+          if (scrollTimeout.current) {
+            clearTimeout(scrollTimeout.current);
+          }
+          scrollTimeout.current = setTimeout(() => {
+            isScrolling.current = false;
+          }, 200); // Increased debounce time
+        },
+      }
+    ),
+    []
+  );
 
   const handleCardPress = (id: string) => router.push(`/properties/${id}`);
 
   // Animated header values
-  const headerHeight = scrollY.interpolate({
+  const headerTranslateY = scrollY.interpolate({
     inputRange: [0, HEADER_SCROLL_DISTANCE],
-    outputRange: [HEADER_MAX_HEIGHT, HEADER_MIN_HEIGHT],
+    outputRange: [0, -HEADER_SCROLL_DISTANCE],
     extrapolate: "clamp",
   });
 
   const headerBackgroundOpacity = scrollY.interpolate({
     inputRange: [0, HEADER_SCROLL_DISTANCE / 2, HEADER_SCROLL_DISTANCE],
-    outputRange: [0, 0.1, 0.2], // Reduced opacity values
+    outputRange: [0, 0.1, 0.2],
     extrapolate: "clamp",
   });
 
@@ -155,26 +193,15 @@ const HomeScreen = () => {
     extrapolate: "clamp",
   });
 
-  // Custom render function for featured cards with spacing
-  const renderFeaturedCard = ({
-    item,
-    index,
-  }: {
-    item: any;
-    index: number;
-  }) => (
+  // Custom render functions
+  const renderFeaturedCard = ({ item, index }: { item: any; index: number }) => (
     <View style={styles.featuredCardContainer}>
       <FeaturedCard item={item} onPress={() => handleCardPress(item.id)} />
     </View>
   );
 
   const renderPackageCard = ({ item, index }: { item: any; index: number }) => (
-    <Animated.View
-      style={[
-        styles.packageCardContainer,
-        { transform: [{ scale: index % 2 === 0 ? 1 : 0.96 }] },
-      ]}
-    >
+    <View style={styles.packageCardContainer}>
       <TouchableOpacity
         style={styles.packageCard}
         activeOpacity={0.9}
@@ -191,7 +218,6 @@ const HomeScreen = () => {
             <Heart size={16} color="#FFF" />
           </TouchableOpacity>
 
-          {/* Price tag */}
           <View style={styles.priceTag}>
             <Text style={styles.priceText}>${item.price || 0}</Text>
           </View>
@@ -233,7 +259,7 @@ const HomeScreen = () => {
           </View>
         </View>
       </TouchableOpacity>
-    </Animated.View>
+    </View>
   );
 
   const renderSectionHeader = ({
@@ -280,9 +306,15 @@ const HomeScreen = () => {
         barStyle="light-content"
       />
 
-      {/* Animated Header with Image Background */}
-      <Animated.View style={[styles.header]}>
-        {/* Background tint/color overlay */}
+      {/* Animated Header */}
+      <Animated.View 
+        style={[
+          styles.header,
+          {
+            transform: [{ translateY: headerTranslateY }],
+          },
+        ]}
+      >
         <Animated.View
           style={[
             styles.headerBackground,
@@ -290,7 +322,6 @@ const HomeScreen = () => {
           ]}
         />
 
-        {/* Image Background */}
         <Animated.View
           style={[styles.headerImageContainer, { opacity: imageOpacity }]}
         >
@@ -302,7 +333,6 @@ const HomeScreen = () => {
         </Animated.View>
 
         <SafeAreaView style={styles.headerContent}>
-          {/* Top Navigation */}
           <View style={styles.topNav}>
             <View style={styles.userContainer}>
               <Image
@@ -339,22 +369,20 @@ const HomeScreen = () => {
 
       {/* Main Content */}
       <Animated.FlatList
+        ref={listRef}
         data={packages}
         numColumns={2}
         renderItem={renderPackageCard}
         keyExtractor={(item) => item.id}
         contentContainerStyle={[
           styles.listContent,
-          { paddingTop: HEADER_MAX_HEIGHT - 15 }, // Move content up slightly
+          { paddingTop: HEADER_MAX_HEIGHT },
         ]}
         showsVerticalScrollIndicator={false}
         columnWrapperStyle={styles.columnWrapper}
         onEndReached={handleLoadMore}
         onEndReachedThreshold={0.5}
-        onScroll={Animated.event(
-          [{ nativeEvent: { contentOffset: { y: scrollY } } }],
-          { useNativeDriver: true }
-        )}
+        onScroll={handleScroll}
         scrollEventThrottle={16}
         refreshControl={
           <RefreshControl
@@ -362,6 +390,8 @@ const HomeScreen = () => {
             onRefresh={handleRefresh}
             tintColor="#1ABC9C"
             colors={["#1ABC9C"]}
+            progressViewOffset={HEADER_MAX_HEIGHT}
+            progressBackgroundColor="rgba(255,255,255,0.8)"
           />
         }
         ListHeaderComponent={() => (
@@ -437,14 +467,13 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: "#FFFFFF",
-    paddingBottom: 50,
   },
-  // Header Styles
   header: {
     position: "absolute",
     top: 0,
     left: 0,
     right: 0,
+    height: HEADER_MAX_HEIGHT,
     overflow: "hidden",
     zIndex: 10,
   },
@@ -454,7 +483,7 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     bottom: 0,
-    backgroundColor: "#FFFFFF", // White background behind the image for better text readability
+    backgroundColor: "#FFFFFF",
   },
   headerImageContainer: {
     position: "absolute",
@@ -466,7 +495,7 @@ const styles = StyleSheet.create({
   headerImage: {
     width: "100%",
     height: "100%",
-    opacity: 0.25, // Keep the image subtle
+    opacity: 0.25,
   },
   headerContent: {
     flex: 1,
@@ -484,8 +513,8 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   userAvatar: {
-    width: 50, // Smaller avatar
-    height: 50, // Smaller avatar
+    width: 50,
+    height: 50,
     borderRadius: 25,
     marginRight: 12,
     borderWidth: 2,
@@ -517,10 +546,8 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: "#95A5A6",
   },
-
-  // Main Content Styles
   listContent: {
-    paddingBottom: 40,
+    paddingBottom: 100,
     paddingHorizontal: 16,
   },
   listHeader: {
@@ -529,15 +556,13 @@ const styles = StyleSheet.create({
   columnWrapper: {
     justifyContent: "space-between",
   },
-
-  // Quick Actions
   quickActionsContainer: {
     flexDirection: "row",
     justifyContent: "flex-start",
     backgroundColor: "#f1f1f1",
     borderRadius: 16,
     padding: 14,
-    marginTop: -5, // Negative margin to move it up
+    marginTop: -5,
     marginBottom: 20,
     shadowColor: "#000",
     shadowOffset: { width: 0, height: 2 },
@@ -564,8 +589,6 @@ const styles = StyleSheet.create({
     color: "#34495E",
     fontWeight: "500",
   },
-
-  // Section Headers
   sectionHeader: {
     flexDirection: "row",
     justifyContent: "space-between",
@@ -582,8 +605,6 @@ const styles = StyleSheet.create({
     fontWeight: "600",
     color: "#1ABC9C",
   },
-
-  // Featured Section
   featuredContainer: {
     marginBottom: 24,
   },
@@ -591,18 +612,14 @@ const styles = StyleSheet.create({
     paddingRight: 10,
   },
   featuredCardContainer: {
-    marginHorizontal: 8, // Add horizontal margin around each card
+    marginHorizontal: 8,
   },
   featuredCardSeparator: {
-    width: 16, // Space between featured cards
+    width: 16,
   },
-
-  // Recommended Agents
   agentsContainer: {
     marginBottom: 24,
   },
-
-  // Package Cards
   packageCardContainer: {
     width: "48%",
     marginBottom: 16,
@@ -684,8 +701,6 @@ const styles = StyleSheet.create({
     fontSize: 10,
     color: "#95A5A6",
   },
-
-  // Loading states
   loader: {
     marginVertical: 20,
   },
@@ -694,6 +709,8 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     alignItems: "center",
     paddingVertical: 16,
+    backgroundColor: "transparent",
+    marginBottom: 20,
   },
   loadingMoreText: {
     marginLeft: 8,
