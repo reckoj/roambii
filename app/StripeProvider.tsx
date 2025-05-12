@@ -5,7 +5,7 @@ import { StripeProvider as StripeProviderNative } from "@stripe/stripe-react-nat
 const STRIPE_PUBLISHABLE_KEY = process.env.EXPO_PUBLIC_APPWRITE_STRIPE_PUBKEY!; // Replace with your actual key
 
 interface StripeProviderProps {
-  children: React.ReactNode;
+  children: ReactElement | ReactElement[];
 }
 
 /**
@@ -16,7 +16,8 @@ const StripeProvider: React.FC<StripeProviderProps> = ({ children }) => {
   return (
     <StripeProviderNative
       publishableKey={process.env.EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY!}
-      merchantIdentifier="merchant.com.roambii" // Only required for Apple Pay
+      merchantIdentifier="merchant.com.roambii" // Required for Apple Pay
+      urlScheme="roambii" // Required for 3D Secure and returning to the app
     >
       {children}
     </StripeProviderNative>

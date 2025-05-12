@@ -16,7 +16,7 @@ import {
 import { useStripePayment } from "@/lib/stripeService";
 import { useGlobalContext } from "@/lib/global-provider";
 import { router } from "expo-router";
-import { createBooking } from "@/lib/bookingService";
+import { createBooking } from "@/lib/booking-service";
 import {
   Lock,
   ArrowLeft,
@@ -80,72 +80,194 @@ const PaymentComponent: React.FC<PaymentComponentProps> = ({
       return;
     }
 
+    // Validate user data
+    if (!rawUser) {
+      console.error("No user data available");
+      Alert.alert(
+        "Authentication Error",
+        "Please log in to make a booking"
+      );
+      router.replace("/login");
+      return;
+    }
+
+    if (!rawUser.id) {
+      console.error("User ID is missing:", rawUser);
+      Alert.alert(
+        "Authentication Error",
+        "User ID is missing. Please try logging in again."
+      );
+      router.replace("/login");
+      return;
+    }
+
+    // Validate package data
+    if (!packageId) {
+      console.error("Package ID is missing");
+      Alert.alert(
+        "Booking Error",
+        "Package information is missing. Please try again."
+      );
+      return;
+    }
+
+    // Validate amount
+    if (!amount || isNaN(amount)) {
+      console.error("Invalid amount:", amount);
+      Alert.alert(
+        "Booking Error",
+        "Invalid package amount. Please try again."
+      );
+      return;
+    }
+
     setLoading(true);
 
     try {
       // Convert amount to cents for Stripe
       const amountInCents = Math.round(total * 100);
 
+      console.log("Payment details:", {
+        userId: rawUser.id,
+        packageId,
+        amount: amountInCents,
+        email: rawUser.email,
+        name: rawUser.name
+      });
+
       const result = await handlePayment({
         amount: amountInCents,
         currency: "usd",
         packageId,
-        customerEmail: rawUser?.email!,
-        customerName: rawUser?.name!,
+        customerEmail: rawUser.email!,
+        customerName: rawUser.name!,
         description: `Payment for ${packageName}`,
       });
 
       if (result.success) {
-        // Create a booking record in Firebase
         try {
-          // Calculate checkout date based on default 7-day stay
-          const checkInDate = new Date(
-            Date.now() + 6 * 24 * 60 * 60 * 1000
-          ).toISOString();
-          const checkOutDate = new Date(
-            Date.now() + 8 * 48 * 60 * 60 * 1000
-          ).toISOString();
+          // Use package dates if available, otherwise calculate default dates
+          const now = new Date();
+          const checkInDate = new Date(now.getTime() + 6 * 24 * 60 * 60 * 1000);
+          const checkOutDate = new Date(now.getTime() + 8 * 24 * 60 * 60 * 1000);
 
           // Generate a transaction ID
           const transactionId = "stripe_" + Date.now();
 
-          // Create booking
-          const bookingResult = await createBooking({
-            userId: rawUser?.id!,
-            packageId,
-            amount: total, // Use the total amount including tax
+          // Create booking with proper Firestore references
+          const bookingData = {
+            userId: rawUser.id,
+            packageId: packageId,
+            amount: total,
             transactionId,
-            checkInDate,
-            checkOutDate,
+            checkInDate: checkInDate.toISOString(),
+            checkOutDate: checkOutDate.toISOString(),
             guestCount: guessCount,
-            status: "pending"
+            status: "confirmed",
+            paymentStatus: "paid",
+            paymentMethod: "stripe",
+            bookingReference: `BK${Date.now().toString(36).toUpperCase()}`,
+            packageDetails: {
+              name: packageName || "Package",
+              type: "Villa",
+              price: total,
+              guestCount: guessCount,
+              description: "Package booking"
+            }
+          };
+
+          // Add detailed debugging logs
+          console.log("=== DEBUG: Booking Data ===");
+          console.log("Raw User:", {
+            id: rawUser.id,
+            email: rawUser.email,
+            name: rawUser.name
           });
+          console.log("Package Info:", {
+            id: packageId,
+            name: packageName,
+            amount: total,
+            guestCount: guessCount
+          });
+          console.log("Dates:", {
+            checkIn: checkInDate.toISOString(),
+            checkOut: checkOutDate.toISOString()
+          });
+          console.log("Full Booking Data:", JSON.stringify(bookingData, null, 2));
+          console.log("=== End Debug ===");
+
+          // Type-safe validation of required fields
+          type BookingDataKey = keyof typeof bookingData;
+          const requiredFields: BookingDataKey[] = ['userId', 'packageId', 'amount', 'checkInDate', 'checkOutDate'];
+          const missingFields = requiredFields.filter(field => !bookingData[field]);
+          
+          if (missingFields.length > 0) {
+            console.error("Missing required fields:", missingFields);
+            throw new Error(`Missing required fields: ${missingFields.join(', ')}`);
+          }
+
+          // Ensure all data is properly defined before calling createBooking
+          if (!bookingData.userId || !bookingData.packageId || !bookingData.amount) {
+            throw new Error("Required booking data is missing");
+          }
+
+          console.log("Calling createBooking with data:", JSON.stringify(bookingData, null, 2));
+          const bookingResult = await createBooking(bookingData);
+
+          if (!bookingResult || !bookingResult.id) {
+            throw new Error("Failed to create booking record");
+          }
 
           // Close modal before navigation
           setShowFullModal(false);
 
+          // Show success message
+          Alert.alert(
+            "Payment Successful",
+            "Your booking has been confirmed!",
+            [
+              {
+                text: "View Booking",
+                onPress: () => {
+                  // Navigate to booking confirmation with the booking ID
+                  router.replace({
+                    pathname: "/bookingConfirmation",
+                    params: { 
+                      id: bookingResult.id,
+                      reset: "true"
+                    }
+                  });
+                },
+              },
+            ]
+          );
+
           // Call onSuccess callback if provided
           onSuccess && onSuccess();
-
-          // Navigate to booking confirmation
-          if (bookingResult) {
-            router.replace(`/bookingConfirmation`);
-          }
-        } catch (bookingError) {
+        } catch (bookingError: any) {
           console.error("Error creating booking:", bookingError);
           Alert.alert(
             "Payment Processed",
-            "Your payment was successful, but we encountered an issue saving your booking. Please contact support."
+            "Your payment was successful, but we encountered an issue saving your booking. Please contact support.",
+            [
+              {
+                text: "Contact Support",
+                onPress: () => {
+                  // Navigate to support or open email
+                  Linking.openURL("mailto:support@roambii.com");
+                },
+              },
+            ]
           );
         }
       } else if (result.canceled) {
         console.log("Payment was canceled by user");
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error("Payment error:", error);
       Alert.alert(
         "Payment Failed",
-        "There was a problem processing your payment. Please try again."
+        error.message || "There was a problem processing your payment. Please try again."
       );
     } finally {
       setLoading(false);

@@ -48,7 +48,7 @@ import {
 } from "react-native";
 import { router, useLocalSearchParams } from "expo-router";
 import { doc, getDoc } from "firebase/firestore";
-import { db } from "@/lib/firebase/firebase-config";
+import { firestore as db } from "@/lib/firebase/firebase-config";
 import CustomHeader from "@/components/HeaderComponent";
 import {
   Calendar,

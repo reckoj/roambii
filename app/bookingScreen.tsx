@@ -52,7 +52,7 @@ import { doc, getDoc } from "firebase/firestore";
 import { firestore, COLLECTIONS } from "@/lib/firebase/firebase-config";
 import { useGlobalContext } from "@/lib/global-provider";
 import { useStripePayment } from "@/lib/stripeService";
-import { createBooking } from "@/lib/bookingService";
+import { createBooking } from "@/lib/booking-service";
 import CustomHeader from "@/components/HeaderComponent";
 import {
   Lock,
@@ -195,7 +195,7 @@ const BookingScreen = () => {
           if (bookingResult && bookingResult.id) {
             router.replace({
               pathname: "/bookingConfirmation",
-              params: { id, reset: "true" },
+              params: { id: bookingResult.id, reset: "true" },
             });
           }
         } catch (bookingError) {

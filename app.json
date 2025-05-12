@@ -10,33 +10,25 @@
     "newArchEnabled": true,
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.anonymous.roambii",
-      "associatedDomains": ["applinks:roambii.com", "applinks:*.roambii.com"]
+      "bundleIdentifier": "com.roambii",
+      "associatedDomains": ["applinks:roambii.com"],
+      "infoPlist": {
+        "LSApplicationQueriesSchemes": ["roambii"]
+      }
     },
     "android": {
       "adaptiveIcon": {
         "foregroundImage": "./assets/images/icon.png",
         "backgroundColor": "#ffffff"
       },
-      "package": "com.bysprk.roambii",
+      "package": "com.roambii",
       "intentFilters": [
         {
           "action": "VIEW",
           "autoVerify": true,
           "data": [
             {
-              "scheme": "https",
-              "host": "*.roambii.com",
-              "pathPrefix": "/"
-            },
-            {
-              "scheme": "https",
-              "host": "roambii.com",
-              "pathPrefix": "/"
-            },
-            {
-              "scheme": "roambii",
-              "host": "*"
+              "scheme": "roambii"
             }
           ],
           "category": ["BROWSABLE", "DEFAULT"]
@@ -70,7 +62,7 @@
       [
         "@stripe/stripe-react-native",
         {
-          "merchantIdentifier": "your_merchant_identifier",
+          "merchantIdentifier": "merchant.com.roambii",
           "enableGooglePay": true
         }
       ]

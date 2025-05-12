@@ -123,7 +123,7 @@ export const getUserBookings = async (userId: string): Promise<Booking[]> => {
       if (!booking.packageDetails && booking.packageId) {
         const packageDetails = await getPackageById(booking.packageId);
         if (packageDetails) {
-          booking.packageDetails = packageDetails;
+          booking.packageDetails = packageDetails as Package;
         }
       }
 
@@ -183,7 +183,7 @@ export const getBookingById = async (
     if (!booking.packageDetails && booking.packageId) {
       const packageDetails = await getPackageById(booking.packageId);
       if (packageDetails) {
-        booking.packageDetails = packageDetails;
+        booking.packageDetails = packageDetails as Package;
       }
     }
 

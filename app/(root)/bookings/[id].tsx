@@ -13,7 +13,7 @@ import {
 } from "react-native";
 import { router, useLocalSearchParams } from "expo-router";
 import { doc, getDoc } from "firebase/firestore";
-import { db } from "@/lib/firebase/firebase-config";
+import { firestore, COLLECTIONS } from "@/lib/firebase/firebase-config";
 import CustomHeader from "@/components/HeaderComponent";
 import {
   Calendar,
@@ -32,7 +32,7 @@ import {
   Home,
 } from "lucide-react-native";
 import images from "@/constants/images";
-import { cancelBooking } from "@/lib/bookingService";
+import { cancelBooking } from "@/lib/booking-service";
 
 interface BookingDetail {
   id: string;
@@ -75,7 +75,7 @@ const BookingDetailsScreen = () => {
         setLoading(true);
 
         // Fetch booking from Firestore
-        const bookingRef = doc(db, "bookings", id);
+        const bookingRef = doc(firestore, COLLECTIONS.BOOKINGS, id);
         const bookingSnap = await getDoc(bookingRef);
 
         if (!bookingSnap.exists()) {
@@ -88,7 +88,7 @@ const BookingDetailsScreen = () => {
         let packageDetails = null;
         if (bookingData.packageId) {
           try {
-            const packageRef = doc(db, "packages", bookingData.packageId);
+            const packageRef = doc(firestore, COLLECTIONS.PACKAGES, bookingData.packageId);
             const packageSnap = await getDoc(packageRef);
             if (packageSnap.exists()) {
               packageDetails = packageSnap.data();

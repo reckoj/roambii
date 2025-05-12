@@ -9,10 +9,18 @@ import {
   Image,
   RefreshControl,
   ScrollView,
+  Alert,
 } from "react-native";
 import { router } from "expo-router";
-import { collection, query, where, getDocs, doc, getDoc } from "firebase/firestore";
-import { db } from "@/lib/firebase/firebase-config";
+import {
+  collection,
+  query,
+  where,
+  getDocs,
+  doc as firestoreDoc,
+  getDoc,
+} from "firebase/firestore";
+import { firestore as db, COLLECTIONS } from "@/lib/firebase/firebase-config";
 import { useGlobalContext } from "@/lib/global-provider";
 import CustomHeader from "@/components/HeaderComponent";
 import { Calendar, MapPin } from "lucide-react-native";
@@ -89,23 +97,39 @@ const UserBookingsScreen = () => {
   const [activeTab, setActiveTab] = useState<TabType>("active");
 
   const fetchBookings = useCallback(async () => {
-    if (!rawUser?.$id) {
-      console.log("No user ID available");
-      setDebugInfo((prev) => prev + "\nNo user ID available");
+    if (!rawUser?.id) {
+      console.log("No user ID available:", rawUser);
+      setDebugInfo((prev) => prev + "\nNo user ID available. User data: " + JSON.stringify(rawUser));
+      setLoading(false);
+      setRefreshing(false);
       return;
     }
 
     try {
       setLoading(true);
-      console.log("Fetching bookings for user:", rawUser.$id);
+      console.log("Fetching bookings for user:", rawUser.id);
       setDebugInfo(
-        (prev) => prev + `\nFetching bookings for user: ${rawUser.$id}`
+        (prev) => prev + `\nFetching bookings for user: ${rawUser.id}`
       );
 
-      // Fetch all bookings without filtering at first
-      const response = await getDocs(
-        query(collection(db, "users_bookings"), where("userId", "array-contains", rawUser.$id))
+      let bookingsQuery = query(
+        collection(db, COLLECTIONS.BOOKINGS),
+        where("userId", "==", rawUser.id)
       );
+
+      let response = await getDocs(bookingsQuery);
+
+      if (response.docs.length === 0) {
+        console.log("No bookings found with array-contains, trying direct match");
+        setDebugInfo((prev) => prev + "\nNo bookings found with array-contains, trying direct match");
+        
+        bookingsQuery = query(
+          collection(db, COLLECTIONS.BOOKINGS),
+          where("userId", "==", rawUser.id)
+        );
+        
+        response = await getDocs(bookingsQuery);
+      }
 
       console.log("Total documents found:", response.docs.length);
       setDebugInfo(
@@ -127,26 +151,20 @@ const UserBookingsScreen = () => {
             )}`
         );
 
-        // Process bookings to determine if they're active
         const now = new Date();
         const processedBookings: Booking[] = await Promise.all(
           response.docs.map(async (doc) => {
-            // Initialize status variables
             let isActive = false;
             let isCancelled = false;
             let statusDisplay = "past";
 
             try {
-              // Check if booking is explicitly cancelled
               isCancelled = doc.data().status === "cancelled";
 
-              // Check if the checkout date is in the future
               const checkOutDate = new Date(doc.data().checkOutDate);
 
-              // A booking is active if checkout date is in the future and not cancelled
               isActive = checkOutDate >= now && !isCancelled;
 
-              // Determine display status
               if (isCancelled) {
                 statusDisplay = "cancelled";
               } else if (isActive) {
@@ -165,13 +183,109 @@ const UserBookingsScreen = () => {
             // Try to fetch the package details
             let packageDetails = null;
             try {
-              if (doc.data().packageId) {
-                const packageData = await getDoc(doc(db, "packages", doc.data().packageId));
-                packageDetails = packageData.data();
+              // First check if packageDetails already exists in the booking
+              if (doc.data().packageDetails) {
+                packageDetails = doc.data().packageDetails;
+                console.log("Using embedded packageDetails from booking");
+              } 
+              // Otherwise, if we have a packageId, fetch the package
+              else if (doc.data().packageId) {
+                // Use firestoreDoc instead of doc to avoid naming conflict
+                const packageRef = firestoreDoc(db, COLLECTIONS.PACKAGES, doc.data().packageId);
+                const packageSnap = await getDoc(packageRef);
+                if (packageSnap.exists()) {
+                  packageDetails = packageSnap.data();
+                  console.log("Fetched packageDetails from Firestore");
+                }
+              } 
+              // If we have a package reference directly in the document
+              else if (doc.data().package && doc.data().package._key) {
+                try {
+                  const packagePath = doc.data().package._key.path.segments;
+                  if (packagePath && packagePath.length >= 2) {
+                    // Extract collection and id from path
+                    const packageId = packagePath[packagePath.length - 1];
+                    const packageRef = firestoreDoc(db, COLLECTIONS.PACKAGES, packageId);
+                    const packageSnap = await getDoc(packageRef);
+                    if (packageSnap.exists()) {
+                      packageDetails = packageSnap.data();
+                      console.log("Fetched packageDetails from package reference");
+                    }
+                  }
+                } catch (refError) {
+                  console.error("Error extracting package from reference:", refError);
+                }
               }
             } catch (e) {
               console.error("Error fetching package:", e);
             }
+
+            // Properly handle date conversion
+            let checkInDate = new Date();
+            let checkOutDate = new Date();
+            
+            try {
+              // Try to convert dates properly
+              if (doc.data().checkInDate) {
+                if (typeof doc.data().checkInDate === 'object' && doc.data().checkInDate.toDate) {
+                  // It's a Firestore timestamp
+                  checkInDate = doc.data().checkInDate.toDate();
+                } else {
+                  // It's a string or other format
+                  checkInDate = new Date(doc.data().checkInDate);
+                }
+              }
+              
+              if (doc.data().checkOutDate) {
+                if (typeof doc.data().checkOutDate === 'object' && doc.data().checkOutDate.toDate) {
+                  // It's a Firestore timestamp
+                  checkOutDate = doc.data().checkOutDate.toDate();
+                } else {
+                  // It's a string or other format
+                  checkOutDate = new Date(doc.data().checkOutDate);
+                }
+              }
+              
+              // Validate the dates
+              if (isNaN(checkInDate.getTime())) {
+                console.log(`Invalid checkInDate for booking ${doc.id}:`, doc.data().checkInDate);
+                checkInDate = new Date(); // Default to current date
+              }
+              
+              if (isNaN(checkOutDate.getTime())) {
+                console.log(`Invalid checkOutDate for booking ${doc.id}:`, doc.data().checkOutDate);
+                checkOutDate = new Date(new Date().getTime() + 2 * 24 * 60 * 60 * 1000); // Default to 2 days from now
+              }
+              
+              // Determine if booking is active based on the checkout date
+              isActive = checkOutDate >= now && !isCancelled;
+              
+              console.log(
+                `Booking ${doc.id} - checkOutDate: ${checkOutDate.toISOString()}, now: ${now.toISOString()}, isActive: ${isActive}, statusDisplay: ${statusDisplay}`
+              );
+              
+            } catch (e) {
+              console.error("Error processing dates:", e);
+            }
+
+            // Helper function to safely convert Firestore timestamps to ISO strings
+            const safelyConvertDate = (date: any) => {
+              if (!date) return new Date().toISOString();
+              
+              try {
+                if (typeof date === 'object' && date.toDate) {
+                  return date.toDate().toISOString();
+                } else if (typeof date === 'string') {
+                  const parsed = new Date(date);
+                  return isNaN(parsed.getTime()) ? new Date().toISOString() : parsed.toISOString();
+                } else {
+                  return new Date().toISOString();
+                }
+              } catch (e) {
+                console.error("Error converting date:", e);
+                return new Date().toISOString();
+              }
+            };
 
             // Create a properly typed booking object
             const booking: Booking = {
@@ -183,9 +297,9 @@ const UserBookingsScreen = () => {
               amount: doc.data().amount || 0,
               status: doc.data().status || "completed",
               bookingReference: doc.data().bookingReference || "",
-              bookingDate: doc.data().bookingDate || new Date().toISOString(),
-              checkInDate: doc.data().checkInDate || new Date().toISOString(),
-              checkOutDate: doc.data().checkOutDate || new Date().toISOString(),
+              bookingDate: safelyConvertDate(doc.data().bookingDate),
+              checkInDate: checkInDate.toISOString(),
+              checkOutDate: checkOutDate.toISOString(),
               guestCount: doc.data().guestCount || 1,
               isActive: isActive,
               transactionId: doc.data().transactionId || "",
@@ -193,16 +307,21 @@ const UserBookingsScreen = () => {
               metadata: doc.data().metadata,
               isCancelled: isCancelled,
               statusDisplay: statusDisplay,
-              createdAt: doc.data().createdAt,
-              updatedAt: doc.data().updatedAt,
+              createdAt: safelyConvertDate(doc.data().createdAt),
+              updatedAt: safelyConvertDate(doc.data().updatedAt),
             };
 
             return booking;
           })
         );
 
+        // Filter out any documents that are client-agent relationships
+        const filteredBookings = processedBookings.filter(booking => 
+          !booking.id.startsWith('client_agent_')
+        );
+
         // Sort bookings by creation date (newest first)
-        const sortedBookings = processedBookings.sort((a, b) => {
+        const sortedBookings = filteredBookings.sort((a, b) => {
           return (
             new Date(b.createdAt || 0).getTime() -
             new Date(a.createdAt || 0).getTime()
@@ -211,7 +330,6 @@ const UserBookingsScreen = () => {
 
         setAllBookings(sortedBookings);
 
-        // Separate active (including past) and cancelled bookings
         const active = sortedBookings.filter((booking) => !booking.isCancelled);
         const cancelled = sortedBookings.filter(
           (booking) => booking.isCancelled
@@ -247,16 +365,39 @@ const UserBookingsScreen = () => {
 
   const onRefresh = () => {
     setRefreshing(true);
-    setDebugInfo(""); // Clear debug info on refresh
+    setDebugInfo("");
     fetchBookings();
   };
 
   const navigateToBookingDetails = (bookingId: string) => {
-    router.push(`/bookings/${bookingId}`);
+    // Check if we're trying to navigate to a client-agent relationship document
+    if (bookingId.startsWith('client_agent_')) {
+      console.log('This is a client-agent relationship document, not a booking');
+      Alert.alert('Info', 'This is a client-agent relationship record, not a booking.');
+      return;
+    }
+    
+    // Navigate to booking details page - using the bookings/[id] route
+    try {
+      router.push(`/bookings/${bookingId}`);
+    } catch (e) {
+      console.error('Navigation error:', e);
+      // Fallback methods
+      try {
+        // Try alternate navigation method
+        router.push({
+          pathname: "/bookings/[id]",
+          params: { id: bookingId }
+        });
+      } catch (e2) {
+        console.error('Second navigation error:', e2);
+        // Last resort fallback
+        router.push(`/bookings/${bookingId}`);
+      }
+    }
   };
 
   const renderBookingItem = ({ item }: { item: Booking }) => {
-    // Format dates using the helper function for consistency
     const checkInDate = formatDateTime(item.checkInDate);
     const checkOutDate = formatDateTime(item.checkOutDate);
 
@@ -426,7 +567,6 @@ const UserBookingsScreen = () => {
         </View>
       ) : (
         <>
-          {/* Tab Navigation */}
           <View style={styles.tabContainer}>
             <TouchableOpacity
               style={[
@@ -475,7 +615,6 @@ const UserBookingsScreen = () => {
             </TouchableOpacity>
           </View>
 
-          {/* Tab Content */}
           {renderTabContent()}
         </>
       )}
@@ -488,7 +627,6 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: "#ffffff",
   },
-  // Tab styles
   tabContainer: {
     flexDirection: "row",
     borderBottomWidth: 1,
@@ -688,7 +826,6 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: "bold",
   },
-  // Debug styles
   debugPanel: {
     backgroundColor: "#f0f0f0",
     padding: 10,
@@ -730,16 +867,16 @@ const styles = StyleSheet.create({
 
   activeCard: {
     borderLeftWidth: 4,
-    borderLeftColor: "#1ABC9C", // Green
+    borderLeftColor: "#1ABC9C",
   },
   pastCard: {
     borderLeftWidth: 4,
-    borderLeftColor: "#95A5A6", // Gray
+    borderLeftColor: "#95A5A6",
     opacity: 0.9,
   },
   cancelledCard: {
     borderLeftWidth: 4,
-    borderLeftColor: "#E74C3C", // Red
+    borderLeftColor: "#E74C3C",
     opacity: 0.9,
   },
 
