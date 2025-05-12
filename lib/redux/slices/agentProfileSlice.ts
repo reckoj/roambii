@@ -279,6 +279,21 @@ export const updateAgentProfileAsync = createAsyncThunk(
       // Update agent document
       await updateDoc(agentRef, updateData);
 
+      // Also update the user document if name or avatar is being updated
+      if (updateData.name || updateData.avatar) {
+        const userRef = doc(firestore, COLLECTIONS.USERS, agentId);
+        const userDoc = await getDoc(userRef);
+        
+        if (userDoc.exists()) {
+          const userUpdates: any = {};
+          if (updateData.name) userUpdates.name = updateData.name;
+          if (updateData.avatar) userUpdates.avatar = updateData.avatar;
+          userUpdates.updatedAt = serverTimestamp();
+          
+          await updateDoc(userRef, userUpdates);
+        }
+      }
+
       // Fetch and return the updated profile
       const updatedDoc = await getDoc(agentRef);
       if (!updatedDoc.exists()) {

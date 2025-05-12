@@ -29,7 +29,7 @@ import {
 import { useGlobalContext } from "@/lib/global-provider";
 import images from "@/constants/images";
 import { doc, getDoc, collection, query, where, getDocs } from "firebase/firestore";
-import { db } from "@/lib/firebase/firebase-config";
+import { firestore } from "@/lib/firebase/firebase-config";
 import ChatBubble from "@/components/ChatBubble";
 import { Ionicons } from "@expo/vector-icons";
 import ShimmerEffect from "@/components/LoadingShimmer";
@@ -128,46 +128,90 @@ const ChatScreen = () => {
       // Fetch the profile...
       let foundProfile = null;
 
-      // 1. Try to fetch from users collection first
+      // 1. First check if this is an agent ID
       try {
-        const userRef = doc(db, "users", receivedAgentId);
-        const userSnap = await getDoc(userRef);
+        const agentRef = doc(firestore, "agents", receivedAgentId);
+        const agentSnap = await getDoc(agentRef);
 
-        if (userSnap.exists()) {
-          console.log("Found partner in users collection:", userSnap.id);
-          foundProfile = { id: userSnap.id, ...userSnap.data() };
+        if (agentSnap.exists()) {
+          console.log("Found partner in agents collection:", agentSnap.id);
+          const agentData = agentSnap.data();
+          foundProfile = {
+            id: receivedAgentId, // Use the original ID
+            name: agentData.name || "Unknown Agent",
+            email: agentData.email || "",
+            avatar: agentData.avatar || "",
+            isAgent: true,
+            // Convert timestamps to numbers
+            createdAt: agentData.createdAt?.toMillis?.() || Date.now(),
+            updatedAt: agentData.updatedAt?.toMillis?.() || Date.now(),
+            ...agentData
+          };
+          // Remove the original timestamp objects
+          delete foundProfile.createdAt;
+          delete foundProfile.updatedAt;
+          console.log("Agent profile data:", foundProfile);
         }
       } catch (err) {
-        console.warn("Could not find user in main users collection");
+        console.warn("Could not find user in agents collection");
       }
 
-      // 2. Try agents collection if needed
+      // 2. If not found in agents, try users collection
       if (!foundProfile) {
         try {
-          const agentRef = doc(db, "agents", receivedAgentId);
-          const agentSnap = await getDoc(agentRef);
+          const userRef = doc(firestore, "users", receivedAgentId);
+          const userSnap = await getDoc(userRef);
 
-          if (agentSnap.exists()) {
-            console.log("Found partner in agents collection:", agentSnap.id);
-            foundProfile = { id: agentSnap.id, ...agentSnap.data() };
+          if (userSnap.exists()) {
+            console.log("Found partner in users collection:", userSnap.id);
+            const userData = userSnap.data();
+            foundProfile = {
+              id: receivedAgentId, // Use the original ID
+              name: userData.name || "Unknown User",
+              email: userData.email || "",
+              avatar: userData.avatar || "",
+              isAgent: false,
+              // Convert timestamps to numbers
+              createdAt: userData.createdAt?.toMillis?.() || Date.now(),
+              updatedAt: userData.updatedAt?.toMillis?.() || Date.now(),
+              ...userData
+            };
+            // Remove the original timestamp objects
+            delete foundProfile.createdAt;
+            delete foundProfile.updatedAt;
+            console.log("User profile data:", foundProfile);
           }
         } catch (err) {
-          console.warn("Could not find user in agents collection");
+          console.warn("Could not find user in main users collection");
         }
       }
 
-      // 3. Try searching users by equality if ID lookup failed
+      // 3. Try searching users by userId field if still not found
       if (!foundProfile) {
         try {
-          // Try to find by userId field if it's an agent ID
-          const usersRef = collection(db, "users");
+          const usersRef = collection(firestore, "users");
           const q = query(usersRef, where("userId", "==", receivedAgentId));
           const querySnapshot = await getDocs(q);
 
           if (!querySnapshot.empty) {
             const userDoc = querySnapshot.docs[0];
             console.log("Found partner through userId query:", userDoc.id);
-            foundProfile = { id: userDoc.id, ...userDoc.data() };
+            const userData = userDoc.data();
+            foundProfile = {
+              id: receivedAgentId, // Use the original ID
+              name: userData.name || "Unknown User",
+              email: userData.email || "",
+              avatar: userData.avatar || "",
+              isAgent: false,
+              // Convert timestamps to numbers
+              createdAt: userData.createdAt?.toMillis?.() || Date.now(),
+              updatedAt: userData.updatedAt?.toMillis?.() || Date.now(),
+              ...userData
+            };
+            // Remove the original timestamp objects
+            delete foundProfile.createdAt;
+            delete foundProfile.updatedAt;
+            console.log("User profile data from query:", foundProfile);
           }
         } catch (err) {
           console.warn("Query for user by userId failed");
@@ -176,12 +220,29 @@ const ChatScreen = () => {
 
       // Set partner profile in Redux
       if (foundProfile) {
+        console.log("Setting partner profile:", foundProfile);
         dispatch(setCurrentPartner(foundProfile));
 
         // Also update the userProfiles cache in Redux
         dispatch(
           updateUserProfiles({
             [receivedAgentId]: foundProfile,
+          })
+        );
+      } else {
+        // If no profile found, create a basic one with the ID
+        const basicProfile = {
+          id: receivedAgentId,
+          name: "Unknown User",
+          email: "",
+          avatar: "",
+          isAgent: false
+        };
+        console.log("No profile found, using basic profile:", basicProfile);
+        dispatch(setCurrentPartner(basicProfile));
+        dispatch(
+          updateUserProfiles({
+            [receivedAgentId]: basicProfile,
           })
         );
       }
@@ -283,26 +344,36 @@ const ChatScreen = () => {
       stableSubscriptionRef.current.unsubscribe = null;
     }
 
-    // Set up new subscription
-    const unsubscribe = subscribeToMessages(roomIdRef.current, (messages) => {
-      console.log("[Subscription] Received", messages.length, "messages");
-      dispatch(updateMessages(messages));
+    // Set up new subscription with error handling
+    try {
+      const unsubscribe = subscribeToMessages(roomIdRef.current, (messages) => {
+        console.log("[Subscription] Received", messages.length, "messages");
+        
+        // Update messages in Redux
+        dispatch(updateMessages(messages));
 
-      // Check for unread messages
-      const unreadMessages = messages.filter(
-        msg => !msg.read && msg.receiver_id === currentUserId
-      );
+        // Check for unread messages
+        const unreadMessages = messages.filter(
+          msg => !msg.read && msg.receiver_id === currentUserId
+        );
 
-      if (unreadMessages.length > 0) {
-        console.log("[Subscription] Found", unreadMessages.length, "unread messages");
-        dispatch(markMessagesAsReadAsync({
-          roomId: roomIdRef.current!,
-          userId: currentUserId,
-        })).catch(err => console.error("[Read Error]:", err));
-      }
-    });
+        if (unreadMessages.length > 0) {
+          console.log("[Subscription] Found", unreadMessages.length, "unread messages");
+          dispatch(markMessagesAsReadAsync({
+            roomId: roomIdRef.current!,
+            userId: currentUserId,
+          })).catch(err => console.error("[Read Error]:", err));
+        }
+      });
 
-    stableSubscriptionRef.current.unsubscribe = unsubscribe;
+      stableSubscriptionRef.current.unsubscribe = unsubscribe;
+
+      // Force a re-render to ensure subscription is active
+      setForceUpdate(prev => prev + 1);
+    } catch (error) {
+      console.error("[Subscription Error]:", error);
+      setError("Failed to setup message subscription");
+    }
 
     return () => {
       if (stableSubscriptionRef.current.unsubscribe) {
@@ -312,6 +383,20 @@ const ChatScreen = () => {
       }
     };
   }, [currentUserId, dispatch, roomIdRef.current]);
+
+  // Add a debug effect to monitor subscription status
+  useEffect(() => {
+    const interval = setInterval(() => {
+      console.log("[Subscription Status]", {
+        hasSubscription: !!stableSubscriptionRef.current.unsubscribe,
+        roomId: roomIdRef.current,
+        messageCount: currentMessages.length,
+        lastUpdate: new Date().toISOString()
+      });
+    }, 5000); // Log every 5 seconds
+
+    return () => clearInterval(interval);
+  }, [currentMessages.length]);
 
   // Optimize focus effect
   useFocusEffect(
@@ -357,15 +442,17 @@ const ChatScreen = () => {
 
     try {
       const messageData = {
-        text: newMessage.trim(),
         senderId: currentUserId,
-        timestamp: new Date().toISOString(),
-        status: "sent",
+        receiverId: receivedAgentId,
+        content: newMessage.trim(),
+        timestamp: Date.now(),
+        read: false,
       };
 
       await dispatch(sendMessageAsync({
-        roomId: roomIdRef.current,
-        message: messageData,
+        senderId: currentUserId,
+        receiverId: receivedAgentId,
+        content: newMessage.trim(),
       }));
 
       setNewMessage("");
@@ -374,6 +461,16 @@ const ChatScreen = () => {
       Alert.alert("Error", "Failed to send message. Please try again.");
     }
   };
+
+  // Mark messages as read when entering chat
+  useEffect(() => {
+    if (roomIdRef.current && currentUserId) {
+      dispatch(markMessagesAsReadAsync({
+        roomId: roomIdRef.current,
+        userId: currentUserId,
+      })).catch(err => console.error("[Read Error]:", err));
+    }
+  }, [roomIdRef.current, currentUserId, dispatch]);
 
   const DebugInfo = () => {
     const [showDebug, setShowDebug] = useState(__DEV__); // Only show in dev by default
@@ -411,20 +508,22 @@ const ChatScreen = () => {
   const getDisplayName = (): string => {
     if (!currentPartner) return "Chat";
 
-    const rawPartnerName =
-      currentPartner?.name || currentPartner?.email || "Unknown";
-    return !isIdOnly(rawPartnerName, receivedAgentId) ? rawPartnerName : "Chat";
+    const rawPartnerName = currentPartner?.name || "Unknown";
+    console.log("Raw partner name:", rawPartnerName, "from partner:", currentPartner);
+    return rawPartnerName;
   };
 
   // Generate initials for avatar fallback
   const getInitials = (name?: string): string => {
     if (!name || name === "Chat") return "?";
-    return name
+    const initials = name
       .split(" ")
       .map((n) => n[0])
       .join("")
       .toUpperCase()
       .substring(0, 2);
+    console.log("Generated initials:", initials, "from name:", name);
+    return initials;
   };
 
   // Use both local and Redux loading/error states
