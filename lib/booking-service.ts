@@ -10,6 +10,8 @@ import {
   where,
   orderBy,
   Timestamp,
+  addDoc,
+  serverTimestamp,
 } from "firebase/firestore";
 import { firestore, COLLECTIONS } from "../lib/firebase/firebase-config";
 import { Booking, Package } from "./firebase/models";
@@ -28,50 +30,57 @@ function generateBookingReference(): string {
 export const createBooking = async (
   userId: string,
   packageId: string,
-  amount: number,
-  transactionId: string,
-  checkInDate: string,
-  checkOutDate: string,
-  guestCount: number
-): Promise<Booking | null> => {
+  paymentId: string,
+  paymentStatus: string,
+  paymentAmount: number,
+  paymentMethod: string,
+  paymentCurrency: string,
+  paymentDate: Date,
+  paymentReceiptUrl: string,
+  packageDetails: any
+): Promise<string> => {
   try {
-    // Verify the package exists
-    const packageDetails = await getPackageById(packageId);
-    if (!packageDetails) {
+    // Get package details
+    const packageData = await getPackageById(packageId);
+    if (!packageData) {
       throw new Error("Package not found");
     }
 
-    // Generate a booking reference
-    const bookingReference = generateBookingReference();
+    // Create booking document
+    const bookingRef = collection(firestore, COLLECTIONS.BOOKINGS);
+    const now = new Date();
 
-    // Create a new booking document
-    const bookingRef = doc(collection(firestore, COLLECTIONS.BOOKINGS));
-
-    const bookingData: Omit<Booking, "id"> = {
-      userId,
-      packageId,
-      amount,
-      transactionId,
-      bookingReference,
-      status: "confirmed",
-      bookingDate: new Date(),
-      checkInDate: new Date(checkInDate),
-      checkOutDate: new Date(checkOutDate),
-      guestCount,
-      paymentMethod: "stripe",
-      createdAt: new Date(),
-      updatedAt: new Date(),
+    const newBooking = {
+      user: doc(firestore, COLLECTIONS.USERS, userId),
+      package: doc(firestore, COLLECTIONS.PACKAGES, packageId),
+      packageDetails: {
+        ...packageData,
+        id: packageId,
+      },
+      status: "pending",
+      payment: {
+        id: paymentId,
+        status: paymentStatus,
+        amount: paymentAmount,
+        method: paymentMethod,
+        currency: paymentCurrency,
+        date: paymentDate,
+        receipt_url: paymentReceiptUrl,
+      },
+      check_in_date: packageData.check_in_date || now,
+      check_out_date: packageData.check_out_date || now,
+      check_in_time: packageData.check_in_time || now,
+      check_out_time: packageData.check_out_time || now,
+      createdAt: serverTimestamp(),
+      updatedAt: serverTimestamp(),
     };
 
-    await setDoc(bookingRef, bookingData);
-
-    return {
-      id: bookingRef.id,
-      ...bookingData,
-    };
+    const bookingDoc = await addDoc(bookingRef, newBooking);
+    console.log("Booking created with ID:", bookingDoc.id);
+    return bookingDoc.id;
   } catch (error) {
     console.error("Error creating booking:", error);
-    return null;
+    throw error;
   }
 };
 

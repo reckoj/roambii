@@ -181,21 +181,30 @@ const BookingScreen = () => {
           const bookingResult = await createBooking(
             rawUser?.id!,
             id,
-            total, // Use the total amount including tax
-            transactionId,
-            checkInDate,
-            checkOutDate,
-            guestCount
+            result.success ? "stripe_" + Date.now() : "", // paymentId
+            result.success ? "completed" : "failed", // paymentStatus
+            total, // paymentAmount
+            "stripe", // paymentMethod
+            "usd", // paymentCurrency
+            new Date(), // paymentDate
+            "", // paymentReceiptUrl
+            {
+              ...packageData,
+              check_in_date: new Date(packageData.check_in_date),
+              check_out_date: new Date(packageData.check_out_date),
+              check_in_time: new Date(packageData.check_in_time),
+              check_out_time: new Date(packageData.check_out_time)
+            } // packageDetails with proper dates
           );
 
           // Close modal before navigation
           setShowFullModal(false);
 
           // Navigate to booking confirmation
-          if (bookingResult && bookingResult.id) {
+          if (bookingResult) {
             router.replace({
               pathname: "/bookingConfirmation",
-              params: { id: bookingResult.id, reset: "true" },
+              params: { id: bookingResult, reset: "true" },
             });
           }
         } catch (bookingError) {

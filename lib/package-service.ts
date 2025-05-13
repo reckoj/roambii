@@ -216,19 +216,35 @@ export const getPackageById = async (
     let flightInfoData: DocumentData | null = null;
     if (packageData.flight_info) {
       try {
-        const flightInfoDoc = await getDoc(packageData.flight_info);
-        if (flightInfoDoc.exists()) {
-          const flightInfo = flightInfoDoc.data() as DocumentData;
+        // Check if flight_info is a DocumentReference or a plain object
+        if (typeof packageData.flight_info === 'object' && 'path' in packageData.flight_info) {
+          // It's a DocumentReference
+          const flightInfoDoc = await getDoc(packageData.flight_info);
+          if (flightInfoDoc.exists()) {
+            const flightInfo = flightInfoDoc.data() as DocumentData;
+            flightInfoData = {
+              id: flightInfoDoc.id,
+              ...(flightInfo || {}),
+              // Safely convert dates
+              departing_time: safeToDate(flightInfo.departing_time),
+              arriving_to_time: safeToDate(flightInfo.arriving_to_time),
+              returning_from_time: safeToDate(flightInfo.returning_from_time),
+              returning_to_time: safeToDate(flightInfo.returning_to_time),
+              departure_date: safeToDate(flightInfo.departure_date),
+              return_date: safeToDate(flightInfo.return_date),
+            };
+          }
+        } else {
+          // It's a plain object
           flightInfoData = {
-            id: flightInfoDoc.id,
-            ...(flightInfo || {}),
+            ...packageData.flight_info,
             // Safely convert dates
-            departing_time: safeToDate(flightInfo.departing_time),
-            arriving_to_time: safeToDate(flightInfo.arriving_to_time),
-            returning_from_time: safeToDate(flightInfo.returning_from_time),
-            returning_to_time: safeToDate(flightInfo.returning_to_time),
-            departure_date: safeToDate(flightInfo.departure_date),
-            return_date: safeToDate(flightInfo.return_date),
+            departing_time: safeToDate(packageData.flight_info.departing_time),
+            arriving_to_time: safeToDate(packageData.flight_info.arriving_to_time),
+            returning_from_time: safeToDate(packageData.flight_info.returning_from_time),
+            returning_to_time: safeToDate(packageData.flight_info.returning_to_time),
+            departure_date: safeToDate(packageData.flight_info.departure_date),
+            return_date: safeToDate(packageData.flight_info.return_date),
           };
         }
       } catch (error) {
@@ -241,45 +257,34 @@ export const getPackageById = async (
     let agentData: DocumentData | null = null;
     if (packageData.agent) {
       try {
-        // If agent data is already in the correct format (has id, name, avatar), use it directly
-        if (typeof packageData.agent === 'object' && 
-            'id' in packageData.agent && 
-            'name' in packageData.agent) {
-          agentData = packageData.agent;
-        } else {
-          // Handle DocumentReference case
-          let agentRef;
-          if (typeof packageData.agent === 'object' && 'path' in packageData.agent) {
-            agentRef = packageData.agent;
-            const agentDoc = await getDoc(agentRef);
-            if (agentDoc.exists()) {
-              const agentDocData = agentDoc.data() as DocumentData;
-              agentData = {
-                id: agentDoc.id,
-                ...(agentDocData || {}),
-              };
-            }
-          } else {
-            console.warn('Invalid agent reference format:', packageData.agent);
+        if (typeof packageData.agent === 'object' && 'path' in packageData.agent) {
+          // It's a DocumentReference
+          const agentDoc = await getDoc(packageData.agent);
+          if (agentDoc.exists()) {
+            agentData = agentDoc.data() as DocumentData;
           }
+        } else {
+          // It's a plain object
+          agentData = packageData.agent;
         }
       } catch (error) {
         console.error("Error fetching agent data:", error);
       }
     }
 
+    // Return the package data with resolved references
     return {
       id: packageDoc.id,
-      ...(packageData || {}),
+      ...packageData,
       flight_info: flightInfoData,
       agent: agentData,
-      // Safely convert all date fields using our helper function
-      createdAt: safeToDate(packageData.createdAt),
-      updatedAt: safeToDate(packageData.updatedAt),
+      // Safely convert dates
       check_in_date: safeToDate(packageData.check_in_date),
       check_out_date: safeToDate(packageData.check_out_date),
       check_in_time: safeToDate(packageData.check_in_time),
       check_out_time: safeToDate(packageData.check_out_time),
+      createdAt: safeToDate(packageData.createdAt),
+      updatedAt: safeToDate(packageData.updatedAt),
     };
   } catch (error) {
     console.error("Error fetching package:", error);

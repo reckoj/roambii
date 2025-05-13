@@ -31,7 +31,6 @@ import {
   Building,
   Home,
 } from "lucide-react-native";
-import images from "@/constants/images";
 import { cancelBooking } from "@/lib/booking-service";
 
 interface BookingDetail {
@@ -102,10 +101,58 @@ const BookingDetailsScreen = () => {
         const now = new Date();
         let isActive = false;
         try {
-          const checkOutDate = new Date(bookingData.checkOutDate);
-          isActive = checkOutDate >= now && bookingData.status !== "cancelled";
+          // First try to get dates from package details if available
+          let checkOutDate = new Date();
+          
+          if (bookingData.packageDetails) {
+            // Check for flight info dates (for trip packages)
+            if (bookingData.packageDetails.flight_info && bookingData.packageDetails.flight_info.return_date) {
+              checkOutDate = new Date(bookingData.packageDetails.flight_info.return_date);
+            }
+            // Fall back to check_out_date (for hotel packages)
+            else if (bookingData.packageDetails.check_out_date) {
+              checkOutDate = new Date(bookingData.packageDetails.check_out_date);
+            }
+          }
+          
+          // If package details don't have valid dates, try from the booking document
+          if (isNaN(checkOutDate.getTime())) {
+            if (bookingData.check_out_date) {
+              if (typeof bookingData.check_out_date === "object" && bookingData.check_out_date.toDate) {
+                checkOutDate = bookingData.check_out_date.toDate();
+              } else {
+                checkOutDate = new Date(bookingData.check_out_date);
+              }
+            } else if (bookingData.checkOutDate) {
+              if (typeof bookingData.checkOutDate === "object" && bookingData.checkOutDate.toDate) {
+                checkOutDate = bookingData.checkOutDate.toDate();
+              } else {
+                checkOutDate = new Date(bookingData.checkOutDate);
+              }
+            }
+          }
+          
+          // Validate the date
+          if (isNaN(checkOutDate.getTime())) {
+            console.log(`Invalid checkOutDate for booking ${id}:`, bookingData.checkOutDate);
+            checkOutDate = new Date(new Date().getTime() + 2 * 24 * 60 * 60 * 1000); // Default to 2 days from now
+          }
+          
+          // Determine if booking is active:
+          // 1. It's not cancelled, AND 
+          // 2. The checkout/return date is in the future OR it's today
+          const isToday = (someDate: Date) => {
+            const today = new Date();
+            return someDate.getDate() === today.getDate() &&
+              someDate.getMonth() === today.getMonth() &&
+              someDate.getFullYear() === today.getFullYear();
+          };
+          
+          isActive = (checkOutDate > now || isToday(checkOutDate)) && bookingData.status !== "cancelled";
+          
+          console.log(`Booking ${id} - checkOutDate: ${checkOutDate.toISOString()}, now: ${now.toISOString()}, isActive: ${isActive}, status: ${bookingData.status}`);
         } catch (e) {
-          console.error("Error parsing date:", e);
+          console.error("Error determining booking active status:", e);
         }
 
         // Create a properly typed booking detail object
@@ -302,9 +349,9 @@ const BookingDetailsScreen = () => {
 
         {/* Package Information */}
         <View style={styles.packageCard}>
-          {booking.packageDetails?.image ? (
+          {booking.packageDetails?.image || booking.packageDetails?.banner_image ? (
             <Image
-              source={{ uri: booking.packageDetails.image }}
+              source={{ uri: booking.packageDetails.image || booking.packageDetails.banner_image }}
               style={styles.packageImage}
               resizeMode="cover"
             />
