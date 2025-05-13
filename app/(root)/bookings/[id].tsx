@@ -91,9 +91,28 @@ const BookingDetailsScreen = () => {
             const packageSnap = await getDoc(packageRef);
             if (packageSnap.exists()) {
               packageDetails = packageSnap.data();
+              console.log("Fetched package details:", packageDetails);
             }
           } catch (e) {
             console.error("Error fetching package details:", e);
+          }
+        }
+        
+        // Ensure we have proper packageDetails with image
+        let finalPackageDetails = bookingData.packageDetails || packageDetails;
+        
+        // Check if we need to extract image from embedded fields
+        if (finalPackageDetails) {
+          // Ensure it has either image or banner_image
+          if (!finalPackageDetails.image && !finalPackageDetails.banner_image) {
+            // Look in standard places for image data
+            if (finalPackageDetails.image_url) {
+              finalPackageDetails.image = finalPackageDetails.image_url;
+            } else if (finalPackageDetails.banner_image_url) {
+              finalPackageDetails.banner_image = finalPackageDetails.banner_image_url;
+            } else if (finalPackageDetails.coverImage) {
+              finalPackageDetails.image = finalPackageDetails.coverImage;
+            }
           }
         }
 
@@ -161,10 +180,10 @@ const BookingDetailsScreen = () => {
           userId: bookingData.userId || "",
           packageId: bookingData.packageId || "",
           packageInfoId: bookingData.packageInfoId,
-          packageDetails: packageDetails,
+          packageDetails: finalPackageDetails,
           amount: bookingData.amount || 0,
           status: bookingData.status || "confirmed",
-          bookingReference: bookingData.bookingReference || "",
+          bookingReference: bookingData.bookingReference || `BKG-${bookingSnap.id.substring(0, 8).toUpperCase()}`,
           bookingDate: bookingData.bookingDate || new Date().toISOString(),
           checkInDate: bookingData.checkInDate || new Date().toISOString(),
           checkOutDate: bookingData.checkOutDate || new Date().toISOString(),
@@ -176,6 +195,11 @@ const BookingDetailsScreen = () => {
           createdAt: bookingData.createdAt,
           updatedAt: bookingData.updatedAt,
         };
+
+        // Log the package details and image values
+        console.log("Package Details:", JSON.stringify(bookingDetail.packageDetails, null, 2));
+        console.log("Package Image:", bookingDetail.packageDetails?.image);
+        console.log("Package Banner Image:", bookingDetail.packageDetails?.banner_image);
 
         setBooking(bookingDetail);
       } catch (error) {
@@ -349,11 +373,27 @@ const BookingDetailsScreen = () => {
 
         {/* Package Information */}
         <View style={styles.packageCard}>
-          {booking.packageDetails?.image || booking.packageDetails?.banner_image ? (
+          {/* More comprehensive image source checking */}
+          {booking?.packageDetails && (
+            booking.packageDetails.image || 
+            booking.packageDetails.banner_image || 
+            booking.packageDetails.image_url ||
+            booking.packageDetails.banner_image_url ||
+            booking.packageDetails.coverImage
+          ) ? (
             <Image
-              source={{ uri: booking.packageDetails.image || booking.packageDetails.banner_image }}
+              source={{ 
+                uri: booking.packageDetails.image || 
+                     booking.packageDetails.banner_image ||
+                     booking.packageDetails.image_url ||
+                     booking.packageDetails.banner_image_url ||
+                     booking.packageDetails.coverImage 
+              }}
               style={styles.packageImage}
               resizeMode="cover"
+              onError={(e) => {
+                console.log("Image load error:", e.nativeEvent.error);
+              }}
             />
           ) : (
             <View style={styles.noImageContainer}>
