@@ -67,6 +67,7 @@ import {
   Home,
 } from "lucide-react-native";
 import images from "@/constants/images";
+import { useGlobalContext } from "@/lib/global-provider";
 
 interface BookingDetail {
   id: string;
@@ -87,12 +88,26 @@ interface BookingDetail {
   metadata?: string;
   createdAt?: string;
   updatedAt?: string;
+  travelerInfo?: {
+    fullName: string;
+    dateOfBirth?: string | null;
+    email: string;
+    phoneNumber?: string;
+    address?: string;
+    city?: string;
+    state?: string;
+    zipCode?: string;
+    country?: string;
+    passportNumber?: string;
+    passportExpiryDate?: string | null;
+  };
 }
 
 const BookingDetailsScreen = () => {
   const { id } = useLocalSearchParams<{ id: string }>();
   const [booking, setBooking] = useState<BookingDetail | null>(null);
   const [loading, setLoading] = useState(true);
+  const { isAgent } = useGlobalContext();
 
   useEffect(() => {
     const fetchBookingDetails = async () => {
@@ -159,6 +174,7 @@ const BookingDetailsScreen = () => {
           metadata: bookingData.metadata,
           createdAt: bookingData.createdAt,
           updatedAt: bookingData.updatedAt,
+          travelerInfo: bookingData.travelerInfo || null,
         };
 
         setBooking(bookingDetail);
@@ -193,6 +209,67 @@ const BookingDetailsScreen = () => {
     } catch (error) {
       console.error("Error sharing booking:", error);
     }
+  };
+
+  const renderTravelerInfo = () => {
+    if (!isAgent || !booking?.travelerInfo) return null;
+    
+    return (
+      <View style={styles.section}>
+        <Text style={styles.sectionTitle}>Traveler Information</Text>
+        
+        <View style={styles.detailRow}>
+          <Text style={styles.detailLabel}>Full Name:</Text>
+          <Text style={styles.detailValue}>{booking.travelerInfo.fullName || "Not provided"}</Text>
+        </View>
+        
+        {booking.travelerInfo.dateOfBirth && (
+          <View style={styles.detailRow}>
+            <Text style={styles.detailLabel}>Date of Birth:</Text>
+            <Text style={styles.detailValue}>{formatDateTime(booking.travelerInfo.dateOfBirth)}</Text>
+          </View>
+        )}
+        
+        <View style={styles.detailRow}>
+          <Text style={styles.detailLabel}>Email:</Text>
+          <Text style={styles.detailValue}>{booking.travelerInfo.email || "Not provided"}</Text>
+        </View>
+        
+        {booking.travelerInfo.phoneNumber && (
+          <View style={styles.detailRow}>
+            <Text style={styles.detailLabel}>Phone:</Text>
+            <Text style={styles.detailValue}>{booking.travelerInfo.phoneNumber}</Text>
+          </View>
+        )}
+        
+        {booking.travelerInfo.address && (
+          <View style={styles.detailRow}>
+            <Text style={styles.detailLabel}>Address:</Text>
+            <Text style={styles.detailValue}>
+              {[
+                booking.travelerInfo.address,
+                booking.travelerInfo.city,
+                booking.travelerInfo.state,
+                booking.travelerInfo.zipCode,
+                booking.travelerInfo.country
+              ].filter(Boolean).join(", ")}
+            </Text>
+          </View>
+        )}
+        
+        {booking.travelerInfo.passportNumber && (
+          <View style={styles.detailRow}>
+            <Text style={styles.detailLabel}>Passport:</Text>
+            <Text style={styles.detailValue}>
+              {booking.travelerInfo.passportNumber}
+              {booking.travelerInfo.passportExpiryDate ? 
+                ` (Expires: ${formatDateTime(booking.travelerInfo.passportExpiryDate)})` : 
+                ""}
+            </Text>
+          </View>
+        )}
+      </View>
+    );
   };
 
   if (loading) {
@@ -413,6 +490,8 @@ const BookingDetailsScreen = () => {
             </View>
           </View>
         </View>
+
+        {renderTravelerInfo()}
 
         {/* Actions */}
         <View style={styles.actionsCard}>
@@ -774,6 +853,23 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: "#95A5A6",
     textAlign: "center",
+  },
+  section: {
+    backgroundColor: "white",
+    borderRadius: 12,
+    padding: 16,
+    marginBottom: 16,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.1,
+    shadowRadius: 2,
+    elevation: 2,
+  },
+  sectionTitle: {
+    fontSize: 18,
+    fontWeight: "bold",
+    color: "#34495E",
+    marginBottom: 16,
   },
 });
 

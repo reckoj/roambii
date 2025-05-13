@@ -25,10 +25,12 @@ import {
   Camera,
   ChevronRight,
   Edit,
+  FileText,
 } from "lucide-react-native";
 import { InviteFriends } from "@/lib/invite-friends";
 import { router } from "expo-router";
 import { LinearGradient } from "expo-linear-gradient";
+import LegalInfoCard from "@/components/LegalInfoCard";
 
 // Redux imports
 import { useDispatch } from "react-redux";
@@ -347,6 +349,12 @@ const Profile: React.FC = () => {
             />
           )}
 
+          {!isAgent && (
+            <View style={styles.legalInfoContainer}>
+              <LegalInfoCard user={rawUser} />
+            </View>
+          )}
+
           {isAgent && <AgentProfileCard />}
 
           {isAgent && (
@@ -552,5 +560,8 @@ const styles = StyleSheet.create({
     alignItems: "center",
     borderWidth: 4,
     borderColor: COLORS.white,
+  },
+  legalInfoContainer: {
+    paddingVertical: 8,
   },
 });

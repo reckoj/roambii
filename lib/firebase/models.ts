@@ -20,6 +20,19 @@ export interface User extends FirebaseDocument {
   isAgent: boolean;
   isAgentTemp?: boolean;
   isEmailVerified: boolean;
+  legalInformation?: {
+    fullName: string;
+    dateOfBirth: string | null;
+    email: string;
+    phoneNumber: string;
+    address?: string;
+    city?: string;
+    state?: string;
+    zipCode?: string;
+    country?: string;
+    passportNumber?: string;
+    passportExpiryDate?: string | null;
+  };
 }
 
 export interface Agent {
@@ -114,6 +127,19 @@ export interface Booking extends FirebaseDocument {
   guestCount: number;
   transactionId: string;
   paymentMethod: string;
+  travelerInfo?: {
+    fullName: string;
+    dateOfBirth?: string | null;
+    email: string;
+    phoneNumber?: string;
+    address?: string;
+    city?: string;
+    state?: string;
+    zipCode?: string;
+    country?: string;
+    passportNumber?: string;
+    passportExpiryDate?: string | null;
+  };
 }
 
 // Review models

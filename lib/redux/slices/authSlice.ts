@@ -24,6 +24,19 @@ interface User {
   avatar?: string;
   isAgent: boolean;
   isAgentTemp?: boolean;
+  legalInformation?: {
+    fullName: string;
+    dateOfBirth: string | null;
+    email: string;
+    phoneNumber: string;
+    address?: string;
+    city?: string;
+    state?: string;
+    zipCode?: string;
+    country?: string;
+    passportNumber?: string;
+    passportExpiryDate?: string | null;
+  };
   // Add any additional fields needed for the UI
 }
 
@@ -71,6 +84,7 @@ const convertFirebaseUserToReduxUser = (
     avatar: firebaseUser.avatar,
     isAgent: firebaseUser.isAgent || false,
     isAgentTemp: firebaseUser.isAgentTemp || false,
+    legalInformation: firebaseUser.legalInformation,
   };
 };
 

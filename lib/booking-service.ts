@@ -14,8 +14,9 @@ import {
   serverTimestamp,
 } from "firebase/firestore";
 import { firestore, COLLECTIONS } from "../lib/firebase/firebase-config";
-import { Booking, Package } from "./firebase/models";
+import { Booking, Package, User } from "./firebase/models";
 import { getPackageById } from "../lib/package-service";
+import { getUserProfile } from "./user-service";
 
 /**
  * Generate a unique booking reference
@@ -46,6 +47,9 @@ export const createBooking = async (
       throw new Error("Package not found");
     }
 
+    // Get user profile to access legal information
+    const userProfile = await getUserProfile(userId);
+    
     // Create booking document
     const bookingRef = collection(firestore, COLLECTIONS.BOOKINGS);
     const now = new Date();
@@ -73,6 +77,11 @@ export const createBooking = async (
       check_out_time: packageData.check_out_time || now,
       createdAt: serverTimestamp(),
       updatedAt: serverTimestamp(),
+      // Include user's legal information if available
+      travelerInfo: userProfile?.legalInformation || {
+        fullName: userProfile?.name || "",
+        email: userProfile?.email || "",
+      }
     };
 
     const bookingDoc = await addDoc(bookingRef, newBooking);
