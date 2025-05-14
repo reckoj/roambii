@@ -23,6 +23,7 @@ import {
   Users,
   ChevronRight,
   Calendar,
+  UserSquare2,
 } from "lucide-react-native";
 import { router, useFocusEffect } from "expo-router";
 import { getAgentPackages, deletePackage } from "@/lib/agent-service";
@@ -132,6 +133,11 @@ const Bookings = () => {
   /** Navigate to create package screen */
   const handleCreatePackage = () => {
     router.push("/create-package");
+  };
+
+  /** Navigate to client relationships screen */
+  const handleViewClients = () => {
+    router.push("/(root)/clients");
   };
 
   // Show loader only on initial load
@@ -255,6 +261,29 @@ const Bookings = () => {
     );
   };
 
+  // Render header with client relationships button
+  const renderHeader = () => (
+    <View style={styles.headerContainer}>
+      <CustomHeader title="My Packages" />
+      <View style={styles.headerActions}>
+        <TouchableOpacity
+          style={styles.clientButton}
+          onPress={handleViewClients}
+        >
+          <UserSquare2 size={20} color="#FFF" />
+          <Text style={styles.clientButtonText}>Clients</Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={styles.createButton}
+          onPress={handleCreatePackage}
+        >
+          <PlusCircle size={20} color="#FFF" />
+          <Text style={styles.createButtonText}>New Package</Text>
+        </TouchableOpacity>
+      </View>
+    </View>
+  );
+
   // Empty state with pull to refresh
   const renderEmptyState = () => (
     <ScrollView
@@ -288,7 +317,7 @@ const Bookings = () => {
           onPress={handleCreatePackage}
           activeOpacity={0.8}
         >
-          <PlusCircle color="white" size={20} style={styles.buttonIcon} />
+          <PlusCircle color="white" size={20} />
           <Text style={styles.createButtonText}>Create Package</Text>
         </TouchableOpacity>
       </Animated.View>
@@ -297,18 +326,11 @@ const Bookings = () => {
 
   return (
     <View style={styles.container}>
-      <StatusBar barStyle="light-content" />
+      <StatusBar />
 
-      {/* Header */}
-      <CustomHeader
-        title="Active Packages"
-        showBackButton={false}
-        rightIcon={<PlusCircle color="white" size={28} />}
-        onRightIconPress={handleCreatePackage}
-      />
+      {renderHeader()}
 
-      {/* Main content */}
-      {packages.length === 0 ? (
+      {packages.length === 0 && !refreshing ? (
         renderEmptyState()
       ) : (
         // Package list with swipe functionality
@@ -427,22 +449,31 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     backgroundColor: "#1ABC9C",
-    paddingVertical: 14,
-    paddingHorizontal: 24,
-    borderRadius: 12,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
-  },
-  buttonIcon: {
-    marginRight: 10,
+    padding: 10,
+    borderRadius: 8,
+    flex: 1,
+    marginLeft: 8,
+    justifyContent: "center",
   },
   createButtonText: {
-    fontSize: 16,
-    fontWeight: "600",
     color: "#FFFFFF",
+    marginLeft: 6,
+    fontWeight: "600",
+  },
+  clientButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#3498DB",
+    padding: 10,
+    borderRadius: 8,
+    flex: 1,
+    marginRight: 8,
+    justifyContent: "center",
+  },
+  clientButtonText: {
+    color: "#FFFFFF",
+    marginLeft: 6,
+    fontWeight: "600",
   },
   packageCard: {
     backgroundColor: "#FFFFFF",
@@ -579,6 +610,19 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.2,
     shadowRadius: 5,
     elevation: 5,
+  },
+  headerContainer: {
+    paddingHorizontal: 16,
+    paddingTop: 12,
+    paddingBottom: 16,
+    backgroundColor: "#FFF",
+    borderBottomColor: "#EEEEEE",
+    borderBottomWidth: 1,
+  },
+  headerActions: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    marginTop: 12,
   },
 });
 

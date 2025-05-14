@@ -52,6 +52,7 @@ const CreatePackageScreen = () => {
 
       console.log("Current user ID:", user.uid);
       console.log("Current user email:", user.email);
+      console.log("Current user auth token:", await user.getIdToken());
 
       // Debug: Directly check the agents collection
       try {
@@ -74,7 +75,9 @@ const CreatePackageScreen = () => {
         if (agentData) {
           setIsAgent(true);
           setAgentId(agentData.id);
+          console.log("Agent status confirmed. Agent ID:", agentData.id);
         } else {
+          console.log("No agent data found for user:", user.uid);
           Alert.alert("Access Denied", "Only agents can create packages");
           router.back();
         }

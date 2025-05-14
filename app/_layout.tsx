@@ -10,6 +10,22 @@ import { handleDeepLink } from "@/lib/deep-link-handler";
 import * as Linking from "expo-linking";
 import ReduxProvider from "@/lib/redux/provider";
 import { GlobalProvider } from "@/lib/global-provider";
+import { PaperProvider, MD3LightTheme } from "react-native-paper";
+
+// Custom theme that matches app's color scheme
+const theme = {
+  ...MD3LightTheme,
+  colors: {
+    ...MD3LightTheme.colors,
+    primary: "#1ABC9C",
+    secondary: "#3498DB",
+    error: "#FF4C69",
+    background: "#F9FAFC",
+    surface: "#FFFFFF",
+    text: "#333333",
+    onSurface: "#333333",
+  },
+};
 
 // Prevent auto-hiding of splash screen
 SplashScreen.preventAutoHideAsync().catch(() => {
@@ -58,13 +74,15 @@ export default function RootLayout() {
     <ReduxProvider>
       <AuthProvider>
         <GlobalProvider>
-          <StripeProvider>
-            <Stack
-              screenOptions={{
-                headerShown: false,
-              }}
-            />
-          </StripeProvider>
+          <PaperProvider theme={theme}>
+            <StripeProvider>
+              <Stack
+                screenOptions={{
+                  headerShown: false,
+                }}
+              />
+            </StripeProvider>
+          </PaperProvider>
         </GlobalProvider>
       </AuthProvider>
     </ReduxProvider>

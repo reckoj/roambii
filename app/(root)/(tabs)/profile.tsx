@@ -26,6 +26,7 @@ import {
   ChevronRight,
   Edit,
   FileText,
+  Users,
 } from "lucide-react-native";
 import { InviteFriends } from "@/lib/invite-friends";
 import { router } from "expo-router";
@@ -364,6 +365,16 @@ const Profile: React.FC = () => {
               subtitle="Edit your agent info"
               onPress={() => router.push("/edit-agent-profile")}
               iconBgColor="rgba(93, 109, 255, 0.1)"
+            />
+          )}
+
+          {isAgent && (
+            <SettingsItem
+              icon={<Users size={20} color="#00D27A" />}
+              title="My Clients"
+              subtitle="View and manage your clients"
+              onPress={() => router.push("/clients")}
+              iconBgColor="rgba(0, 210, 122, 0.1)"
             />
           )}
 

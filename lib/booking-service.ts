@@ -13,10 +13,15 @@ import {
   addDoc,
   serverTimestamp,
 } from "firebase/firestore";
+import { getAuth } from "firebase/auth";
 import { firestore, COLLECTIONS } from "../lib/firebase/firebase-config";
 import { Booking, Package, User } from "./firebase/models";
 import { getPackageById } from "../lib/package-service";
 import { getUserProfile } from "./user-service";
+import { createOrUpdateClientRelationship, createBasicClientRelationship } from "./client-service";
+
+// Define debug mode constant
+const DEBUG_MODE = true; // Set to false in production
 
 /**
  * Generate a unique booking reference
@@ -26,7 +31,7 @@ function generateBookingReference(): string {
 }
 
 /**
- * Create a new booking
+ * Create a new booking - with embedded client relationship data
  */
 export const createBooking = async (
   userId: string,
@@ -54,6 +59,31 @@ export const createBooking = async (
     const bookingRef = collection(firestore, COLLECTIONS.BOOKINGS);
     const now = new Date();
 
+    // Prepare client relationship data - embedded in the booking
+    const clientRelationshipData = packageData.agent?.id ? {
+      clientRelationship: {
+        agentId: packageData.agent.id,
+        userId: userId,
+        createdAt: now,
+        updatedAt: now,
+        status: 'active',
+        isEmbedded: true,
+        contactInfo: {
+          name: userProfile?.name || "",
+          email: userProfile?.email || "",
+          phone: userProfile?.legalInformation?.phoneNumber || "",
+        }
+      }
+    } : null;
+
+    console.log("DEBUG - Client relationship data prepared:", {
+      hasAgentId: !!packageData.agent?.id,
+      agentId: packageData.agent?.id,
+      agentRef: packageData.agent ? JSON.stringify(packageData.agent) : "No agent ref",
+      data: clientRelationshipData
+    });
+
+    // Merge booking data with client relationship data
     const newBooking = {
       user: doc(firestore, COLLECTIONS.USERS, userId),
       package: doc(firestore, COLLECTIONS.PACKAGES, packageId),
@@ -81,11 +111,22 @@ export const createBooking = async (
       travelerInfo: userProfile?.legalInformation || {
         fullName: userProfile?.name || "",
         email: userProfile?.email || "",
-      }
+      },
+      // Add client relationship data if package has an agent
+      ...(clientRelationshipData || {})
     };
 
+    // Create the booking with embedded client relationship
     const bookingDoc = await addDoc(bookingRef, newBooking);
     console.log("Booking created with ID:", bookingDoc.id);
+    
+    // Report on client relationship status
+    if (packageData.agent?.id) {
+      console.log("Client relationship embedded in booking document");
+    } else {
+      console.log("No agent information available for client relationship");
+    }
+    
     return bookingDoc.id;
   } catch (error) {
     console.error("Error creating booking:", error);
@@ -223,16 +264,44 @@ export const cancelBooking = async (
     const bookingDoc = await getDoc(bookingRef);
 
     if (!bookingDoc.exists()) {
-      throw new Error("Booking not found");
+      return null;
     }
 
+    // Update booking status
     await updateDoc(bookingRef, {
       status: "cancelled",
-      updatedAt: new Date(),
+      updatedAt: serverTimestamp(),
     });
 
-    // Fetch the updated booking
-    return getBookingById(bookingId);
+    // Get updated booking
+    const updatedBookingDoc = await getDoc(bookingRef);
+    const updatedBookingData = updatedBookingDoc.data() as Omit<Booking, "id">;
+
+    return {
+      id: bookingId,
+      ...updatedBookingData,
+      // Convert timestamp objects
+      bookingDate:
+        updatedBookingData.bookingDate instanceof Timestamp
+          ? updatedBookingData.bookingDate.toDate()
+          : updatedBookingData.bookingDate,
+      checkInDate:
+        updatedBookingData.checkInDate instanceof Timestamp
+          ? updatedBookingData.checkInDate.toDate()
+          : updatedBookingData.checkInDate,
+      checkOutDate:
+        updatedBookingData.checkOutDate instanceof Timestamp
+          ? updatedBookingData.checkOutDate.toDate()
+          : updatedBookingData.checkOutDate,
+      createdAt:
+        updatedBookingData.createdAt instanceof Timestamp
+          ? updatedBookingData.createdAt.toDate()
+          : updatedBookingData.createdAt,
+      updatedAt:
+        updatedBookingData.updatedAt instanceof Timestamp
+          ? updatedBookingData.updatedAt.toDate()
+          : updatedBookingData.updatedAt,
+    };
   } catch (error) {
     console.error("Error cancelling booking:", error);
     return null;
@@ -352,5 +421,106 @@ export const getCancelledBookings = async (
   } catch (error) {
     console.error("Error fetching cancelled bookings:", error);
     return [];
+  }
+};
+
+/**
+ * Update booking status
+ */
+export const updateBookingStatus = async (
+  bookingId: string,
+  status: 'confirmed' | 'cancelled' | 'pending'
+): Promise<Booking | null> => {
+  try {
+    const bookingRef = doc(firestore, COLLECTIONS.BOOKINGS, bookingId);
+    const bookingDoc = await getDoc(bookingRef);
+
+    if (!bookingDoc.exists()) {
+      return null;
+    }
+
+    const bookingData = bookingDoc.data() as Booking;
+    
+    // Prepare update data
+    const updateData: any = {
+      status: status,
+      updatedAt: serverTimestamp(),
+    };
+    
+    // If status is confirmed and there's an agent, embed client relationship if not already there
+    if (status === 'confirmed' && bookingData.packageDetails?.agent?.id && !bookingData.clientRelationship) {
+      console.log("Adding embedded client relationship for confirmed booking", {
+        agentId: bookingData.packageDetails.agent.id,
+        userId: bookingData.userId,
+      });
+      
+      const now = new Date();
+      
+      // Get user profile for contact info
+      let contactInfo: { name: string; email: string; phone?: string } = { name: "", email: "" };
+      try {
+        const userProfile = await getUserProfile(bookingData.userId);
+        if (userProfile) {
+          contactInfo = {
+            name: userProfile.name || "",
+            email: userProfile.email || "",
+            phone: userProfile.legalInformation?.phoneNumber,
+          };
+        }
+      } catch (err) {
+        console.error("Error getting user profile for client relationship:", err);
+      }
+      
+      // Add client relationship data
+      updateData.clientRelationship = {
+        agentId: bookingData.packageDetails.agent.id,
+        userId: bookingData.userId,
+        createdAt: now,
+        updatedAt: now,
+        status: 'active',
+        isEmbedded: true,
+        contactInfo
+      };
+    }
+
+    // Update booking status
+    await updateDoc(bookingRef, updateData);
+    
+    if (updateData.clientRelationship) {
+      console.log("Client relationship embedded in booking document during status update");
+    }
+
+    // Get updated booking
+    const updatedBookingDoc = await getDoc(bookingRef);
+    const updatedBookingData = updatedBookingDoc.data() as Omit<Booking, "id">;
+
+    return {
+      id: bookingId,
+      ...updatedBookingData,
+      // Convert timestamp objects
+      bookingDate:
+        updatedBookingData.bookingDate instanceof Timestamp
+          ? updatedBookingData.bookingDate.toDate()
+          : updatedBookingData.bookingDate,
+      checkInDate:
+        updatedBookingData.checkInDate instanceof Timestamp
+          ? updatedBookingData.checkInDate.toDate()
+          : updatedBookingData.checkInDate,
+      checkOutDate:
+        updatedBookingData.checkOutDate instanceof Timestamp
+          ? updatedBookingData.checkOutDate.toDate()
+          : updatedBookingData.checkOutDate,
+      createdAt:
+        updatedBookingData.createdAt instanceof Timestamp
+          ? updatedBookingData.createdAt.toDate()
+          : updatedBookingData.createdAt,
+      updatedAt:
+        updatedBookingData.updatedAt instanceof Timestamp
+          ? updatedBookingData.updatedAt.toDate()
+          : updatedBookingData.updatedAt,
+    };
+  } catch (error) {
+    console.error("Error updating booking status:", error);
+    return null;
   }
 };

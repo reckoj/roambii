@@ -85,6 +85,31 @@ export interface Agent {
   }[];
 }
 
+// Client relationship model
+export interface Client extends FirebaseDocument {
+  agentId: string;         // ID of the agent
+  userId: string;          // ID of the user/traveler
+  status: 'active' | 'inactive'; // Status of the client relationship
+  bookings: string[];      // Array of booking IDs made by this client with this agent
+  lastBookingDate?: Timestamp | Date; // Date of the last booking
+  totalBookings: number;   // Total number of bookings made
+  totalSpent: number;      // Total amount spent on bookings
+  notes?: string;          // Agent's notes about this client
+  preferences?: {          // Client's travel preferences
+    destinations?: string[];
+    accommodationType?: string;
+    budgetRange?: string;
+    travelStyle?: string[];
+    specialRequirements?: string[];
+  };
+  // Contact info - cached from user for quicker access
+  contactInfo?: {
+    name: string;
+    email: string;
+    phone?: string;
+  };
+}
+
 // Package models
 export interface Package extends FirebaseDocument {
   name: string;
@@ -139,6 +164,28 @@ export interface Booking extends FirebaseDocument {
     country?: string;
     passportNumber?: string;
     passportExpiryDate?: string | null;
+  };
+  // Added for embedded client relationships
+  clientRelationship?: {
+    agentId: string;
+    userId: string;
+    createdAt: Date | Timestamp;
+    updatedAt: Date | Timestamp;
+    status: 'active' | 'inactive';
+    isEmbedded: boolean;
+    contactInfo?: {
+      name: string;
+      email: string;
+      phone?: string;
+    };
+    notes?: string;
+    preferences?: {
+      destinations?: string[];
+      accommodationType?: string;
+      budgetRange?: string;
+      travelStyle?: string[];
+      specialRequirements?: string[];
+    };
   };
 }
 

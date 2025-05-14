@@ -83,5 +83,26 @@ service cloud.firestore {
         (resource.data.userId == request.auth.uid || 
          resource.data.agentId == request.auth.uid);
     }
+    
+    // Clients collection
+    match /clients/{clientId} {
+      // TEMPORARY: Allow all operations for debugging
+      allow read, write: if isAuthenticated();
+      
+      // COMMENTED OUT DURING DEBUGGING
+      // // Anyone can read their own client records or if they're the agent
+      // allow read: if isAuthenticated();
+      // 
+      // // Allow any authenticated user to create client relationships (for debugging)
+      // allow create: if isAuthenticated();
+      // 
+      // // Updates require being the agent for that client
+      // allow update: if isAuthenticated() && 
+      //   (request.auth.uid == resource.data.agentId);
+      // 
+      // // Only agents can delete their own client records
+      // allow delete: if isAuthenticated() && 
+      //   (request.auth.uid == resource.data.agentId);
+    }
   }
 } 

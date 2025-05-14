@@ -59,6 +59,7 @@ export const COLLECTIONS = {
   USER_BOOKINGS: "user_bookings",
   FLIGHT_INFO: "flight_info",
   AGENT_BOOKINGS: "agent_bookings",
+  CLIENTS: "clients",
 };
 
 // Export Firebase collection paths for easier access

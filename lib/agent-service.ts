@@ -357,29 +357,58 @@ export const getAgentPackages = async (
 ): Promise<DocumentData[]> => {
   try {
     console.log("Fetching packages for agent ID:", agentId);
+    let packages: DocumentData[] = [];
 
-    // Get the agent reference
-    const agentRef = doc(firestore, COLLECTIONS.AGENTS, agentId);
+    // Try method 1: Using the 'packages' collection (original method)
+    try {
+      console.log("Checking 'packages' collection...");
+      // Get the agent reference
+      const agentRef = doc(firestore, COLLECTIONS.AGENTS, agentId);
 
-    // Query packages where agent field points to this agent
-    const packagesRef = collection(firestore, COLLECTIONS.PACKAGES);
-    const q = query(packagesRef, where("agent", "==", agentRef));
+      // Query packages where agent field points to this agent
+      const packagesRef = collection(firestore, COLLECTIONS.PACKAGES);
+      const q = query(packagesRef, where("agent", "==", agentRef));
 
-    const querySnapshot = await getDocs(q);
-    console.log(`Found ${querySnapshot.size} packages for this agent`);
+      const querySnapshot = await getDocs(q);
+      console.log(`Found ${querySnapshot.size} packages in 'packages' collection`);
 
-    // If no packages found with agent reference, try with agentId field
-    if (querySnapshot.size === 0) {
-      console.log(
-        "No packages found with agent reference, trying agentId field"
-      );
-      const secondQuery = query(packagesRef, where("agentId", "==", agentId));
-      const secondSnapshot = await getDocs(secondQuery);
+      // If packages found, process them
+      if (querySnapshot.size > 0) {
+        for (const doc of querySnapshot.docs) {
+          const packageData = doc.data();
 
-      if (secondSnapshot.size > 0) {
-        console.log(`Found ${secondSnapshot.size} packages with agentId field`);
+          // Format data to match the expected format in the UI
+          packages.push({
+            $id: doc.id,
+            name: packageData.name || "Untitled Package",
+            type: packageData.type || "Accommodation",
+            price: packageData.price || 0,
+            image: packageData.banner_image || packageData.image,
+            rating: packageData.rating || 0,
+            bedrooms: packageData.beds || packageData.bedrooms || 0,
+            bathrooms: packageData.baths || packageData.bathrooms || 0,
+            guestAmount: packageData.guest_amount || packageData.guestAmount || 0,
+            checkInDate:
+              packageData.check_in_date?.toDate?.() || packageData.checkInDate,
+            checkOutDate:
+              packageData.check_out_date?.toDate?.() || packageData.checkOutDate,
+            is_all_inclusive:
+              packageData.is_all_inclusive || packageData.allinclusive || false,
+            description: packageData.description || "",
+            room_type: packageData.room_type || packageData.roomType || "",
+            amenities: packageData.amenities || [],
+          });
+        }
+      }
 
-        const packages: DocumentData[] = [];
+      // Try with agentId field in the same collection
+      if (querySnapshot.size === 0) {
+        console.log("Trying 'packages' collection with agentId field...");
+        const secondQuery = query(packagesRef, where("agentId", "==", agentId));
+        const secondSnapshot = await getDocs(secondQuery);
+
+        console.log(`Found ${secondSnapshot.size} packages with agentId field in 'packages'`);
+
         for (const doc of secondSnapshot.docs) {
           const packageData = doc.data();
 
@@ -406,40 +435,79 @@ export const getAgentPackages = async (
             amenities: packageData.amenities || [],
           });
         }
-
-        return packages;
       }
-
-      return []; // No packages found with either approach
+    } catch (error) {
+      console.error("Error querying 'packages' collection:", error);
     }
 
-    const packages: DocumentData[] = [];
-    for (const doc of querySnapshot.docs) {
-      const packageData = doc.data();
-
-      // Format data to match the expected format in the UI
-      packages.push({
-        $id: doc.id,
-        name: packageData.name || "Untitled Package",
-        type: packageData.type || "Accommodation",
-        price: packageData.price || 0,
-        image: packageData.banner_image || packageData.image,
-        rating: packageData.rating || 0,
-        bedrooms: packageData.beds || packageData.bedrooms || 0,
-        bathrooms: packageData.baths || packageData.bathrooms || 0,
-        guestAmount: packageData.guest_amount || packageData.guestAmount || 0,
-        checkInDate:
-          packageData.check_in_date?.toDate?.() || packageData.checkInDate,
-        checkOutDate:
-          packageData.check_out_date?.toDate?.() || packageData.checkOutDate,
-        is_all_inclusive:
-          packageData.is_all_inclusive || packageData.allinclusive || false,
-        description: packageData.description || "",
-        room_type: packageData.room_type || packageData.roomType || "",
-        amenities: packageData.amenities || [],
-      });
+    // Try method 2: Using the 'package_info' collection (CMS method)
+    try {
+      console.log("Checking 'package_info' collection...");
+      const packageInfoRef = collection(firestore, "package_info");
+      
+      // Try with both agent.id and agentId fields
+      const packageInfoQuery1 = query(packageInfoRef, where("agent.id", "==", agentId));
+      const packageInfoSnapshot1 = await getDocs(packageInfoQuery1);
+      
+      console.log(`Found ${packageInfoSnapshot1.size} packages with agent.id in 'package_info'`);
+      
+      // Process results from agent.id query
+      for (const doc of packageInfoSnapshot1.docs) {
+        const packageData = doc.data();
+        packages.push({
+          $id: doc.id,
+          name: packageData.name || "Untitled Package",
+          type: packageData.type || "Accommodation",
+          price: packageData.price || 0,
+          image: packageData.banner_image || packageData.image,
+          rating: packageData.rating || 0,
+          bedrooms: packageData.beds || packageData.bedrooms || 0,
+          bathrooms: packageData.baths || packageData.bathrooms || 0,
+          guestAmount: packageData.guest_amount || packageData.guestAmount || 0,
+          checkInDate: packageData.check_in_date?.toDate?.() || packageData.checkInDate,
+          checkOutDate: packageData.check_out_date?.toDate?.() || packageData.checkOutDate,
+          is_all_inclusive: packageData.is_all_inclusive || packageData.allinclusive || false,
+          description: packageData.description || "",
+          room_type: packageData.room_type || packageData.roomType || "",
+          amenities: packageData.amenities || [],
+        });
+      }
+      
+      // Try with agentId field
+      const packageInfoQuery2 = query(packageInfoRef, where("agentId", "==", agentId));
+      const packageInfoSnapshot2 = await getDocs(packageInfoQuery2);
+      
+      console.log(`Found ${packageInfoSnapshot2.size} packages with agentId in 'package_info'`);
+      
+      // Process results from agentId query
+      for (const doc of packageInfoSnapshot2.docs) {
+        const packageData = doc.data();
+        // Check if we already added this package (to avoid duplicates)
+        if (!packages.some(p => p.$id === doc.id)) {
+          packages.push({
+            $id: doc.id,
+            name: packageData.name || "Untitled Package",
+            type: packageData.type || "Accommodation",
+            price: packageData.price || 0,
+            image: packageData.banner_image || packageData.image,
+            rating: packageData.rating || 0,
+            bedrooms: packageData.beds || packageData.bedrooms || 0,
+            bathrooms: packageData.baths || packageData.bathrooms || 0,
+            guestAmount: packageData.guest_amount || packageData.guestAmount || 0,
+            checkInDate: packageData.check_in_date?.toDate?.() || packageData.checkInDate,
+            checkOutDate: packageData.check_out_date?.toDate?.() || packageData.checkOutDate,
+            is_all_inclusive: packageData.is_all_inclusive || packageData.allinclusive || false,
+            description: packageData.description || "",
+            room_type: packageData.room_type || packageData.roomType || "",
+            amenities: packageData.amenities || [],
+          });
+        }
+      }
+    } catch (error) {
+      console.error("Error querying 'package_info' collection:", error);
     }
 
+    console.log(`Total packages found across all collections: ${packages.length}`);
     return packages;
   } catch (error) {
     console.error("Error fetching agent packages:", error);
@@ -452,22 +520,68 @@ export const getAgentPackages = async (
  */
 export const deletePackage = async (packageId: string): Promise<boolean> => {
   try {
-    const packageRef = doc(firestore, COLLECTIONS.PACKAGES, packageId);
-    const packageDoc = await getDoc(packageRef);
+    // Try to delete from 'packages' collection
+    try {
+      console.log(`Attempting to delete package ${packageId} from 'packages' collection`);
+      const packageRef = doc(firestore, COLLECTIONS.PACKAGES, packageId);
+      const packageDoc = await getDoc(packageRef);
 
-    if (packageDoc.exists()) {
-      const packageData = packageDoc.data();
+      if (packageDoc.exists()) {
+        const packageData = packageDoc.data();
 
-      // Delete flight info if it exists
-      if (packageData.flight_info) {
-        await deleteDoc(packageData.flight_info);
+        // Delete flight info if it exists
+        if (packageData.flight_info) {
+          try {
+            await deleteDoc(doc(firestore, "flight_info", packageData.flight_info));
+            console.log("Deleted associated flight info document");
+          } catch (error) {
+            console.error("Error deleting flight info:", error);
+          }
+        }
+
+        // Delete package
+        await deleteDoc(packageRef);
+        console.log("Successfully deleted package from 'packages' collection");
+        return true;
+      } else {
+        console.log("Package not found in 'packages' collection");
       }
-
-      // Delete package
-      await deleteDoc(packageRef);
+    } catch (error) {
+      console.error("Error deleting from 'packages' collection:", error);
     }
 
-    return true;
+    // If not found or failed, try 'package_info' collection
+    try {
+      console.log(`Attempting to delete package ${packageId} from 'package_info' collection`);
+      const packageInfoRef = doc(firestore, "package_info", packageId);
+      const packageInfoDoc = await getDoc(packageInfoRef);
+
+      if (packageInfoDoc.exists()) {
+        const packageData = packageInfoDoc.data();
+
+        // Delete flight info if it exists and is a reference to another document
+        if (packageData.flight_info && typeof packageData.flight_info === 'string') {
+          try {
+            await deleteDoc(doc(firestore, "flight_info", packageData.flight_info));
+            console.log("Deleted associated flight info document");
+          } catch (error) {
+            console.error("Error deleting flight info:", error);
+          }
+        }
+
+        // Delete package
+        await deleteDoc(packageInfoRef);
+        console.log("Successfully deleted package from 'package_info' collection");
+        return true;
+      } else {
+        console.log("Package not found in 'package_info' collection either");
+      }
+    } catch (error) {
+      console.error("Error deleting from 'package_info' collection:", error);
+    }
+
+    // If we've reached this point, we weren't able to delete the package
+    return false;
   } catch (error) {
     console.error("Error deleting package:", error);
     return false;
