@@ -96,27 +96,34 @@ export const loginUserAsync = createAsyncThunk(
     { rejectWithValue, dispatch }
   ) => {
     try {
-      console.log("Auth Slice: Attempting login");
+      console.log("loginUserAsync: Attempting login");
       const response = await loginUser(email, password);
 
       if (response.success) {
-        console.log("Auth Slice: Login successful, fetching user data");
+        console.log("loginUserAsync: Login successful, waiting before fetching user data");
 
-        // Add a small delay to ensure the Firebase auth session is fully established
-        await new Promise((resolve) => setTimeout(resolve, 300));
+        // Add a longer delay to ensure the Firebase auth session is fully established
+        await new Promise((resolve) => setTimeout(resolve, 1000));
 
+        console.log("loginUserAsync: Delay complete, fetching user data");
         // Fetch complete user data
         const userData = await getCurrentUser();
-        console.log("Auth Slice: User data fetched", userData);
+        
+        if (!userData) {
+          console.log("loginUserAsync: No user data found after successful login");
+          return rejectWithValue("Failed to fetch user data after login");
+        }
+        
+        console.log("loginUserAsync: User data fetched successfully");
 
         // Convert to Redux user format
         return convertFirebaseUserToReduxUser(userData);
       }
 
-      console.log("Auth Slice: Login failed", response.message);
+      console.log("loginUserAsync: Login failed", response.message);
       return rejectWithValue(response.message);
     } catch (error: any) {
-      console.error("Auth Slice: Login error", error.message);
+      console.error("loginUserAsync: Login error", error.message);
       return rejectWithValue(error.message);
     }
   }
@@ -215,18 +222,24 @@ export const fetchCurrentUserAsync = createAsyncThunk(
   "auth/fetchCurrentUser",
   async (_, { rejectWithValue }) => {
     try {
-      // Wait a bit to ensure Firebase is fully initialized
-      await new Promise((resolve) => setTimeout(resolve, 300));
-
+      console.log("fetchCurrentUserAsync: Starting user fetch");
+      
+      // Wait a bit longer to ensure Firebase is fully initialized
+      await new Promise((resolve) => setTimeout(resolve, 1000));
+      
+      console.log("fetchCurrentUserAsync: Fetching current user data");
       const userData = await getCurrentUser();
+      console.log("fetchCurrentUserAsync: User data result:", userData ? "Found user" : "No user found");
 
       if (!userData) {
+        console.log("fetchCurrentUserAsync: No authenticated user found");
         return rejectWithValue("No authenticated user");
       }
 
+      console.log("fetchCurrentUserAsync: Returning user data");
       return convertFirebaseUserToReduxUser(userData);
     } catch (error: any) {
-      console.error("Failed to fetch current user", error);
+      console.error("fetchCurrentUserAsync: Failed to fetch current user", error);
       return rejectWithValue(error.message);
     }
   }

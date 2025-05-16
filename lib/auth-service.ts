@@ -276,69 +276,74 @@ export const logout = async (): Promise<boolean> => {
 };
 
 /**
- * Get current authenticated user with additional Firestore data
+ * Get the currently authenticated user
  */
 export const getCurrentUser = async (): Promise<User | null> => {
+  console.log("getCurrentUser: Starting to fetch current user");
+  
+  // Add a small delay to ensure auth state is ready
+  await new Promise(resolve => setTimeout(resolve, 500));
+  
+  // First check if auth is initialized
+  if (!auth) {
+    console.error("getCurrentUser: Firebase auth not initialized");
+    return null;
+  }
+  
   try {
-    // First, check Firebase's current user
+    // Get the current Firebase user
     const firebaseUser = auth.currentUser;
+    console.log("getCurrentUser: Firebase auth.currentUser check:", firebaseUser ? "User found" : "No user");
 
     if (!firebaseUser) {
-      // Try to restore session via onAuthStateChanged
-      return await new Promise((resolve, reject) => {
-        const unsubscribe = onAuthStateChanged(
-          auth,
-          async (user) => {
-            unsubscribe(); // Immediately unsubscribe
-
-            if (user) {
-              try {
-                const userData = await getUserProfile(user.uid);
-                resolve(userData);
-              } catch (error) {
-                console.error("Error fetching user profile:", error);
-                resolve(null);
-              }
-            } else {
-              resolve(null);
-            }
-          },
-          (error) => {
-            console.error("Auth state change error:", error);
-            reject(error);
-          }
-        );
-
-        // Timeout if auth state doesn't resolve
-        setTimeout(() => {
-          unsubscribe();
-          resolve(null);
-        }, 5000);
-      });
+      console.log("getCurrentUser: No authenticated user found");
+      return null;
     }
 
-    // Existing logic for getting user details
-    const userRef = doc(firestore, COLLECTIONS.USERS, firebaseUser.uid);
-    const userDoc = await getDoc(userRef);
+    // Get the user document from Firestore
+    console.log("getCurrentUser: Fetching user document from Firestore");
+    const userDoc = await getDoc(doc(firestore, COLLECTIONS.USERS, firebaseUser.uid));
 
-    if (!userDoc.exists()) return null;
+    if (!userDoc.exists()) {
+      console.log("getCurrentUser: User doc not found in Firestore");
+      // Create basic user profile if not exists (fallback)
+      try {
+        const basicUserData = {
+          id: firebaseUser.uid,
+          name: firebaseUser.displayName || "User",
+          email: firebaseUser.email || "",
+          avatar: firebaseUser.photoURL || undefined,
+          isAgent: false,
+          isEmailVerified: firebaseUser.emailVerified,
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        };
+        
+        // Create user document as fallback
+        await setDoc(doc(firestore, COLLECTIONS.USERS, firebaseUser.uid), basicUserData);
+        console.log("getCurrentUser: Created basic user profile as fallback");
+        return basicUserData as User;
+      } catch (err) {
+        console.error("getCurrentUser: Failed to create fallback user profile", err);
+        return null;
+      }
+    }
 
-    const userData = userDoc.data() as Omit<User, "id">;
-
-    return {
+    // Merge Firebase user and Firestore data
+    console.log("getCurrentUser: Successfully fetched user document");
+    const userData = userDoc.data() as User;
+    
+    const mergedUser: User = {
+      ...userData,
       id: firebaseUser.uid,
       $id: firebaseUser.uid,
-      name: userData.name || firebaseUser.displayName || "",
-      email: userData.email || firebaseUser.email || "",
-      avatar: userData.avatar || firebaseUser.photoURL || undefined,
-      isAgent: userData.isAgent || false,
-      isAgentTemp: userData.isAgentTemp || false,
       isEmailVerified: firebaseUser.emailVerified,
-      createdAt: userData.createdAt,
-      updatedAt: userData.updatedAt,
     };
+
+    console.log("getCurrentUser: Returning merged user data");
+    return mergedUser;
   } catch (error) {
-    console.error("Error getting current user:", error);
+    console.error("getCurrentUser: Error fetching user data", error);
     return null;
   }
 };

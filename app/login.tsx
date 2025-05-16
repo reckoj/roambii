@@ -24,6 +24,7 @@ import {
   loginUserAsync,
   loginWithGoogleAsync,
   clearAuthError,
+  fetchCurrentUserAsync,
 } from "@/lib/redux/slices/authSlice";
 import { RootState, AppDispatch } from "@/lib/redux/store/store";
 
@@ -37,8 +38,27 @@ export default function Login() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
+  const [localLoading, setLocalLoading] = useState(false);
+
+  // Add debug info when component mounts
+  useEffect(() => {
+    console.log("Login Component Mounted");
+    console.log("Initial Redux State:", { isLoading, isAuthenticated, error });
+    
+    // Try to fetch current user on mount to make sure auth is properly initialized
+    dispatch(fetchCurrentUserAsync())
+      .unwrap()
+      .then(user => console.log("User fetched successfully", user))
+      .catch(err => console.log("No current user", err));
+  }, []);
+
+  // Log state changes
+  useEffect(() => {
+    console.log("Auth state changed:", { isLoading, isAuthenticated, error });
+  }, [isLoading, isAuthenticated, error]);
 
   if (isAuthenticated) {
+    console.log("User is authenticated, redirecting...");
     // Use useEffect for imperative navigation instead of Redirect
     useEffect(() => {
       if (isAuthenticated) {
@@ -58,19 +78,24 @@ export default function Login() {
   // Show error alerts when they occur
   useEffect(() => {
     if (error) {
+      console.log("Login error detected:", error);
       Alert.alert("Login Failed", error);
       dispatch(clearAuthError());
     }
   }, [error, dispatch]);
 
   const handleLogin = async () => {
+    console.log("Login attempt with:", { email });
     if (!email || !password) {
       Alert.alert("Error", "Please enter both email and password");
       return;
     }
 
     try {
+      setLocalLoading(true);
+      console.log("Dispatching loginUserAsync...");
       const resultAction = await dispatch(loginUserAsync({ email, password }));
+      console.log("Login result:", resultAction);
 
       // Check if we have a rejected action with verification requirement
       if (
@@ -99,15 +124,21 @@ export default function Login() {
       }
     } catch (error) {
       console.error("Login error:", error);
+    } finally {
+      setLocalLoading(false);
     }
   };
 
   const handleLoginGoogle = async () => {
     try {
+      console.log("Attempting Google login...");
+      setLocalLoading(true);
       await dispatch(loginWithGoogleAsync());
       // Redirect will handle navigation
     } catch (error) {
       console.error("Google login error:", error);
+    } finally {
+      setLocalLoading(false);
     }
   };
 
@@ -180,9 +211,9 @@ export default function Login() {
             <TouchableOpacity
               className="h-12 mt-6 mb-4 bg-primary-300 rounded-md items-center justify-center"
               onPress={handleLogin}
-              disabled={isLoading}
+              disabled={isLoading || localLoading}
             >
-              {isLoading ? (
+              {isLoading || localLoading ? (
                 <ActivityIndicator color="#ffffff" size="small" />
               ) : (
                 <Text className="text-lg font-rubik-bold text-white">
@@ -191,11 +222,20 @@ export default function Login() {
               )}
             </TouchableOpacity>
 
+            {/* Debug Info in Dev mode */}
+            {__DEV__ && (
+              <View className="mt-2 mb-4 p-2 bg-gray-100 rounded">
+                <Text className="text-xs">Redux Loading: {isLoading ? "true" : "false"}</Text>
+                <Text className="text-xs">Local Loading: {localLoading ? "true" : "false"}</Text>
+                <Text className="text-xs">Auth: {isAuthenticated ? "true" : "false"}</Text>
+              </View>
+            )}
+
             {/* Social Login */}
             <View className="mt-6 space-y-4">
               <TouchableOpacity
                 onPress={handleLoginGoogle}
-                disabled={isLoading}
+                disabled={isLoading || localLoading}
                 className="border border-gray-300 rounded-md w-full py-4 mt-5"
               >
                 <View className="flex flex-row items-center justify-center">
