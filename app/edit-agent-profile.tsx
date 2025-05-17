@@ -227,21 +227,21 @@ const EditAgentProfile = () => {
   // Loading state
   if (loading && !profile) {
     return (
-      <SafeAreaView style={styles.container}>
+      <View style={styles.container}>
         <StatusBar style="dark" />
         <CustomHeader title="Edit Profile" showBackButton={true} />
         <View style={styles.loadingContainer}>
           <ActivityIndicator size="large" color="#1ABC9C" />
           <Text style={styles.loadingText}>Loading your profile...</Text>
         </View>
-      </SafeAreaView>
+      </View>
     );
   }
 
   // Error state
   if (error) {
     return (
-      <SafeAreaView style={styles.container}>
+      <View style={styles.container}>
         <StatusBar style="dark" />
         <CustomHeader title="Edit Profile" showBackButton={true} />
         <View style={styles.errorContainer}>
@@ -255,7 +255,7 @@ const EditAgentProfile = () => {
             <Text style={styles.errorButtonText}>Go Back</Text>
           </TouchableOpacity>
         </View>
-      </SafeAreaView>
+      </View>
     );
   }
 
@@ -265,7 +265,7 @@ const EditAgentProfile = () => {
       behavior={Platform.OS === "ios" ? "padding" : "height"}
       keyboardVerticalOffset={Platform.OS === "ios" ? 0 : 25}
     >
-      <SafeAreaView style={styles.container}>
+      <View style={styles.container}>
         <StatusBar style="dark" />
         <CustomHeader
           title="Edit Agent Profile"
@@ -529,7 +529,7 @@ const EditAgentProfile = () => {
             )}
           </TouchableOpacity>
         </ScrollView>
-      </SafeAreaView>
+      </View>
     </KeyboardAvoidingView>
   );
 };

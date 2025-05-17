@@ -1,4 +1,10 @@
-import React, { useEffect, useRef, useState, useCallback, useMemo } from "react";
+import React, {
+  useEffect,
+  useRef,
+  useState,
+  useCallback,
+  useMemo,
+} from "react";
 import {
   View,
   Text,
@@ -28,7 +34,14 @@ import {
 } from "@/lib/chat-service";
 import { useGlobalContext } from "@/lib/global-provider";
 import images from "@/constants/images";
-import { doc, getDoc, collection, query, where, getDocs } from "firebase/firestore";
+import {
+  doc,
+  getDoc,
+  collection,
+  query,
+  where,
+  getDocs,
+} from "firebase/firestore";
 import { firestore } from "@/lib/firebase/firebase-config";
 import ChatBubble from "@/components/ChatBubble";
 import { Ionicons } from "@expo/vector-icons";
@@ -99,10 +112,16 @@ const ChatScreen = () => {
   // Add a memoized room ID generator
   const generateRoomId = useCallback(async () => {
     if (!currentUserId || !receivedAgentId) return null;
-    
+
     try {
       const roomId = await getConsistentRoomId(currentUserId, receivedAgentId);
-      console.log("[Room ID Generated] Using room ID:", roomId, "for users:", currentUserId, receivedAgentId);
+      console.log(
+        "[Room ID Generated] Using room ID:",
+        roomId,
+        "for users:",
+        currentUserId,
+        receivedAgentId
+      );
       return roomId;
     } catch (error) {
       console.error("[Room ID Error]:", error);
@@ -145,7 +164,7 @@ const ChatScreen = () => {
             // Convert timestamps to numbers
             createdAt: agentData.createdAt?.toMillis?.() || Date.now(),
             updatedAt: agentData.updatedAt?.toMillis?.() || Date.now(),
-            ...agentData
+            ...agentData,
           };
           // Remove the original timestamp objects
           delete foundProfile.createdAt;
@@ -174,7 +193,7 @@ const ChatScreen = () => {
               // Convert timestamps to numbers
               createdAt: userData.createdAt?.toMillis?.() || Date.now(),
               updatedAt: userData.updatedAt?.toMillis?.() || Date.now(),
-              ...userData
+              ...userData,
             };
             // Remove the original timestamp objects
             delete foundProfile.createdAt;
@@ -206,7 +225,7 @@ const ChatScreen = () => {
               // Convert timestamps to numbers
               createdAt: userData.createdAt?.toMillis?.() || Date.now(),
               updatedAt: userData.updatedAt?.toMillis?.() || Date.now(),
-              ...userData
+              ...userData,
             };
             // Remove the original timestamp objects
             delete foundProfile.createdAt;
@@ -236,7 +255,7 @@ const ChatScreen = () => {
           name: "Unknown User",
           email: "",
           avatar: "",
-          isAgent: false
+          isAgent: false,
         };
         console.log("No profile found, using basic profile:", basicProfile);
         dispatch(setCurrentPartner(basicProfile));
@@ -284,7 +303,9 @@ const ChatScreen = () => {
 
       // Use cached messages if available
       if (messageCache[roomId]?.length > 0) {
-        console.log(`[Cache Hit] Using ${messageCache[roomId].length} cached messages`);
+        console.log(
+          `[Cache Hit] Using ${messageCache[roomId].length} cached messages`
+        );
         dispatch(updateMessages(messageCache[roomId]));
         setMessagesLoading(false);
       }
@@ -307,7 +328,9 @@ const ChatScreen = () => {
       setMessagesLoading(false);
     } catch (error) {
       console.error("[Setup Error]:", error);
-      setError(error instanceof Error ? error.message : "Failed to setup chat room");
+      setError(
+        error instanceof Error ? error.message : "Failed to setup chat room"
+      );
       setLoading(false);
       setMessagesLoading(false);
     }
@@ -336,7 +359,7 @@ const ChatScreen = () => {
     }
 
     console.log("[Subscription] Setting up for room:", roomIdRef.current);
-    
+
     // Clean up existing subscription
     if (stableSubscriptionRef.current.unsubscribe) {
       console.log("[Subscription] Cleaning up existing subscription");
@@ -348,28 +371,34 @@ const ChatScreen = () => {
     try {
       const unsubscribe = subscribeToMessages(roomIdRef.current, (messages) => {
         console.log("[Subscription] Received", messages.length, "messages");
-        
+
         // Update messages in Redux
         dispatch(updateMessages(messages));
 
         // Check for unread messages
         const unreadMessages = messages.filter(
-          msg => !msg.read && msg.receiver_id === currentUserId
+          (msg) => !msg.read && msg.receiver_id === currentUserId
         );
 
         if (unreadMessages.length > 0) {
-          console.log("[Subscription] Found", unreadMessages.length, "unread messages");
-          dispatch(markMessagesAsReadAsync({
-            roomId: roomIdRef.current!,
-            userId: currentUserId,
-          })).catch(err => console.error("[Read Error]:", err));
+          console.log(
+            "[Subscription] Found",
+            unreadMessages.length,
+            "unread messages"
+          );
+          dispatch(
+            markMessagesAsReadAsync({
+              roomId: roomIdRef.current!,
+              userId: currentUserId,
+            })
+          ).catch((err) => console.error("[Read Error]:", err));
         }
       });
 
       stableSubscriptionRef.current.unsubscribe = unsubscribe;
 
       // Force a re-render to ensure subscription is active
-      setForceUpdate(prev => prev + 1);
+      setForceUpdate((prev) => prev + 1);
     } catch (error) {
       console.error("[Subscription Error]:", error);
       setError("Failed to setup message subscription");
@@ -391,7 +420,7 @@ const ChatScreen = () => {
         hasSubscription: !!stableSubscriptionRef.current.unsubscribe,
         roomId: roomIdRef.current,
         messageCount: currentMessages.length,
-        lastUpdate: new Date().toISOString()
+        lastUpdate: new Date().toISOString(),
       });
     }, 5000); // Log every 5 seconds
 
@@ -404,7 +433,7 @@ const ChatScreen = () => {
       if (!currentUserId || !receivedAgentId) return;
 
       console.log("[Focus] Setting up chat room");
-      
+
       // Only reset setup if we don't have a room ID
       if (!roomIdRef.current) {
         hasSetupRef.current = false;
@@ -424,7 +453,7 @@ const ChatScreen = () => {
       console.log("[SCROLL EFFECT] Scrolling to bottom:", {
         messageCount: currentMessages.length,
         forceUpdate,
-        roomId: roomIdRef.current
+        roomId: roomIdRef.current,
       });
 
       // Small delay to ensure render completes
@@ -449,11 +478,13 @@ const ChatScreen = () => {
         read: false,
       };
 
-      await dispatch(sendMessageAsync({
-        senderId: currentUserId,
-        receiverId: receivedAgentId,
-        content: newMessage.trim(),
-      }));
+      await dispatch(
+        sendMessageAsync({
+          senderId: currentUserId,
+          receiverId: receivedAgentId,
+          content: newMessage.trim(),
+        })
+      );
 
       setNewMessage("");
     } catch (error) {
@@ -465,34 +496,14 @@ const ChatScreen = () => {
   // Mark messages as read when entering chat
   useEffect(() => {
     if (roomIdRef.current && currentUserId) {
-      dispatch(markMessagesAsReadAsync({
-        roomId: roomIdRef.current,
-        userId: currentUserId,
-      })).catch(err => console.error("[Read Error]:", err));
+      dispatch(
+        markMessagesAsReadAsync({
+          roomId: roomIdRef.current,
+          userId: currentUserId,
+        })
+      ).catch((err) => console.error("[Read Error]:", err));
     }
   }, [roomIdRef.current, currentUserId, dispatch]);
-
-  const DebugInfo = () => {
-    const [showDebug, setShowDebug] = useState(__DEV__); // Only show in dev by default
-
-    if (!showDebug) return null;
-
-    return (
-      <TouchableOpacity
-        style={styles.debugContainer}
-        onPress={() => setupChatRoom()}
-      >
-        <Text style={styles.debugText}>
-          Room: {roomIdRef.current?.slice(0, 8)}...{"\n"}
-          Messages: {currentMessages.length}
-          {"\n"}
-          Sub Active: {!!stableSubscriptionRef.current.unsubscribe ? "✓" : "✗"}
-          {"\n"}
-          Updates: {forceUpdate}
-        </Text>
-      </TouchableOpacity>
-    );
-  };
 
   // Check if a partner name is just an ID (no proper name found)
   const isIdOnly = (partnerName: string, partnerId: string): boolean => {
@@ -509,7 +520,12 @@ const ChatScreen = () => {
     if (!currentPartner) return "Chat";
 
     const rawPartnerName = currentPartner?.name || "Unknown";
-    console.log("Raw partner name:", rawPartnerName, "from partner:", currentPartner);
+    console.log(
+      "Raw partner name:",
+      rawPartnerName,
+      "from partner:",
+      currentPartner
+    );
     return rawPartnerName;
   };
 
@@ -589,9 +605,6 @@ const ChatScreen = () => {
   return (
     <SafeAreaView className="flex-1 bg-white">
       <StatusBar backgroundColor="#f8f9fa" barStyle="dark-content" />
-
-      {/* Debug overlay */}
-      <DebugInfo />
 
       {/* Header */}
       <View className="flex-row items-center p-4 border-b border-primary-300">

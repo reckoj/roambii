@@ -11,13 +11,14 @@ import {
   Alert,
 } from "react-native";
 import { router, useLocalSearchParams } from "expo-router";
-import {
-  doc,
-  getDoc,
-} from "firebase/firestore";
+import { doc, getDoc } from "firebase/firestore";
 import { firestore as db, COLLECTIONS } from "@/lib/firebase/firebase-config";
 import { Check, Calendar, Users, MapPin } from "lucide-react-native";
-import { testClientCollectionPermissions, createMinimalClientRecord, createBasicClientRelationship } from "@/lib/client-service";
+import {
+  testClientCollectionPermissions,
+  createMinimalClientRecord,
+  createBasicClientRelationship,
+} from "@/lib/client-service";
 
 // Format date/time helper function
 const formatDateTime = (
@@ -75,8 +76,8 @@ interface BookingDetails {
     _key?: {
       path?: {
         segments?: string[];
-      }
-    }
+      };
+    };
   };
   createdAt?: any;
   updatedAt?: any;
@@ -88,155 +89,143 @@ const BookingConfirmationScreen = () => {
   const [packageData, setPackageData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [debugResults, setDebugResults] = useState<any>(null);
-  const [isDebugging, setIsDebugging] = useState(false);
-  
-  console.log("BookingConfirmation screen loaded with ID:", id);
-  
-  // Test client permissions function
-  const handleTestPermissions = async () => {
-    setIsDebugging(true);
-    try {
-      const results = await testClientCollectionPermissions();
-      console.log("DEBUG - Permission test results:", JSON.stringify(results, null, 2));
-      setDebugResults(results);
-      Alert.alert(
-        "Permission Test Results", 
-        `Auth: ${JSON.stringify(results.auth)}\n\nCan Create: ${results.writes.createClient}`
-      );
-    } catch (error) {
-      console.error("DEBUG - Error testing permissions:", error);
-      Alert.alert("Error Testing Permissions", JSON.stringify(error));
-    } finally {
-      setIsDebugging(false);
-    }
-  };
-  
+
   // Create minimal client record function
   const handleCreateMinimalClient = async () => {
     if (!booking) {
       Alert.alert("Error", "Booking details not available");
       return;
     }
-    
-    setIsDebugging(true);
+
     try {
       const agentId = booking.packageDetails?.agent?.id || "test-agent-id";
       const userId = booking.userId || "test-user-id";
       const bookingId = booking.id;
-      
+
       console.log("DEBUG - Attempting to create minimal client record:", {
         agentId,
         userId,
-        bookingId
+        bookingId,
       });
-      
-      const clientId = await createMinimalClientRecord(agentId, userId, bookingId);
-      
+
+      const clientId = await createMinimalClientRecord(
+        agentId,
+        userId,
+        bookingId
+      );
+
       if (clientId) {
         Alert.alert(
-          "Success", 
+          "Success",
           `Created minimal client record with ID: ${clientId}`
         );
       } else {
         Alert.alert(
-          "Failed", 
+          "Failed",
           "Could not create minimal client record. Check logs for details."
         );
       }
     } catch (error) {
-      console.error("DEBUG - Error creating minimal client:", error);
       Alert.alert("Error Creating Client", JSON.stringify(error));
-    } finally {
-      setIsDebugging(false);
     }
   };
-  
+
   // Create basic client record function (simpler version)
   const handleCreateBasicClient = async () => {
     if (!booking) {
       Alert.alert("Error", "Booking details not available");
       return;
     }
-    
-    setIsDebugging(true);
+
     try {
       const agentId = booking.packageDetails?.agent?.id || "test-agent-id";
       const userId = booking.userId || "test-user-id";
       const bookingId = booking.id;
       const amount = booking.amount || 0;
-      
-      console.log("DEBUG - Attempting to create basic client record (no auth checks):", {
+
+      console.log(
+        "DEBUG - Attempting to create basic client record (no auth checks):",
+        {
+          agentId,
+          userId,
+          bookingId,
+          amount,
+        }
+      );
+
+      const clientId = await createBasicClientRelationship(
         agentId,
         userId,
         bookingId,
         amount
-      });
-      
-      const clientId = await createBasicClientRelationship(agentId, userId, bookingId, amount);
-      
+      );
+
       if (clientId) {
         Alert.alert(
-          "Success", 
+          "Success",
           `Created basic client record with ID: ${clientId}`
         );
       } else {
         Alert.alert(
-          "Failed", 
+          "Failed",
           "Could not create basic client record. Check logs for details."
         );
       }
     } catch (error) {
       console.error("DEBUG - Error creating basic client:", error);
       Alert.alert("Error Creating Basic Client", JSON.stringify(error));
-    } finally {
-      setIsDebugging(false);
     }
   };
-  
+
   useEffect(() => {
     if (!id) {
       setError("Booking ID is missing");
       setLoading(false);
       return;
     }
-    
+
     console.log(`BookingConfirmation screen loaded with ID: ${id}`);
-    
+
     // Check if this ID might be a package ID instead of booking ID
     // This is a workaround for cases where the package ID is passed instead of booking ID
     const fetchBookingByPackageId = async () => {
       try {
-        console.log(`Attempting to find most recent booking for package ID: ${id}`);
+        console.log(
+          `Attempting to find most recent booking for package ID: ${id}`
+        );
         // Try to find the most recent booking for this package
-        
+
         // Since we can't easily query by packageId, let's work around by:
         // 1. First try to get the ID as a booking directly
         const bookingDocRef = doc(db, COLLECTIONS.BOOKINGS, id);
         const bookingSnapshot = await getDoc(bookingDocRef);
-        
+
         if (bookingSnapshot.exists()) {
           // Great! This is actually a booking ID
           console.log(`ID ${id} is a valid booking ID`);
           const bookingData = {
             id: bookingSnapshot.id,
-            ...bookingSnapshot.data()
+            ...bookingSnapshot.data(),
           } as BookingDetails;
           setBooking(bookingData);
-          
+
           // Handle package data if needed
           if (bookingData.packageDetails) {
             console.log("Using embedded packageDetails from booking");
           } else if (bookingData.packageId) {
             try {
               console.log(`Fetching package with ID: ${bookingData.packageId}`);
-              const packageRef = doc(db, COLLECTIONS.PACKAGES, bookingData.packageId);
+              const packageRef = doc(
+                db,
+                COLLECTIONS.PACKAGES,
+                bookingData.packageId
+              );
               const packageSnap = await getDoc(packageRef);
-              
+
               if (packageSnap.exists()) {
                 const packageInfo = {
                   id: packageSnap.id,
-                  ...packageSnap.data()
+                  ...packageSnap.data(),
                 } as { id: string; price?: number };
                 console.log("Fetched package details successfully");
                 setPackageData(packageInfo);
@@ -247,23 +236,25 @@ const BookingConfirmationScreen = () => {
           }
         } else {
           // This ID might be a package ID - attempt to find the most recent booking for this package
-          console.log(`ID ${id} is not a booking ID. Treating it as a package ID.`);
+          console.log(
+            `ID ${id} is not a booking ID. Treating it as a package ID.`
+          );
           // This approach is flawed since we can't query by packageId easily without setting up indices
           // As a workaround, we'll use a placeholder booking
-          
+
           // Try to get package details to at least show something
           try {
             const packageRef = doc(db, COLLECTIONS.PACKAGES, id);
             const packageSnap = await getDoc(packageRef);
-            
+
             if (packageSnap.exists()) {
               console.log("Found package details for ID:", id);
               const packageInfo = {
                 id: packageSnap.id,
-                ...packageSnap.data()
+                ...packageSnap.data(),
               } as { id: string; price?: number };
               setPackageData(packageInfo);
-              
+
               // Create a placeholder booking
               setBooking({
                 id: "placeholder",
@@ -274,9 +265,11 @@ const BookingConfirmationScreen = () => {
                 status: "confirmed",
                 paymentStatus: "paid",
                 paymentMethod: "card",
-                bookingReference: `TEMP${Date.now().toString(36).toUpperCase()}`,
+                bookingReference: `TEMP${Date.now()
+                  .toString(36)
+                  .toUpperCase()}`,
                 amount: packageInfo.price || 0,
-                packageDetails: packageInfo
+                packageDetails: packageInfo,
               });
             } else {
               throw new Error("Package not found");
@@ -293,7 +286,7 @@ const BookingConfirmationScreen = () => {
         setLoading(false);
       }
     };
-    
+
     fetchBookingByPackageId();
   }, [id]);
 
@@ -302,7 +295,7 @@ const BookingConfirmationScreen = () => {
     if (booking?.bookingReference) {
       return booking.bookingReference;
     }
-    
+
     // Fallback to random reference if not available
     const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
     let result = "";
@@ -345,14 +338,18 @@ const BookingConfirmationScreen = () => {
   }
 
   // Prepare display data
-  const displayData = booking || {} as BookingDetails;
-  const displayPackage = packageData || (booking?.packageDetails ? {
-    name: booking.packageDetails.name,
-    type: booking.packageDetails.type,
-    roomType: booking.packageDetails.type,
-    price: booking.packageDetails.price,
-    guestCount: booking.guestCount
-  } : {});
+  const displayData = booking || ({} as BookingDetails);
+  const displayPackage =
+    packageData ||
+    (booking?.packageDetails
+      ? {
+          name: booking.packageDetails.name,
+          type: booking.packageDetails.type,
+          roomType: booking.packageDetails.type,
+          price: booking.packageDetails.price,
+          guestCount: booking.guestCount,
+        }
+      : {});
 
   return (
     <SafeAreaView style={styles.container}>
@@ -379,15 +376,23 @@ const BookingConfirmationScreen = () => {
 
             <View style={styles.packageInfo}>
               <Image
-                source={{ uri: displayPackage.banner_image || displayPackage.image }}
+                source={{
+                  uri: displayPackage.banner_image || displayPackage.image,
+                }}
                 style={styles.packageImage}
                 resizeMode="cover"
-                defaultSource={{ uri: 'https://via.placeholder.com/100x100?text=Package' }}
+                defaultSource={{
+                  uri: "https://via.placeholder.com/100x100?text=Package",
+                }}
               />
 
               <View style={styles.packageDetails}>
-                <Text style={styles.packageName}>{displayPackage.name || "Package"}</Text>
-                <Text style={styles.packageType}>{displayPackage.type || "Standard"}</Text>
+                <Text style={styles.packageName}>
+                  {displayPackage.name || "Package"}
+                </Text>
+                <Text style={styles.packageType}>
+                  {displayPackage.type || "Standard"}
+                </Text>
 
                 <View style={styles.infoRow}>
                   <MapPin size={16} color="#95A5A6" />
@@ -399,7 +404,8 @@ const BookingConfirmationScreen = () => {
                 <View style={styles.infoRow}>
                   <Calendar size={16} color="#95A5A6" />
                   <Text style={styles.infoText}>
-                    {formatDateTime(displayData.checkInDate)} - {formatDateTime(displayData.checkOutDate)}
+                    {formatDateTime(displayData.checkInDate)} -{" "}
+                    {formatDateTime(displayData.checkOutDate)}
                   </Text>
                 </View>
 
@@ -417,12 +423,18 @@ const BookingConfirmationScreen = () => {
             <Text style={styles.paymentTitle}>Payment Information</Text>
             <View style={styles.paymentRow}>
               <Text style={styles.paymentLabel}>Payment Method</Text>
-              <Text style={styles.paymentValue}>{displayData.paymentMethod || "Credit Card (Stripe)"}</Text>
+              <Text style={styles.paymentValue}>
+                {displayData.paymentMethod || "Credit Card (Stripe)"}
+              </Text>
             </View>
             <View style={styles.paymentRow}>
               <Text style={styles.paymentLabel}>Amount Paid</Text>
               <Text style={styles.paymentValue}>
-                ${displayData.amount || (displayPackage ? Math.round((displayPackage.price || 0) * 1.15) : 0)}
+                $
+                {displayData.amount ||
+                  (displayPackage
+                    ? Math.round((displayPackage.price || 0) * 1.15)
+                    : 0)}
               </Text>
             </View>
             <View style={styles.paymentRow}>
@@ -445,50 +457,7 @@ const BookingConfirmationScreen = () => {
           >
             <Text style={styles.primaryButtonText}>Back to Home</Text>
           </TouchableOpacity>
-          
-          {/* Debug buttons */}
-          <View style={styles.debugButtonsRow}>
-            <TouchableOpacity
-              style={[styles.debugButton, styles.debugButtonThird]}
-              onPress={handleTestPermissions}
-              disabled={isDebugging}
-            >
-              <Text style={styles.debugButtonText}>
-                {isDebugging ? "Testing..." : "Test Permissions"}
-              </Text>
-            </TouchableOpacity>
-            
-            <TouchableOpacity
-              style={[styles.debugButton, styles.debugButtonThird]}
-              onPress={handleCreateMinimalClient}
-              disabled={isDebugging || !booking}
-            >
-              <Text style={styles.debugButtonText}>
-                {isDebugging ? "Creating..." : "Create Test Client"}
-              </Text>
-            </TouchableOpacity>
-            
-            <TouchableOpacity
-              style={[styles.debugButton, styles.debugButtonThird]}
-              onPress={handleCreateBasicClient}
-              disabled={isDebugging || !booking}
-            >
-              <Text style={styles.debugButtonText}>
-                {isDebugging ? "Creating..." : "Create Simple Client"}
-              </Text>
-            </TouchableOpacity>
-          </View>
         </View>
-        
-        {/* Show debug results if available */}
-        {debugResults && (
-          <View style={styles.debugResults}>
-            <Text style={styles.debugTitle}>Debug Results</Text>
-            <Text style={styles.debugText}>
-              {JSON.stringify(debugResults, null, 2)}
-            </Text>
-          </View>
-        )}
       </ScrollView>
     </SafeAreaView>
   );

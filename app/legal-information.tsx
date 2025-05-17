@@ -20,7 +20,7 @@ import { useGlobalContext } from "@/lib/global-provider";
 import { updateUserAsync } from "@/lib/redux/slices/authSlice";
 import { ChevronLeft, Calendar, Save } from "lucide-react-native";
 import CustomHeader from "@/components/HeaderComponent";
-import DateTimePicker from '@react-native-community/datetimepicker';
+import DateTimePicker from "@react-native-community/datetimepicker";
 import { User } from "@/lib/firebase/models";
 
 // Interface for legal information
@@ -41,7 +41,7 @@ interface LegalInformation {
 const LegalInformationScreen = () => {
   const dispatch = useDispatch<AppDispatch>();
   const { rawUser, refetch } = useGlobalContext();
-  
+
   // State for form data
   const [legalInfo, setLegalInfo] = useState<LegalInformation>({
     fullName: "",
@@ -56,16 +56,17 @@ const LegalInformationScreen = () => {
     passportNumber: "",
     passportExpiryDate: null,
   });
-  
+
   // State for UI
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [showDOBPicker, setShowDOBPicker] = useState(false);
-  const [showPassportExpiryPicker, setShowPassportExpiryPicker] = useState(false);
-  
+  const [showPassportExpiryPicker, setShowPassportExpiryPicker] =
+    useState(false);
+
   // Load existing data if available
   useEffect(() => {
     const typedUser = rawUser as User | null;
-    
+
     if (typedUser?.legalInformation) {
       // Convert string dates back to Date objects
       const legalInfoWithDates: LegalInformation = {
@@ -78,38 +79,46 @@ const LegalInformationScreen = () => {
         zipCode: typedUser.legalInformation.zipCode || "",
         country: typedUser.legalInformation.country || "",
         passportNumber: typedUser.legalInformation.passportNumber || "",
-        dateOfBirth: typedUser.legalInformation.dateOfBirth ? new Date(typedUser.legalInformation.dateOfBirth) : null,
-        passportExpiryDate: typedUser.legalInformation.passportExpiryDate ? new Date(typedUser.legalInformation.passportExpiryDate) : null,
+        dateOfBirth: typedUser.legalInformation.dateOfBirth
+          ? new Date(typedUser.legalInformation.dateOfBirth)
+          : null,
+        passportExpiryDate: typedUser.legalInformation.passportExpiryDate
+          ? new Date(typedUser.legalInformation.passportExpiryDate)
+          : null,
       };
       setLegalInfo(legalInfoWithDates);
     } else if (typedUser) {
       // Pre-fill with basic user data if available
-      setLegalInfo(prev => ({
+      setLegalInfo((prev) => ({
         ...prev,
         fullName: typedUser.name || "",
         email: typedUser.email || "",
       }));
     }
   }, [rawUser]);
-  
+
   // Handle text input changes
   const handleInputChange = (field: keyof LegalInformation, value: string) => {
-    setLegalInfo(prev => ({ ...prev, [field]: value }));
+    setLegalInfo((prev) => ({ ...prev, [field]: value }));
   };
-  
+
   // Handle date changes
-  const handleDateChange = (event: any, selectedDate: Date | undefined, dateField: 'dateOfBirth' | 'passportExpiryDate') => {
+  const handleDateChange = (
+    event: any,
+    selectedDate: Date | undefined,
+    dateField: "dateOfBirth" | "passportExpiryDate"
+  ) => {
     const currentDate = selectedDate || legalInfo[dateField] || new Date();
-    
-    if (dateField === 'dateOfBirth') {
-      setShowDOBPicker(Platform.OS === 'ios');
+
+    if (dateField === "dateOfBirth") {
+      setShowDOBPicker(Platform.OS === "ios");
     } else {
-      setShowPassportExpiryPicker(Platform.OS === 'ios');
+      setShowPassportExpiryPicker(Platform.OS === "ios");
     }
-    
-    setLegalInfo(prev => ({ ...prev, [dateField]: currentDate }));
+
+    setLegalInfo((prev) => ({ ...prev, [dateField]: currentDate }));
   };
-  
+
   // Form validation
   const isFormValid = () => {
     return (
@@ -119,22 +128,22 @@ const LegalInformationScreen = () => {
       legalInfo.dateOfBirth !== null
     );
   };
-  
+
   // Format date for display
   const formatDate = (date: Date | null) => {
     if (!date) return "Select Date";
     return date.toLocaleDateString();
   };
-  
+
   // Submit legal information
   const handleSubmit = async () => {
     const typedUser = rawUser as User | null;
-    
+
     if (!typedUser?.id) {
       Alert.alert("Error", "User information missing. Please log in again.");
       return;
     }
-    
+
     if (!isFormValid()) {
       Alert.alert(
         "Incomplete Information",
@@ -142,49 +151,53 @@ const LegalInformationScreen = () => {
       );
       return;
     }
-    
+
     try {
       setIsSubmitting(true);
-      
+
       // Convert Date objects to strings for storage
       const legalInfoForStorage = {
         ...legalInfo,
-        dateOfBirth: legalInfo.dateOfBirth ? legalInfo.dateOfBirth.toISOString() : null,
-        passportExpiryDate: legalInfo.passportExpiryDate ? legalInfo.passportExpiryDate.toISOString() : null,
+        dateOfBirth: legalInfo.dateOfBirth
+          ? legalInfo.dateOfBirth.toISOString()
+          : null,
+        passportExpiryDate: legalInfo.passportExpiryDate
+          ? legalInfo.passportExpiryDate.toISOString()
+          : null,
       };
-      
+
       await dispatch(
         updateUserAsync({
           userId: typedUser.id,
           updates: {
-            legalInformation: legalInfoForStorage
-          }
+            legalInformation: legalInfoForStorage,
+          },
         })
       ).unwrap();
-      
+
       // Refresh user data
       await refetch();
-      
+
       Alert.alert(
-        "Success", 
-        "Your legal information has been updated successfully!", 
+        "Success",
+        "Your legal information has been updated successfully!",
         [{ text: "OK", onPress: () => router.back() }]
       );
     } catch (error: any) {
       Alert.alert(
-        "Error", 
+        "Error",
         error.message || "Failed to update legal information"
       );
     } finally {
       setIsSubmitting(false);
     }
   };
-  
+
   return (
-    <SafeAreaView style={styles.container}>
+    <View style={styles.container}>
       <StatusBar style="dark" />
       <CustomHeader title="Legal Information" showBackButton={true} />
-      
+
       <KeyboardAvoidingView
         behavior={Platform.OS === "ios" ? "padding" : "height"}
         style={styles.keyboardAvoidView}
@@ -198,10 +211,12 @@ const LegalInformationScreen = () => {
             <Text style={styles.sectionSubtitle}>
               This information will be shared with agents when you book packages
             </Text>
-            
+
             {/* Full Name */}
             <View style={styles.inputContainer}>
-              <Text style={styles.inputLabel}>Full Name (as shown on ID) *</Text>
+              <Text style={styles.inputLabel}>
+                Full Name (as shown on ID) *
+              </Text>
               <TextInput
                 style={styles.input}
                 value={legalInfo.fullName}
@@ -209,7 +224,7 @@ const LegalInformationScreen = () => {
                 placeholder="Enter your legal full name"
               />
             </View>
-            
+
             {/* Date of Birth */}
             <View style={styles.inputContainer}>
               <Text style={styles.inputLabel}>Date of Birth *</Text>
@@ -227,12 +242,14 @@ const LegalInformationScreen = () => {
                   value={legalInfo.dateOfBirth || new Date()}
                   mode="date"
                   display="default"
-                  onChange={(event, date) => handleDateChange(event, date, 'dateOfBirth')}
+                  onChange={(event, date) =>
+                    handleDateChange(event, date, "dateOfBirth")
+                  }
                   maximumDate={new Date()}
                 />
               )}
             </View>
-            
+
             {/* Email */}
             <View style={styles.inputContainer}>
               <Text style={styles.inputLabel}>Email *</Text>
@@ -245,7 +262,7 @@ const LegalInformationScreen = () => {
                 autoCapitalize="none"
               />
             </View>
-            
+
             {/* Phone Number */}
             <View style={styles.inputContainer}>
               <Text style={styles.inputLabel}>Phone Number *</Text>
@@ -257,9 +274,11 @@ const LegalInformationScreen = () => {
                 keyboardType="phone-pad"
               />
             </View>
-            
-            <Text style={[styles.sectionTitle, styles.addressTitle]}>Address Information</Text>
-            
+
+            <Text style={[styles.sectionTitle, styles.addressTitle]}>
+              Address Information
+            </Text>
+
             {/* Address */}
             <View style={styles.inputContainer}>
               <Text style={styles.inputLabel}>Street Address</Text>
@@ -270,7 +289,7 @@ const LegalInformationScreen = () => {
                 placeholder="Enter your street address"
               />
             </View>
-            
+
             {/* City */}
             <View style={styles.inputContainer}>
               <Text style={styles.inputLabel}>City</Text>
@@ -281,7 +300,7 @@ const LegalInformationScreen = () => {
                 placeholder="Enter your city"
               />
             </View>
-            
+
             {/* State */}
             <View style={styles.inputContainer}>
               <Text style={styles.inputLabel}>State/Province</Text>
@@ -292,7 +311,7 @@ const LegalInformationScreen = () => {
                 placeholder="Enter your state or province"
               />
             </View>
-            
+
             {/* Zip Code */}
             <View style={styles.inputContainer}>
               <Text style={styles.inputLabel}>Zip/Postal Code</Text>
@@ -303,7 +322,7 @@ const LegalInformationScreen = () => {
                 placeholder="Enter your zip/postal code"
               />
             </View>
-            
+
             {/* Country */}
             <View style={styles.inputContainer}>
               <Text style={styles.inputLabel}>Country</Text>
@@ -314,20 +333,24 @@ const LegalInformationScreen = () => {
                 placeholder="Enter your country"
               />
             </View>
-            
-            <Text style={[styles.sectionTitle, styles.passportTitle]}>Travel Documents</Text>
-            
+
+            <Text style={[styles.sectionTitle, styles.passportTitle]}>
+              Travel Documents
+            </Text>
+
             {/* Passport Number */}
             <View style={styles.inputContainer}>
               <Text style={styles.inputLabel}>Passport Number</Text>
               <TextInput
                 style={styles.input}
                 value={legalInfo.passportNumber}
-                onChangeText={(text) => handleInputChange("passportNumber", text)}
+                onChangeText={(text) =>
+                  handleInputChange("passportNumber", text)
+                }
                 placeholder="Enter your passport number"
               />
             </View>
-            
+
             {/* Passport Expiry */}
             <View style={styles.inputContainer}>
               <Text style={styles.inputLabel}>Passport Expiry Date</Text>
@@ -345,12 +368,14 @@ const LegalInformationScreen = () => {
                   value={legalInfo.passportExpiryDate || new Date()}
                   mode="date"
                   display="default"
-                  onChange={(event, date) => handleDateChange(event, date, 'passportExpiryDate')}
+                  onChange={(event, date) =>
+                    handleDateChange(event, date, "passportExpiryDate")
+                  }
                   minimumDate={new Date()}
                 />
               )}
             </View>
-            
+
             <TouchableOpacity
               style={[
                 styles.submitButton,
@@ -371,7 +396,7 @@ const LegalInformationScreen = () => {
           </View>
         </ScrollView>
       </KeyboardAvoidingView>
-    </SafeAreaView>
+    </View>
   );
 };
 
@@ -464,4 +489,4 @@ const styles = StyleSheet.create({
     fontWeight: "600",
     marginLeft: 8,
   },
-}); 
+});

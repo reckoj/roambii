@@ -44,12 +44,12 @@ export default function Login() {
   useEffect(() => {
     console.log("Login Component Mounted");
     console.log("Initial Redux State:", { isLoading, isAuthenticated, error });
-    
+
     // Try to fetch current user on mount to make sure auth is properly initialized
     dispatch(fetchCurrentUserAsync())
       .unwrap()
-      .then(user => console.log("User fetched successfully", user))
-      .catch(err => console.log("No current user", err));
+      .then((user) => console.log("User fetched successfully", user))
+      .catch((err) => console.log("No current user", err));
   }, []);
 
   // Log state changes
@@ -221,15 +221,6 @@ export default function Login() {
                 </Text>
               )}
             </TouchableOpacity>
-
-            {/* Debug Info in Dev mode */}
-            {__DEV__ && (
-              <View className="mt-2 mb-4 p-2 bg-gray-100 rounded">
-                <Text className="text-xs">Redux Loading: {isLoading ? "true" : "false"}</Text>
-                <Text className="text-xs">Local Loading: {localLoading ? "true" : "false"}</Text>
-                <Text className="text-xs">Auth: {isAuthenticated ? "true" : "false"}</Text>
-              </View>
-            )}
 
             {/* Social Login */}
             <View className="mt-6 space-y-4">

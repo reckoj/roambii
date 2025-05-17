@@ -173,9 +173,9 @@ const Bookings = () => {
     const pkg = data.item;
 
     return (
-      <Animated.View
-        entering={FadeIn.duration(400).delay(data.index * 100)}
-        exiting={FadeOut.duration(300)}
+      <View
+      // entering={FadeIn.duration(400).delay(data.index * 100)}
+      // exiting={FadeOut.duration(300)}
       >
         <TouchableOpacity
           style={styles.packageCard}
@@ -257,29 +257,31 @@ const Bookings = () => {
             </View>
           </View>
         </TouchableOpacity>
-      </Animated.View>
+      </View>
     );
   };
 
   // Render header with client relationships button
   const renderHeader = () => (
-    <View style={styles.headerContainer}>
-      <CustomHeader title="My Packages" />
-      <View style={styles.headerActions}>
-        <TouchableOpacity
-          style={styles.clientButton}
-          onPress={handleViewClients}
-        >
-          <UserSquare2 size={20} color="#FFF" />
-          <Text style={styles.clientButtonText}>Clients</Text>
-        </TouchableOpacity>
-        <TouchableOpacity
-          style={styles.createButton}
-          onPress={handleCreatePackage}
-        >
-          <PlusCircle size={20} color="#FFF" />
-          <Text style={styles.createButtonText}>New Package</Text>
-        </TouchableOpacity>
+    <View>
+      <CustomHeader title="My Packages" showBackButton={false} />
+      <View style={styles.headerContainer}>
+        <View style={styles.headerActions}>
+          <TouchableOpacity
+            style={styles.clientButton}
+            onPress={handleViewClients}
+          >
+            <UserSquare2 size={20} color="#FFF" />
+            <Text style={styles.clientButtonText}>Clients</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={styles.createButton}
+            onPress={handleCreatePackage}
+          >
+            <PlusCircle size={20} color="#FFF" />
+            <Text style={styles.createButtonText}>New Package</Text>
+          </TouchableOpacity>
+        </View>
       </View>
     </View>
   );
@@ -297,9 +299,9 @@ const Bookings = () => {
         />
       }
     >
-      <Animated.View
+      <View
         style={styles.emptyContainer}
-        entering={FadeIn.duration(400)}
+        // entering={FadeIn.duration(400)}
       >
         <Image
           source={images.blank}
@@ -320,7 +322,7 @@ const Bookings = () => {
           <PlusCircle color="white" size={20} />
           <Text style={styles.createButtonText}>Create Package</Text>
         </TouchableOpacity>
-      </Animated.View>
+      </View>
     </ScrollView>
   );
 
@@ -613,11 +615,8 @@ const styles = StyleSheet.create({
   },
   headerContainer: {
     paddingHorizontal: 16,
-    paddingTop: 12,
-    paddingBottom: 16,
-    backgroundColor: "#FFF",
-    borderBottomColor: "#EEEEEE",
-    borderBottomWidth: 1,
+
+    paddingBottom: 6,
   },
   headerActions: {
     flexDirection: "row",

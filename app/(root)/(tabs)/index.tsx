@@ -100,9 +100,9 @@ const HomeScreen = () => {
   const handleLoadMore = useCallback(() => {
     const now = Date.now();
     if (
-      !loadingMore && 
-      hasMore && 
-      !refreshing && 
+      !loadingMore &&
+      hasMore &&
+      !refreshing &&
       !isScrolling.current &&
       now - lastLoadMoreTime.current > 1000 // Prevent multiple loads within 1 second
     ) {
@@ -142,21 +142,18 @@ const HomeScreen = () => {
 
   // Handle scroll events
   const handleScroll = useCallback(
-    Animated.event(
-      [{ nativeEvent: { contentOffset: { y: scrollY } } }],
-      {
-        useNativeDriver: true,
-        listener: () => {
-          isScrolling.current = true;
-          if (scrollTimeout.current) {
-            clearTimeout(scrollTimeout.current);
-          }
-          scrollTimeout.current = setTimeout(() => {
-            isScrolling.current = false;
-          }, 200); // Increased debounce time
-        },
-      }
-    ),
+    Animated.event([{ nativeEvent: { contentOffset: { y: scrollY } } }], {
+      useNativeDriver: true,
+      listener: () => {
+        isScrolling.current = true;
+        if (scrollTimeout.current) {
+          clearTimeout(scrollTimeout.current);
+        }
+        scrollTimeout.current = setTimeout(() => {
+          isScrolling.current = false;
+        }, 200); // Increased debounce time
+      },
+    }),
     []
   );
 
@@ -194,7 +191,13 @@ const HomeScreen = () => {
   });
 
   // Custom render functions
-  const renderFeaturedCard = ({ item, index }: { item: any; index: number }) => (
+  const renderFeaturedCard = ({
+    item,
+    index,
+  }: {
+    item: any;
+    index: number;
+  }) => (
     <View style={styles.featuredCardContainer}>
       <FeaturedCard item={item} onPress={() => handleCardPress(item.id)} />
     </View>
@@ -293,7 +296,6 @@ const HomeScreen = () => {
       <Text style={styles.quickActionText}>{title}</Text>
     </TouchableOpacity>
   );
-
   if (isAgent) {
     return <Bookings />;
   }
@@ -307,7 +309,7 @@ const HomeScreen = () => {
       />
 
       {/* Animated Header */}
-      <Animated.View 
+      <Animated.View
         style={[
           styles.header,
           {

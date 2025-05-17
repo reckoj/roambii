@@ -434,8 +434,8 @@ const styles = StyleSheet.create({
     width: 100,
     height: 100,
     borderRadius: 50,
-    borderWidth: 4,
-    borderColor: COLORS.white,
+    // borderWidth: 4,
+    // borderColor: COLORS.white,
   },
   initialsContainer: {
     width: 100,

@@ -7,10 +7,11 @@ import {
   Image,
   ActivityIndicator,
   View,
+  StyleSheet,
 } from "react-native";
 import { getAllAgents } from "@/lib/agent-service";
-import images from "@/constants/images"; // Import default images
 import { useAuth } from "@/lib/auth-context";
+import { User2 } from "lucide-react-native";
 
 const RecommendedAgents = () => {
   const [agents, setAgents] = useState<any[]>([]);
@@ -60,9 +61,11 @@ const RecommendedAgents = () => {
       typeof agent.avatarUrl === "string" &&
       agent.avatarUrl.startsWith("http")
     ) {
-      return { uri: agent.avatar, isImage: true };
+      return { uri: agent.avatarUrl, isImage: true };
     }
-    return { initials: getInitials(agent.name), isImage: false };
+
+    // Return flag indicating no image available
+    return { isImage: false };
   };
 
   // Helper function to get initials for fallback display
@@ -78,7 +81,7 @@ const RecommendedAgents = () => {
 
   if (loading) {
     return (
-      <View className="items-center justify-center py-4">
+      <View style={styles.loadingContainer}>
         <ActivityIndicator size="large" color="#1ABC9C" />
       </View>
     );
@@ -86,8 +89,8 @@ const RecommendedAgents = () => {
 
   if (agents.length === 0) {
     return (
-      <View className="py-4">
-        <Text className="text-center text-gray-500">No agents found</Text>
+      <View style={styles.emptyContainer}>
+        <Text style={styles.emptyText}>No agents found</Text>
       </View>
     );
   }
@@ -96,24 +99,30 @@ const RecommendedAgents = () => {
     <ScrollView
       horizontal
       showsHorizontalScrollIndicator={false}
-      className="flex-row"
+      contentContainerStyle={styles.scrollContainer}
     >
       {agents.map((agent) => (
         <TouchableOpacity
           key={agent.id}
           onPress={() => handleAgentPress(agent.id)}
-          className="mr-4 w-32"
+          style={styles.agentCard}
         >
-          <Image
-            source={getAvatarSource(agent)}
-            className="w-20 h-20 rounded-full mb-2"
-            resizeMode="contain"
-          />
-          <Text className="font-rubik-medium text-base" numberOfLines={1}>
+          {getAvatarSource(agent).isImage ? (
+            <Image
+              source={{ uri: getAvatarSource(agent).uri }}
+              style={styles.profileImage}
+              resizeMode="cover"
+            />
+          ) : (
+            <View style={styles.iconContainer}>
+              <User2 size={30} color="#95A5A6" />
+            </View>
+          )}
+          <Text style={styles.agentName} numberOfLines={1}>
             {agent.name}
           </Text>
           {agent.niche && (
-            <Text className="text-gray-500 text-sm" numberOfLines={1}>
+            <Text style={styles.agentNiche} numberOfLines={1}>
               {agent.niche}
             </Text>
           )}
@@ -122,5 +131,55 @@ const RecommendedAgents = () => {
     </ScrollView>
   );
 };
+
+const styles = StyleSheet.create({
+  scrollContainer: {
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+  },
+  loadingContainer: {
+    alignItems: "center", 
+    justifyContent: "center", 
+    paddingVertical: 16
+  },
+  emptyContainer: {
+    paddingVertical: 16
+  },
+  emptyText: {
+    textAlign: "center",
+    color: "#95A5A6"
+  },
+  agentCard: {
+    marginRight: 16,
+    alignItems: "center",
+    width: 100
+  },
+  iconContainer: {
+    width: 100,
+    height: 100,
+    borderRadius: 50,
+    backgroundColor: "#f1f1f1",
+    justifyContent: "center",
+    alignItems: "center",
+    marginBottom: 8
+  },
+  profileImage: {
+    width: 100,
+    height: 100,
+    borderRadius: 50,
+    marginBottom: 8
+  },
+  agentName: {
+    fontSize: 14,
+    fontWeight: "600",
+    color: "#34495E",
+    textAlign: "center"
+  },
+  agentNiche: {
+    fontSize: 12,
+    color: "#95A5A6",
+    textAlign: "center"
+  }
+});
 
 export default RecommendedAgents;
