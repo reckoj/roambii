@@ -31,7 +31,13 @@ import {
   Dialog,
   Portal,
 } from "react-native-paper";
-import { collection, query, where, getDocs, Timestamp } from "firebase/firestore";
+import {
+  collection,
+  query,
+  where,
+  getDocs,
+  Timestamp,
+} from "firebase/firestore";
 import { firestore, COLLECTIONS } from "../../lib/firebase/firebase-config";
 
 // Define colors locally to avoid import issues
@@ -81,14 +87,16 @@ const ClientsScreen = () => {
       console.log(`Loading clients for agent ID: ${user.id}`);
       let clientsData: Client[] = [];
       let errorMessage = "";
-      
+
       // First try to get clients from the dedicated clients collection
       try {
         clientsData = await getAgentClients(user.id, {
           sortBy,
           sortDirection,
         });
-        console.log(`Found ${clientsData.length} clients in dedicated collection`);
+        console.log(
+          `Found ${clientsData.length} clients in dedicated collection`
+        );
       } catch (error) {
         console.error("Error fetching from clients collection:", error);
         errorMessage += "Failed to query clients collection. ";
@@ -96,56 +104,69 @@ const ClientsScreen = () => {
 
       // If no clients found, try the embedded approach
       if (clientsData.length === 0) {
-        console.log("No clients found in clients collection, trying embedded approach");
-        
+        console.log(
+          "No clients found in clients collection, trying embedded approach"
+        );
+
         try {
           clientsData = await getAgentClientsFromBookings(user.id, {
             sortBy,
             sortDirection,
           });
-          console.log(`Found ${clientsData.length} clients using embedded approach`);
+          console.log(
+            `Found ${clientsData.length} clients using embedded approach`
+          );
         } catch (error) {
           console.error("Error with embedded approach:", error);
           errorMessage += "Failed to query embedded client relationships. ";
-          
+
           // Last resort: Try a different way to get bookings with client relationships
           try {
             // Get all the agent's bookings and filter for client relationships client-side
-            const bookingsCollection = collection(firestore, COLLECTIONS.BOOKINGS);
+            const bookingsCollection = collection(
+              firestore,
+              COLLECTIONS.BOOKINGS
+            );
             const bookingsQuery = query(
               bookingsCollection,
               where("packageDetails.agent.id", "==", user.id)
             );
             const bookingsSnapshot = await getDocs(bookingsQuery);
-            
+
             console.log(`Found ${bookingsSnapshot.size} bookings for agent`);
-            
+
             // Process bookings manually to find client relationships
             const clientMap = new Map<string, Client>();
-            
-            bookingsSnapshot.forEach(doc => {
+
+            bookingsSnapshot.forEach((doc) => {
               const booking = doc.data();
-              if (booking.clientRelationship && booking.clientRelationship.userId) {
+              if (
+                booking.clientRelationship &&
+                booking.clientRelationship.userId
+              ) {
                 const userId = booking.clientRelationship.userId;
                 const existingClient = clientMap.get(userId);
-                
-                const bookingDate = booking.createdAt instanceof Timestamp 
-                  ? booking.createdAt.toDate() 
-                  : new Date(booking.createdAt);
-                  
-                const bookingAmount = booking.payment?.amount || booking.packageDetails?.price || 0;
-                
+
+                const bookingDate =
+                  booking.createdAt instanceof Timestamp
+                    ? booking.createdAt.toDate()
+                    : new Date(booking.createdAt);
+
+                const bookingAmount =
+                  booking.payment?.amount || booking.packageDetails?.price || 0;
+
                 if (existingClient) {
                   // Update existing client
                   existingClient.bookings.push(doc.id);
                   existingClient.totalBookings++;
                   existingClient.totalSpent += bookingAmount;
-                  
+
                   // Update last booking date if newer
-                  const existingDate = existingClient.lastBookingDate instanceof Date
-                    ? existingClient.lastBookingDate
-                    : new Date(0);
-                    
+                  const existingDate =
+                    existingClient.lastBookingDate instanceof Date
+                      ? existingClient.lastBookingDate
+                      : new Date(0);
+
                   if (bookingDate > existingDate) {
                     existingClient.lastBookingDate = bookingDate;
                   }
@@ -159,20 +180,22 @@ const ClientsScreen = () => {
                     totalBookings: 1,
                     totalSpent: bookingAmount,
                     lastBookingDate: bookingDate,
-                    status: 'active',
+                    status: "active",
                     createdAt: bookingDate,
                     updatedAt: bookingDate,
                     contactInfo: booking.clientRelationship.contactInfo || {
                       name: booking.travelerInfo?.fullName || "Unknown",
                       email: booking.travelerInfo?.email || "",
-                    }
+                    },
                   });
                 }
               }
             });
-            
+
             clientsData = Array.from(clientMap.values());
-            console.log(`Found ${clientsData.length} clients using fallback method`);
+            console.log(
+              `Found ${clientsData.length} clients using fallback method`
+            );
           } catch (fallbackError) {
             console.error("Fallback approach also failed:", fallbackError);
             errorMessage += "Fallback method also failed. ";
@@ -182,15 +205,17 @@ const ClientsScreen = () => {
 
       // Security check: filter to only include clients where this agent is the agent
       clientsData = clientsData.filter((client) => client.agentId === user.id);
-      console.log(`After security filtering: ${clientsData.length} clients remain`);
+      console.log(
+        `After security filtering: ${clientsData.length} clients remain`
+      );
 
       setClients(clientsData);
-      
+
       // Show error if all methods failed and no clients were found
       if (clientsData.length === 0 && errorMessage) {
         console.warn("All client fetch methods failed:", errorMessage);
         Alert.alert(
-          "Warning", 
+          "Warning",
           "Some methods to fetch client relationships failed. Results may be incomplete."
         );
       }
@@ -566,7 +591,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "space-between",
     paddingHorizontal: 16,
-    paddingVertical: 12,
+    paddingTop: 32,
     borderBottomWidth: 1,
     borderBottomColor: "#eee",
   },

@@ -27,13 +27,17 @@
       <dict>
         <key>CFBundleURLSchemes</key>
         <array>
-          <string>myapp</string>
-          <string>com.anonymous.roambii</string>
+          <string>roambii</string>
+          <string>com.roambii</string>
         </array>
       </dict>
     </array>
     <key>CFBundleVersion</key>
     <string>1</string>
+    <key>LSApplicationQueriesSchemes</key>
+    <array>
+      <string>roambii</string>
+    </array>
     <key>LSMinimumSystemVersion</key>
     <string>12.0</string>
     <key>LSRequiresIPhoneOS</key>
@@ -45,9 +49,24 @@
       <key>NSAllowsLocalNetworking</key>
       <true/>
     </dict>
+    <key>NSCameraUsageDescription</key>
+    <string>Allow $(PRODUCT_NAME) to access your camera</string>
+    <key>NSMicrophoneUsageDescription</key>
+    <string>Allow $(PRODUCT_NAME) to access your microphone</string>
+    <key>NSPhotoLibraryUsageDescription</key>
+    <string>Allow $(PRODUCT_NAME) to access your photos</string>
     <key>NSUserActivityTypes</key>
     <array>
       <string>$(PRODUCT_BUNDLE_IDENTIFIER).expo.index_route</string>
+    </array>
+    <key>UIAppFonts</key>
+    <array>
+      <string>Rubik-Bold.ttf</string>
+      <string>Rubik-ExtraBold.ttf</string>
+      <string>Rubik-SemiBold.ttf</string>
+      <string>Rubik-Medium.ttf</string>
+      <string>Rubik-Regular.ttf</string>
+      <string>Rubik-Light.ttf</string>
     </array>
     <key>UILaunchStoryboardName</key>
     <string>SplashScreen</string>
@@ -75,9 +94,5 @@
     <string>Automatic</string>
     <key>UIViewControllerBasedStatusBarAppearance</key>
     <false/>
-    <key>NSPhotoLibraryUsageDescription</key>
-    <string>Roambii needs access to your photo library to upload profile pictures and package images.</string>
-    <key>NSCameraUsageDescription</key>
-    <string>Roambii needs access to your camera to take photos for your profile and travel packages.</string>
   </dict>
 </plist>

@@ -22,6 +22,7 @@ import {
   clearAuthError,
   updatePasswordAsync,
 } from "@/lib/redux/slices/authSlice";
+import CustomHeader from "@/components/HeaderComponent";
 
 const UpdatePassword = () => {
   // Redux
@@ -147,7 +148,8 @@ const UpdatePassword = () => {
   };
 
   return (
-    <SafeAreaView style={styles.container}>
+    <View style={styles.container}>
+      <CustomHeader title="Update Password" showBackButton />
       <KeyboardAvoidingView
         behavior={Platform.OS === "ios" ? "padding" : "height"}
         style={styles.container}
@@ -157,16 +159,6 @@ const UpdatePassword = () => {
           showsVerticalScrollIndicator={false}
         >
           {/* Header */}
-          <View style={styles.header}>
-            <TouchableOpacity
-              onPress={() => router.back()}
-              style={styles.backButton}
-            >
-              <ArrowLeft size={24} color="#333" />
-            </TouchableOpacity>
-            <Text style={styles.headerTitle}>Update Password</Text>
-            <View style={{ width: 24 }} />
-          </View>
 
           <View style={styles.content}>
             <Text style={styles.subtitle}>
@@ -324,7 +316,7 @@ const UpdatePassword = () => {
           </View>
         </ScrollView>
       </KeyboardAvoidingView>
-    </SafeAreaView>
+    </View>
   );
 };
 
