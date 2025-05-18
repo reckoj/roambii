@@ -29,7 +29,7 @@ import NoResults from "@/components/NoResults";
 import { Card } from "@/components/Cards";
 import images from "@/constants/images";
 import { useGlobalContext } from "@/lib/global-provider";
-import { getAgentById, getAgentPackages } from "@/lib/agent-service";
+import { agentService } from "@/lib/services";
 import { Agent } from "@/lib/firebase/models";
 import ReviewsList from "@/components/ReviewsList";
 import { Fragment } from "react";
@@ -73,7 +73,7 @@ const AgentProfile = () => {
       if (agentId) {
         try {
           setLoading(true);
-          const data = await getAgentById(String(agentId));
+          const data = await agentService.getAgentById(String(agentId));
 
           if (data) {
             setAgent(data);
@@ -108,7 +108,7 @@ const AgentProfile = () => {
       if (agentId) {
         try {
           setLoadingPackages(true);
-          const agentPackages = await getAgentPackages(agentId);
+          const agentPackages = await agentService.getAgentPackages(agentId);
           setPackages(agentPackages);
         } catch (error) {
           console.error("Error fetching agent's packages:", error);
@@ -147,17 +147,12 @@ const AgentProfile = () => {
   }
 
   const handleContact = async () => {
-    console.log("Starting chat with agent:", agent?.id);
-    console.log("Current user:", rawUser?.id);
-
     if (!agent) {
-      console.error("Agent data is missing");
       Alert.alert("Error", "Cannot start chat. Agent data is missing.");
       return;
     }
 
     if (!rawUser) {
-      console.error("User data is missing");
       Alert.alert("Error", "Please sign in to start a chat with the agent.", [
         {
           text: "Sign In",
@@ -172,11 +167,8 @@ const AgentProfile = () => {
     }
 
     try {
-      // Generate consistent room ID between user and agent
       const userID = rawUser.id;
       const agentID = agent.id;
-
-      console.log("Creating chat room with IDs:", { userID, agentID });
 
       router.push({
         pathname: "/chatScreen",
@@ -190,36 +182,23 @@ const AgentProfile = () => {
         },
       });
     } catch (error) {
-      console.error("Error starting chat:", error);
       Alert.alert("Error", "Failed to start chat. Please try again.");
     }
   };
 
   const handleCardPress = (id: string) => {
-    console.log("Original ID received:", id);
-    console.log("Type of ID:", typeof id);
-
-    // Check if id exists and is a string
     if (!id) {
-      console.error("ID is undefined or null");
       Alert.alert("Error", "Cannot navigate - package ID is missing");
       return;
     }
 
-    // Get the ID in the correct format
     const propertyId = id.startsWith("$") ? id.substring(1) : id;
-    console.log("Processed property ID:", propertyId);
 
-    // Log the full item for debugging
-    // console.log("Full item data structure:", JSON.stringify(item, null, 2));
-
-    // Try direct navigation
     console.log("Attempting navigation to:", `/properties/${propertyId}`);
     router.push(`/properties/${propertyId}`);
   };
 
   const handleShareProfile = () => {
-    // Implement share functionality here
     Alert.alert("Share", "Share agent profile functionality coming soon!");
   };
 
@@ -244,12 +223,10 @@ const AgentProfile = () => {
       return images.avatar;
     }
 
-    // Check if the avatar is a valid URL
     if (typeof agent.avatar === "string" && agent.avatar.startsWith("http")) {
       return { uri: agent.avatar };
     }
 
-    // Default fallback
     return images.avatar;
   };
 
@@ -282,7 +259,6 @@ const AgentProfile = () => {
     <View style={styles.container}>
       <StatusBar barStyle="light-content" />
 
-      {/* Header with gradient */}
       <LinearGradient
         colors={[COLORS.primary, COLORS.primaryLight]}
         start={{ x: 0, y: 0 }}
@@ -315,7 +291,6 @@ const AgentProfile = () => {
         style={styles.scrollContent}
         contentContainerStyle={styles.contentContainer}
       >
-        {/* Agent info section with profile picture */}
         <View style={styles.profileInfoContainer}>
           <View style={styles.profileImageContainer}>
             <Image

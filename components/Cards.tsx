@@ -1,11 +1,16 @@
 import icons from "@/constants/icons";
 import { Image, Text, TouchableOpacity, View, StyleSheet } from "react-native";
-import { Models } from "react-native-appwrite";
-import { storage, config } from "@/lib/appwrite";
+
+// Firebase document interface to replace Appwrite Models.Document
+interface FirebaseDocument {
+  id: string;
+  [key: string]: any;
+};
+import { storage } from "@/lib/firebase/firebase-config";
 import images from "@/constants/images";
 
 interface Props {
-  item: Models.Document;
+  item: FirebaseDocument;
   onPress?: () => void;
 }
 

@@ -18,7 +18,7 @@ import {
 import { v4 as uuidv4 } from "uuid";
 import {
   firestore,
-  database,
+  firebaseDb as database,
   storage,
   COLLECTIONS,
 } from "../lib/firebase/firebase-config";

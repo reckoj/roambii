@@ -9,8 +9,8 @@ import {
   View,
   StyleSheet,
 } from "react-native";
-import { getAllAgents } from "@/lib/agent-service";
-import { useAuth } from "@/lib/auth-context";
+import { agentService } from "@/lib/services";
+import { useAuth } from "@/lib/context/auth-context";
 import { User2 } from "lucide-react-native";
 
 const RecommendedAgents = () => {
@@ -23,7 +23,7 @@ const RecommendedAgents = () => {
       try {
         setLoading(true);
         // Use Firebase function to get all agents, limit to 10 for recommended list
-        const data = await getAllAgents({ limit: 10 });
+        const data = await agentService.getAllAgents({ limit: 10 });
         console.log("Fetched agents:", data.length);
         setAgents(data || []);
       } catch (error) {

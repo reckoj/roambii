@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import React, { useState, useEffect } from "react";
 import {
   View,
   Text,
@@ -12,8 +12,8 @@ import {
 } from "react-native";
 import { Star } from "lucide-react-native";
 import { useGlobalContext } from "@/lib/global-provider";
-import { ID, Query, Permission, Role } from "react-native-appwrite";
-import { config, databases } from "@/lib/appwrite";
+import { firestore } from "@/lib/firebase/firebase-config";
+import { collection, query, where, getDocs, doc as firestoreDoc, getDoc, addDoc, orderBy, limit } from "firebase/firestore"; 
 import CustomInput from "./CustomInput";
 import images from "@/constants/images";
 
@@ -26,7 +26,8 @@ interface Review {
   createdAt: string;
   author: string;
   avatar: string;
-  $permissions?: string[];
+  // Firebase uses security rules instead of permissions field
+  permissions?: string[];
 }
 
 interface AgentReviewsProps {
@@ -63,11 +64,7 @@ const AgentReviews: React.FC<AgentReviewsProps> = ({ agentId }) => {
       const userReview = reviews.find(
         (review) =>
           // Check if user ID is in users array
-          (Array.isArray(review.users) && review.users.includes(rawUser.id)) ||
-          // Or check permissions (as a fallback)
-          (review.$permissions &&
-            Array.isArray(review.$permissions) &&
-            review.$permissions.some((p) => p.includes(`user:${rawUser.id}`)))
+          Array.isArray(review.users) && review.users.includes(rawUser.id)
       );
 
       setUserHasReviewed(!!userReview);
@@ -80,17 +77,25 @@ const AgentReviews: React.FC<AgentReviewsProps> = ({ agentId }) => {
       console.log("\n=== FETCHING REVIEWS ===");
       setLoading(true);
 
-      // Get all reviews
-      const response = await databases.listDocuments(
-        config.databaseId!,
-        config.agentReviewsCollectionId!,
-        [Query.limit(100)]
+      // Get all reviews using Firebase
+      const reviewsRef = collection(firestore, 'agentReviews');
+      const reviewsQuery = query(
+        reviewsRef,
+        where('agentId', '==', agentId),
+        orderBy('createdAt', 'desc'),
+        limit(100)
       );
+      
+      const querySnapshot = await getDocs(reviewsQuery);
+      const allReviews = querySnapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data()
+      } as Review));
 
-      console.log(`Found ${response.documents.length} total reviews`);
+      console.log(`Found ${allReviews.length} total reviews`);
 
       // Check how many reviews have non-null agentId
-      const reviewsWithNonNullAgentId = response.documents.filter(
+      const reviewsWithNonNullAgentId = allReviews.filter(
         (doc) => doc.agentId !== null
       );
       console.log(
@@ -114,66 +119,10 @@ const AgentReviews: React.FC<AgentReviewsProps> = ({ agentId }) => {
         JSON.stringify(reviewDetails, null, 2)
       );
 
-      // IMPORTANT FIX: Check for direct string match with the agentId field
-      // This is the case when we create reviews with the direct format
-      const matchingReviews = response.documents.filter((doc) => {
-        // Check for direct string equality
-        if (doc.agentId === agentId) {
-          console.log(
-            `✅ MATCH found for review ${doc.id} - direct string match`
-          );
-          return true;
-        }
-
-        // For array format
-        if (
-          Array.isArray(doc.agentId) &&
-          doc.agentId.some((id) =>
-            typeof id === "string" ? id === agentId : id?.id === agentId
-          )
-        ) {
-          console.log(
-            `✅ MATCH found for review ${doc.id} - array contains match`
-          );
-          return true;
-        }
-
-        // For object format
-        if (
-          typeof doc.agentId === "object" &&
-          doc.agentId !== null &&
-          doc.agentId.id === agentId
-        ) {
-          console.log(`✅ MATCH found for review ${doc.id} - object id match`);
-          return true;
-        }
-
-        return false;
-      });
-
-      console.log(
-        `Found ${matchingReviews.length} matching reviews for agent ${agentId}`
-      );
-
-      // Update debug info
-      setDebugInfo({
-        agentId,
-        totalReviews: response.documents.length,
-        nonNullReviews: reviewsWithNonNullAgentId.length,
-        matchingReviews: matchingReviews.length,
-        reviewDetails,
-      });
-
-      // Sort by date, newest first
-      matchingReviews.sort(
-        (a, b) =>
-          new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
-      );
-
       // Process reviews to include user data
       const processedReviews = await Promise.all(
-        matchingReviews.map(async (doc) => {
-          console.log(`Processing review: ${doc.id}`);
+        allReviews.map(async (review) => {
+          console.log(`Processing review: ${review.id}`);
 
           // Default user data
           let userData = {
@@ -184,29 +133,11 @@ const AgentReviews: React.FC<AgentReviewsProps> = ({ agentId }) => {
           // Try to get user info
           let userId = null;
 
-          // Check permissions as main source of user ID
-          if (doc.$permissions && Array.isArray(doc.$permissions)) {
-            const userPerm = doc.$permissions.find((p) => p.includes("user:"));
-            if (userPerm) {
-              const match = userPerm.match(/user:([^")\s]+)/);
-              if (match) {
-                userId = match[1];
-                console.log(`Found user ID in permissions: ${userId}`);
-              }
-            }
-          }
-
-          // Check users array as fallback
-          if (
-            !userId &&
-            doc.users &&
-            Array.isArray(doc.users) &&
-            doc.users.length > 0
-          ) {
-            userId =
-              typeof doc.users[0] === "string"
-                ? doc.users[0]
-                : doc.users[0]?.id;
+          // Check users array for user ID
+          if (review.users && Array.isArray(review.users) && review.users.length > 0) {
+            userId = typeof review.users[0] === "string" 
+              ? review.users[0] 
+              : (review.users[0] as any)?.id;
             if (userId) {
               console.log(`Found user ID in users array: ${userId}`);
             }
@@ -215,14 +146,12 @@ const AgentReviews: React.FC<AgentReviewsProps> = ({ agentId }) => {
           // If we found a user ID, try to get user info
           if (userId) {
             try {
-              // Try direct lookup by ID
-              const userDoc = await databases.getDocument(
-                config.databaseId!,
-                config.usersCollectionId!,
-                userId
-              );
-
-              if (userDoc) {
+              // Get user document from Firestore
+              const userDocRef = firestoreDoc(firestore, 'users', userId);
+              const userSnapshot = await getDoc(userDocRef);
+              
+              if (userSnapshot.exists()) {
+                const userDoc = userSnapshot.data() as any;
                 console.log(`Found user by ID: ${userDoc.name}`);
                 userData = {
                   name: userDoc.name || "Anonymous",
@@ -230,27 +159,20 @@ const AgentReviews: React.FC<AgentReviewsProps> = ({ agentId }) => {
                 };
               }
             } catch (error) {
-              console.log(
-                `Error fetching user by ID, trying userId field: ${error}`
-              );
-
-              // Try userId field as fallback
+              console.log(`Error fetching user by ID: ${error}`);
+              
+              // Try querying by userId field as fallback
               try {
-                const usersResponse = await databases.listDocuments(
-                  config.databaseId!,
-                  config.usersCollectionId!,
-                  [Query.equal("userId", userId)]
-                );
-
-                if (usersResponse.documents.length > 0) {
-                  console.log(
-                    `Found user by userId field: ${usersResponse.documents[0].name}`
-                  );
+                const usersRef = collection(firestore, 'users');
+                const userQuery = query(usersRef, where('userId', '==', userId));
+                const userQuerySnapshot = await getDocs(userQuery);
+                
+                if (!userQuerySnapshot.empty) {
+                  const userDoc = userQuerySnapshot.docs[0].data() as any;
+                  console.log(`Found user by userId field: ${userDoc.name}`);
                   userData = {
-                    name: usersResponse.documents[0].name || "Anonymous",
-                    avatar:
-                      usersResponse.documents[0].avatar ||
-                      "https://via.placeholder.com/40",
+                    name: userDoc.name || "Anonymous",
+                    avatar: userDoc.avatar || "https://via.placeholder.com/40",
                   };
                 }
               } catch (secondError) {
@@ -261,34 +183,27 @@ const AgentReviews: React.FC<AgentReviewsProps> = ({ agentId }) => {
 
           // Return formatted review
           return {
-            id: doc.id,
-            users: doc.users || [],
-            agentId: doc.agentId || agentId,
-            agentRating: doc.agentRating || 0,
-            comment: doc.comment || "",
-            createdAt: doc.createdAt || new Date().toISOString(),
+            id: review.id,
+            users: review.users || [],
+            agentId: review.agentId || agentId,
+            agentRating: review.agentRating || 0,
+            comment: review.comment || "",
+            createdAt: review.createdAt || new Date().toISOString(),
             author: userData.name,
             avatar: userData.avatar,
-            $permissions: doc.$permissions || [],
+            permissions: [], // Firebase doesn't use $permissions
           };
         })
       );
 
-      console.log(
-        `Processed ${processedReviews.length} reviews with user data`
-      );
+      console.log(`Processed ${processedReviews.length} reviews with user data`);
 
       // Check if current user has already reviewed
       if (rawUser) {
         const hasReviewed = processedReviews.some(
-          (review) =>
+          (review) => 
             // Check if user ID is in users array
-            (Array.isArray(review.users) &&
-              review.users.includes(rawUser.id)) ||
-            // Or check permissions (as a fallback)
-            (review.$permissions &&
-              Array.isArray(review.$permissions) &&
-              review.$permissions.some((p) => p.includes(`user:${rawUser.id}`)))
+            Array.isArray(review.users) && review.users.includes(rawUser.id)
         );
 
         setUserHasReviewed(hasReviewed);
@@ -328,11 +243,9 @@ const AgentReviews: React.FC<AgentReviewsProps> = ({ agentId }) => {
       console.log(`Agent ID: ${agentId}`);
       console.log(`User ID: ${rawUser.id}`);
 
-      // Create with direct agentId format (which we know works)
-      console.log("Creating review with direct agentId format");
-
+      // Create review with Firebase
       const reviewData = {
-        agentId: agentId, // Direct string assignment
+        agentId: agentId,
         agentRating: rating,
         comment,
         createdAt: new Date().toISOString(),
@@ -341,23 +254,15 @@ const AgentReviews: React.FC<AgentReviewsProps> = ({ agentId }) => {
 
       console.log("Review data:", JSON.stringify(reviewData));
 
-      const newReview = await databases.createDocument(
-        config.databaseId!,
-        config.agentReviewsCollectionId!,
-        ID.unique(),
-        reviewData,
-        [
-          Permission.read(Role.any()),
-          Permission.update(Role.user(rawUser.id)),
-          Permission.delete(Role.user(rawUser.id)),
-        ]
-      );
+      // Add review to Firestore
+      const reviewsRef = collection(firestore, 'agentReviews');
+      const newReviewDoc = await addDoc(reviewsRef, reviewData);
 
-      console.log(`Review created successfully with ID: ${newReview.id}`);
+      console.log(`Review created successfully with ID: ${newReviewDoc.id}`);
 
       // Format for display
       const formattedReview: Review = {
-        id: newReview.id,
+        id: newReviewDoc.id,
         users: [rawUser.id],
         agentId: agentId,
         agentRating: rating,
@@ -365,6 +270,7 @@ const AgentReviews: React.FC<AgentReviewsProps> = ({ agentId }) => {
         createdAt: new Date().toISOString(),
         author: rawUser.name || "Anonymous",
         avatar: rawUser.avatar!,
+        permissions: [],
       };
 
       // Update local state

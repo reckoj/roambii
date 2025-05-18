@@ -137,14 +137,18 @@ const ItineraryDetail = () => {
     setLoading(true);
     try {
       const data = await getItineraryWithDetails(id);
+      if (!data) {
+        throw new Error("Failed to load itinerary data");
+      }
+      
       setItineraryData(data);
       setEditedTitle(data.itinerary.title);
 
       // Initialize expanded state for all days
       const expanded: Record<string, boolean> = {};
       data.dayPlans.forEach((dayPlan) => {
-        if (dayPlan.$id) {
-          expanded[dayPlan.$id] = true; // Start with all days expanded
+        if (dayPlan.id) {
+          expanded[dayPlan.id] = true; // Start with all days expanded
         }
       });
       setExpandedDays(expanded);
@@ -199,7 +203,7 @@ const ItineraryDetail = () => {
     setActivityTitle(activity.title);
     setActivityTime(activity.time);
     setActivityType(activity.type);
-    setActivityNotes(activity.notes);
+    setActivityNotes(activity.notes || "");
     setActivityModal(true);
   };
 
@@ -213,7 +217,7 @@ const ItineraryDetail = () => {
 
   // Save activity
   const handleSaveActivity = async () => {
-    if (!selectedDayPlan || !selectedDayPlan.$id) return;
+    if (!selectedDayPlan || !selectedDayPlan.id) return;
 
     if (!activityTitle.trim()) {
       Alert.alert("Error", "Please enter an activity title");
@@ -221,14 +225,14 @@ const ItineraryDetail = () => {
     }
 
     try {
-      const activityData: Activity = {
-        dayPlansId: selectedDayPlan.$id,
+      const activityData = {
+        dayPlanId: selectedDayPlan.id,
         time: activityTime,
         title: activityTitle.trim(),
         type: activityType,
         notes: activityNotes.trim(),
-        ...(currentActivity?.$id ? { $id: currentActivity.$id } : {}),
-      };
+        ...(currentActivity?.id ? { id: currentActivity.id } : {}),
+      } as Omit<Activity, "createdAt" | "updatedAt"> & { id?: string };
 
       await saveActivity(activityData);
       setActivityModal(false);
@@ -407,8 +411,8 @@ const ItineraryDetail = () => {
           <View style={styles.dateRangeContainer}>
             <Calendar size={16} color={COLORS.primary} />
             <Text style={styles.dateRangeText}>
-              {formatDate(itineraryData.itinerary.start_date)} -{" "}
-              {formatDate(itineraryData.itinerary.end_date)}
+              {formatDate(itineraryData.itinerary.startDate.toString())} -{" "}
+              {formatDate(itineraryData.itinerary.endDate.toString())}
             </Text>
           </View>
 
@@ -426,11 +430,11 @@ const ItineraryDetail = () => {
           showsVerticalScrollIndicator={false}
         >
           {itineraryData.dayPlans.map((dayPlan, index) => (
-            <View key={dayPlan.$id || index} style={styles.dayCard}>
+            <View key={dayPlan.id || index} style={styles.dayCard}>
               {/* Day Header */}
               <TouchableOpacity
                 style={styles.dayHeader}
-                onPress={() => dayPlan.$id && toggleDayExpansion(dayPlan.$id)}
+                onPress={() => dayPlan.id && toggleDayExpansion(dayPlan.id)}
               >
                 <View style={styles.dayNumberBadge}>
                   <Text style={styles.dayNumberText}>Day {dayPlan.day}</Text>
@@ -438,7 +442,7 @@ const ItineraryDetail = () => {
 
                 <View style={styles.dayHeaderContent}>
                   <Text style={styles.dayDateText}>
-                    {formatDate(dayPlan.date)}
+                    {formatDate(dayPlan.date.toString())}
                   </Text>
 
                   <View style={styles.dayHeaderRight}>
@@ -448,7 +452,7 @@ const ItineraryDetail = () => {
                         ? "activity"
                         : "activities"}
                     </Text>
-                    {dayPlan.$id && expandedDays[dayPlan.$id] ? (
+                    {dayPlan.id && expandedDays[dayPlan.id] ? (
                       <ChevronUp size={16} color={COLORS.textLight} />
                     ) : (
                       <ChevronDown size={16} color={COLORS.textLight} />
@@ -458,7 +462,7 @@ const ItineraryDetail = () => {
               </TouchableOpacity>
 
               {/* Activities List */}
-              {dayPlan.$id && expandedDays[dayPlan.$id] && (
+              {dayPlan.id && expandedDays[dayPlan.id] && (
                 <View style={styles.activitiesContainer}>
                   {dayPlan.activities.length === 0 ? (
                     <Text style={styles.noActivitiesText}>
@@ -467,7 +471,7 @@ const ItineraryDetail = () => {
                   ) : (
                     getSortedActivities(dayPlan.activities).map((activity) => (
                       <TouchableOpacity
-                        key={activity.$id || `temp-${Math.random()}`}
+                        key={activity.id || `temp-${Math.random()}`}
                         style={styles.activityItem}
                         onPress={() =>
                           isAuthorized() &&
@@ -507,7 +511,7 @@ const ItineraryDetail = () => {
                           ) : null}
                         </View>
 
-                        {isAuthorized() && activity.$id && (
+                        {isAuthorized() && activity.id && (
                           <TouchableOpacity
                             style={styles.activityDeleteButton}
                             onPress={() => handleDeleteActivity(activity)}

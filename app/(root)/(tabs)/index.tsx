@@ -18,7 +18,7 @@ import images from "@/constants/images";
 import NoResults from "@/components/NoResults";
 import { FeaturedCard } from "@/components/Cards";
 import { useGlobalContext } from "@/lib/global-provider";
-import RecommendedAgents from "@/components/RecommendedAgents";
+import RecommendedAgents from '@/app/components/agents/RecommendedAgents';
 import Bookings from "@/app/bookings";
 import { Calendar, Home, MapPin, Heart, SearchIcon } from "lucide-react-native";
 

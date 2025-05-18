@@ -2,10 +2,15 @@ import { View, Text, Image } from "react-native";
 
 import images from "@/constants/images";
 import icons from "@/constants/icons";
-import { Models } from "react-native-appwrite";
+
+// Firebase document interface to replace Appwrite Models.Document
+interface FirebaseDocument {
+  id: string;
+  [key: string]: any;
+};
 
 interface Props {
-  item: Models.Document;
+  item: FirebaseDocument;
 }
 
 const Comment = ({ item }: Props) => {
@@ -34,7 +39,7 @@ const Comment = ({ item }: Props) => {
           </Text>
         </View>
         <Text className="text-black-100 text-sm font-rubik">
-          {new Date(item.$createdAt).toDateString()}
+          {new Date(item.createdAt).toDateString()}
         </Text>
       </View>
     </View>

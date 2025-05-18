@@ -138,7 +138,6 @@ export const getItineraryWithDetails = async (
 
     const itinerary: Itinerary = {
       id: itineraryDoc.id,
-      userId: itineraryData.userId,
       ...itineraryData,
       startDate: convertTimestampToDate(itineraryData.startDate),
       endDate: convertTimestampToDate(itineraryData.endDate),
@@ -284,6 +283,13 @@ export const getUserItineraries = async (
         }
       });
 
+      // Sort by createdAt
+      itineraries.sort((a, b) => {
+        const dateA = convertTimestampToDate(a.createdAt);
+        const dateB = convertTimestampToDate(b.createdAt);
+        return dateB.getTime() - dateA.getTime();
+      });
+
       console.log(`Successfully fetched ${itineraries.length} itineraries for user ${userId}`);
       return itineraries;
     } catch (error: any) {
@@ -323,9 +329,11 @@ export const getUserItineraries = async (
         });
 
         // Sort by createdAt
-        itineraries.sort((a, b) => 
-          b.createdAt.getTime() - a.createdAt.getTime()
-        );
+        itineraries.sort((a, b) => {
+          const dateA = convertTimestampToDate(a.createdAt);
+          const dateB = convertTimestampToDate(b.createdAt);
+          return dateB.getTime() - dateA.getTime();
+        });
 
         console.log(`Successfully fetched ${itineraries.length} itineraries using fallback method`);
         return itineraries;

@@ -48,3 +48,67 @@ Join our community of developers creating universal apps.
 
 - [Expo on GitHub](https://github.com/expo/expo): View our open source platform and contribute.
 - [Discord community](https://chat.expo.dev): Chat with Expo users and ask questions.
+
+# Roambii
+
+## Project Overview
+
+Roambii is a travel platform connecting travelers with local agents for personalized travel experiences.
+
+## Project Structure
+
+Please see [PROJECT_STRUCTURE.md](PROJECT_STRUCTURE.md) for details on the new organized project structure.
+
+## Development Setup
+
+```bash
+# Install dependencies
+npm install
+
+# Start the development server
+npm start
+
+# Run on iOS simulator
+npm run ios
+
+# Run on Android simulator
+npm run android
+```
+
+## Migration Scripts
+
+The project is being reorganized to a more maintainable structure. Use these scripts to help with the migration:
+
+```bash
+# Migrate components to new directories
+node scripts/migrate-components.js
+
+# Update import paths in your files
+node scripts/update-imports.js
+```
+
+## Importing Components
+
+Use the new import paths for components:
+
+```javascript
+// Import from feature directories
+import { RecommendedAgents } from '@/app/components/agents';
+
+// Import services
+import { getAllAgents } from '@/lib/services';
+```
+
+## Testing
+
+```bash
+# Run tests
+npm test
+```
+
+## Contributing
+
+1. Follow the project structure guidelines in PROJECT_STRUCTURE.md
+2. Use the provided components and services
+3. Add new components to the appropriate directories
+4. Update the index.ts files when adding new components

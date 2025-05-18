@@ -300,7 +300,7 @@ const ItineraryDetail = () => {
     setActivityTitle(activity.title);
     setActivityTime(activity.time);
     setActivityType(activity.type);
-    setActivityNotes(activity.notes);
+    setActivityNotes(activity.notes || "");
     setActivityModal(true);
   };
 
@@ -325,7 +325,7 @@ const ItineraryDetail = () => {
     setIsSavingActivity(true);
     try {
       const capitalizedType = activityType.charAt(0).toUpperCase() + activityType.slice(1);
-      const activityData: Activity = {
+      const activityData: Partial<Activity> = {
         dayPlanId: selectedDayPlan.id,
         time: activityTime,
         title: activityTitle.trim(),
@@ -347,12 +347,21 @@ const ItineraryDetail = () => {
         // Add new activity
         setLocalActivities(prev => ({
           ...prev,
-          [selectedDayPlan.id]: [...(prev[selectedDayPlan.id] || []), { ...activityData, id: 'temp-' + Date.now() }]
+          [selectedDayPlan.id]: [...(prev[selectedDayPlan.id] || []), { 
+            id: 'temp-' + Date.now(),
+            dayPlanId: selectedDayPlan.id,
+            time: activityTime,
+            title: activityTitle.trim(),
+            type: capitalizedType,
+            notes: activityNotes.trim(),
+            createdAt: new Date(),
+            updatedAt: new Date()
+          } as Activity]
         }));
       }
 
       // Save to backend
-      const savedActivity = await saveActivity(activityData);
+      const savedActivity = await saveActivity(activityData as Omit<Activity, "createdAt" | "updatedAt"> & { id?: string });
       if (savedActivity) {
         // Update with the real activity data
         setLocalActivities(prev => ({
@@ -643,7 +652,7 @@ const ItineraryDetail = () => {
       return;
     }
 
-    if (!itineraryData?.itinerary.$id) {
+    if (!itineraryData?.itinerary.id) {
       Alert.alert("Error", "Unable to share itinerary");
       return;
     }
@@ -661,7 +670,7 @@ const ItineraryDetail = () => {
         return;
       }
 
-      await shareItinerary(itineraryData.itinerary.$id, userIdToShare);
+      await shareItinerary(itineraryData.itinerary.id, userIdToShare);
       Alert.alert("Success", "Itinerary shared successfully!");
       setShareModalVisible(false);
 
@@ -744,8 +753,8 @@ const ItineraryDetail = () => {
           <View style={styles.dateRangeContainer}>
             <Calendar size={16} color={COLORS.primary} />
             <Text style={styles.dateRangeText}>
-              {formatDate(itineraryData.itinerary.start_date)} -{" "}
-              {formatDate(itineraryData.itinerary.end_date)}
+              {formatDate(itineraryData.itinerary.startDate.toString())} -{" "}
+              {formatDate(itineraryData.itinerary.endDate.toString())}
             </Text>
           </View>
 

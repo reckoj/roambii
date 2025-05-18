@@ -63,6 +63,7 @@ import { getPackageById, getAgentById } from "@/lib/package-service";
 import { getChatRoomId } from "@/lib/chat-service";
 import { RootState, AppDispatch } from "@/lib/redux/store/store";
 import { fetchPackageByIdAsync } from "@/lib/redux/slices/packageSlice";
+import React from "react";
 
 const Property = () => {
   const { id } = useLocalSearchParams<{ id?: string }>();

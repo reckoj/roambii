@@ -48,6 +48,17 @@ interface AuthResponse {
 }
 
 /**
+ * Verification status enum
+ */
+export enum VerificationStatus {
+  VERIFIED = 'verified',
+  ALREADY_VERIFIED = 'already-verified',
+  INVALID = 'invalid',
+  EXPIRED = 'expired',
+  FAILED = 'failed'
+}
+
+/**
  * Register a new user with email and password
  */
 export const registerUser = async (
@@ -672,6 +683,105 @@ export const confirmPasswordReset = async (
       message:
         error.message ||
         "Failed to reset password. The link may be invalid or expired.",
+    };
+  }
+};
+
+/**
+ * Handle email verification from deep link
+ */
+export const handleVerificationDeepLink = async (
+  url: string
+): Promise<{ success: boolean; message: string; status: VerificationStatus }> => {
+  try {
+    // Parse action code from URL
+    const actionCode = url.split('oobCode=')[1]?.split('&')[0];
+    
+    if (!actionCode) {
+      return {
+        success: false,
+        message: 'Invalid verification link. Please request a new verification email.',
+        status: VerificationStatus.INVALID
+      };
+    }
+
+    try {
+      // Check the action code first
+      await checkActionCode(auth, actionCode);
+      
+      // Apply the verification code
+      await applyActionCode(auth, actionCode);
+      
+      // Get current user
+      const user = auth.currentUser;
+      
+      // If user is signed in, reload to update the emailVerified status
+      if (user) {
+        await user.reload();
+        
+        if (user.emailVerified) {
+          // Update user document in Firestore
+          const userRef = doc(firestore, COLLECTIONS.USERS, user.uid);
+          await updateDoc(userRef, {
+            isEmailVerified: true,
+            updatedAt: new Date()
+          });
+          
+          return {
+            success: true,
+            message: 'Your email has been verified! You can now use all features of the app.',
+            status: VerificationStatus.VERIFIED
+          };
+        } else {
+          return {
+            success: false,
+            message: 'Email verification applied but your account shows as not verified. Please try signing in again.',
+            status: VerificationStatus.FAILED
+          };
+        }
+      }
+      
+      return {
+        success: true,
+        message: 'Your email has been verified! Please sign in to continue.',
+        status: VerificationStatus.VERIFIED
+      };
+    } catch (error: any) {
+      console.error('Error verifying email:', error);
+      const errorCode = error.code;
+      
+      if (errorCode === 'auth/invalid-action-code') {
+        return {
+          success: false,
+          message: 'Invalid verification link. Please request a new verification email.',
+          status: VerificationStatus.INVALID
+        };
+      } else if (errorCode === 'auth/expired-action-code') {
+        return {
+          success: false,
+          message: 'This verification link has expired. Please request a new verification email.',
+          status: VerificationStatus.EXPIRED
+        };
+      } else if (errorCode === 'auth/user-disabled') {
+        return {
+          success: false,
+          message: 'This account has been disabled. Please contact support.',
+          status: VerificationStatus.FAILED
+        };
+      } else {
+        return {
+          success: false,
+          message: 'Failed to verify email. Please try again or request a new verification email.',
+          status: VerificationStatus.FAILED
+        };
+      }
+    }
+  } catch (error: any) {
+    console.error('Error handling verification deep link:', error);
+    return {
+      success: false,
+      message: 'An unexpected error occurred. Please try again later.',
+      status: VerificationStatus.FAILED
     };
   }
 };

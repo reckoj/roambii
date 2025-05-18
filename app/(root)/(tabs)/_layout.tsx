@@ -13,6 +13,7 @@ import { useEffect, useState } from "react";
 import { ref, onValue } from "firebase/database";
 import { checkIsAgent } from "@/lib/auth-service";
 import { firebaseDb } from "@/lib/firebase/firebase-config";
+import React from "react";
 
 // New TabIcon for Lucide icons with badge support
 const LucideTabIcon = ({

@@ -15,7 +15,7 @@ import {
   DocumentData,
 } from "firebase/firestore";
 import { ref, get, update } from "firebase/database";
-import { firestore, database, COLLECTIONS } from "./firebase/firebase-config";
+import { firestore, firebaseDb as database, COLLECTIONS } from "./firebase/firebase-config";
 import { Agent } from "./firebase/models";
 import { uploadProfileImage } from "./storage-service";
 
@@ -188,7 +188,10 @@ export const updateAgentProfile = async (
     // Upload avatar if provided
     let avatarUrl = updates.avatar;
     if (avatarUri) {
-      avatarUrl = await uploadProfileImage(agentId, avatarUri);
+      const uploadedUrl = await uploadProfileImage(agentId, avatarUri);
+      if (uploadedUrl !== null) {
+        avatarUrl = uploadedUrl;
+      }
     }
 
     // Prepare update data
@@ -252,15 +255,13 @@ export const convertUserToAgent = async (
       name: userData.name,
       email: userData.email,
       avatar: userData.avatar,
-      isAgent: true,
-      isEmailVerified: userData.isEmailVerified,
+      isVerified: userData.isEmailVerified,
       niche: agentData.niche || "",
       bio: agentData.bio || "",
       rating: 0,
       reviewCount: 0,
       createdAt: new Date(),
       updatedAt: new Date(),
-      $id: userData.id,
     };
 
     await setDoc(agentRef, newAgentData);

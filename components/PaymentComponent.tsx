@@ -212,11 +212,25 @@ const PaymentComponent: React.FC<PaymentComponentProps> = ({
           }
 
           console.log("Calling createBooking with data:", JSON.stringify(bookingData, null, 2));
-          const bookingResult = await createBooking(bookingData);
+          const bookingResult = await createBooking(
+            bookingData.userId,
+            bookingData.packageId,
+            bookingData.transactionId,
+            bookingData.paymentStatus,
+            bookingData.amount,
+            bookingData.paymentMethod,
+            'USD', // payment currency
+            new Date(), // payment date
+            '', // payment receipt URL
+            bookingData.packageDetails
+          );
 
-          if (!bookingResult || !bookingResult.id) {
+          if (!bookingResult) {
             throw new Error("Failed to create booking record");
           }
+          
+          // bookingResult is now just the ID string
+          const bookingId = bookingResult;
 
           // Close modal before navigation
           setShowFullModal(false);
@@ -233,7 +247,7 @@ const PaymentComponent: React.FC<PaymentComponentProps> = ({
                   router.replace({
                     pathname: "/bookingConfirmation",
                     params: { 
-                      id: bookingResult.id,
+                      id: bookingId,
                       reset: "true"
                     }
                   });

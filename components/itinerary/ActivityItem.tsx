@@ -1,6 +1,5 @@
 import React from "react";
 import { View, Text, TouchableOpacity, StyleSheet } from "react-native";
-import { Activity } from "@/lib/models";
 import {
   Trash2,
   Bus,
@@ -9,6 +8,7 @@ import {
   Palmtree,
   Camera,
 } from "lucide-react-native";
+import { Activity } from "@/lib/firebase/models";
 
 // Define theme colors
 const COLORS = {

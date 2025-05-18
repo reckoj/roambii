@@ -3,7 +3,7 @@ import { router, SplashScreen, Stack } from "expo-router";
 import "./global.css";
 import { useFonts } from "expo-font";
 import { useEffect } from "react";
-import { AuthProvider } from "@/lib/auth-context";
+import { AuthProvider } from "@/lib/context/auth-context";
 import StripeProvider from "@/app/StripeProvider";
 import { setupUnreadMessageTracker } from "@/lib/firebase/chat-notifications";
 import { handleDeepLink } from "@/lib/deep-link-handler";

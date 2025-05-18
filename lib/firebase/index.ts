@@ -8,7 +8,7 @@ export * from "../auth-service";
 export * from "../user-service";
 export * from "../package-service";
 export * from "../booking-service";
-export * from "../chat-service";
+;
 export * from "../itinerary-service";
 export * from "../review-service";
 

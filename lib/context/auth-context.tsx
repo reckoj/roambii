@@ -1,10 +1,10 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
-import { auth } from './firebase/firebase-config';
+import { auth } from '@/lib/firebase/firebase-config';
 import { User as FirebaseUser } from 'firebase/auth';
 import { doc, getDoc } from 'firebase/firestore';
-import { firestore } from './firebase/firebase-config';
-import { User } from './firebase/models';
-import { saveUserToStorage, getUserFromStorage, clearUserStorage } from './user-persistence';
+import { firestore } from '@/lib/firebase/firebase-config';
+import { User } from '@/lib/firebase/models';
+import { saveUserToStorage, getUserFromStorage, clearUserStorage } from '@/lib/user-persistence';
 
 interface AuthContextType {
   user: User | null;
