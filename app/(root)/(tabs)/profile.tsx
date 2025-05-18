@@ -163,18 +163,11 @@ const Profile: React.FC = () => {
 
   const pickImage = async () => {
     try {
-      const pickerResult = await ImagePicker.launchImageLibraryAsync({
-        mediaTypes: ImagePicker.MediaTypeOptions.Images,
-        allowsEditing: true,
-        aspect: [1, 1],
-        quality: 0.7,
-      });
-
-      if (
-        !pickerResult.canceled &&
-        pickerResult.assets &&
-        pickerResult.assets.length > 0
-      ) {
+      // Use the helper function for permission handling
+      const { pickImageWithPermissions } = await import('@/lib/utils/imagePermissions');
+      const pickerResult = await pickImageWithPermissions({ aspect: [1, 1] });
+      
+      if (pickerResult) {
         try {
           setLoading(true);
           setImageError(false);

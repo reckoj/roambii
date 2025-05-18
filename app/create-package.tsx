@@ -147,23 +147,11 @@ const CreatePackageScreen = () => {
 
   const pickImage = async () => {
     try {
-      const { status } =
-        await ImagePicker.requestMediaLibraryPermissionsAsync();
-      if (status !== "granted") {
-        Alert.alert(
-          "Permission Required",
-          "Sorry, we need camera roll permissions to make this work!"
-        );
-        return;
-      }
-
-      const result = await ImagePicker.launchImageLibraryAsync({
-        allowsEditing: true,
-        aspect: [4, 3],
-        quality: 0.7,
-      });
-
-      if (!result.canceled) {
+      // Use the helper function that handles permissions automatically
+      const { pickImageWithPermissions } = await import('@/lib/utils/imagePermissions');
+      const result = await pickImageWithPermissions();
+      
+      if (result) {
         setFormData((prev) => ({ ...prev, image: result.assets[0].uri }));
       }
     } catch (error) {

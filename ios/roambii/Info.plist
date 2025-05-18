@@ -75,5 +75,9 @@
     <string>Automatic</string>
     <key>UIViewControllerBasedStatusBarAppearance</key>
     <false/>
+    <key>NSPhotoLibraryUsageDescription</key>
+    <string>Roambii needs access to your photo library to upload profile pictures and package images.</string>
+    <key>NSCameraUsageDescription</key>
+    <string>Roambii needs access to your camera to take photos for your profile and travel packages.</string>
   </dict>
 </plist>
