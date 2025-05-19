@@ -747,3 +747,51 @@ export const subscribeToChatRooms = (
     return () => {}; // Return empty function if subscription fails
   }
 };
+
+/**
+ * Find an existing chat room between two users
+ * Returns the room ID if found, null otherwise
+ */
+export async function findExistingChatRoom(
+  userId1: string,
+  userId2: string
+): Promise<string | null> {
+  if (!userId1 || !userId2) {
+    console.error("Cannot find chat room: Missing user IDs", {
+      userId1,
+      userId2,
+    });
+    return null;
+  }
+
+  try {
+    console.log(`Looking for existing chat room between ${userId1} and ${userId2}`);
+    
+    // Get all rooms for the first user
+    const rooms = await getChatRooms(userId1);
+    
+    // Check each room to see if the second user is a participant
+    for (const room of rooms) {
+      const participants = room.participants || [];
+      
+      // Check if both users are participants in this room
+      if (participants.includes(userId1) && participants.includes(userId2)) {
+        console.log(`Found existing chat room: ${room.id}`);
+        return room.id;
+      }
+      
+      // Also check user_id and agent_id fields if available
+      // This is a fallback in case participants array is not properly set
+      if (room.id.includes(userId1) && room.id.includes(userId2)) {
+        console.log(`Found existing chat room by ID: ${room.id}`);
+        return room.id;
+      }
+    }
+    
+    console.log(`No existing chat room found between ${userId1} and ${userId2}`);
+    return null;
+  } catch (error) {
+    console.error("Error finding existing chat room:", error);
+    return null;
+  }
+}

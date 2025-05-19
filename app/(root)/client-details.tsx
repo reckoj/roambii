@@ -30,6 +30,7 @@ import {
 } from "../../lib/client-service";
 import { getUserBookings } from "../../lib/booking-service";
 import { useGlobalContext } from "../../lib/global-provider";
+import { getChatRoomId, findExistingChatRoom } from "../../lib/chat-service";
 
 // Define theme colors (should match your app's theme)
 const colors = {
@@ -106,10 +107,12 @@ const ClientDetailsScreen = () => {
       if (clientData) {
         // Security check: Only allow viewing if current user is the agent
         if (clientData.agentId !== rawUser.id) {
-          console.error("Security error: Attempt to view client relationship for another agent");
+          console.error(
+            "Security error: Attempt to view client relationship for another agent"
+          );
           setLoading(false);
           Alert.alert(
-            "Access Denied", 
+            "Access Denied",
             "You don't have permission to view this client relationship."
           );
           router.back();
@@ -154,15 +157,33 @@ const ClientDetailsScreen = () => {
 
     try {
       await updateClientNotes(client.id, clientNotes);
-      setClient({
-        ...client,
-        notes: clientNotes,
-      });
-      setNotesDialogVisible(false);
-      Alert.alert("Success", "Client notes updated successfully");
-    } catch (error) {
+
+      // If this was an embedded client, we need to reload the data
+      // because a new real client record was created
+      if (client.id.startsWith("embedded-")) {
+        // Show success message but then reload
+        Alert.alert(
+          "Success",
+          "Client notes updated successfully. Refreshing client data..."
+        );
+        await loadClientData(); // Reload data to get the new client record
+        setNotesDialogVisible(false);
+      } else {
+        // For normal clients, just update the local state
+        setClient({
+          ...client,
+          notes: clientNotes,
+        });
+        setNotesDialogVisible(false);
+        Alert.alert("Success", "Client notes updated successfully");
+      }
+    } catch (error: any) {
       console.error("Error updating client notes:", error);
-      Alert.alert("Error", "Failed to update client notes. Please try again.");
+      // Show the specific error message if available
+      Alert.alert(
+        "Error",
+        error.message || "Failed to update client notes. Please try again."
+      );
     }
   };
 
@@ -172,17 +193,33 @@ const ClientDetailsScreen = () => {
 
     try {
       await updateClientPreferences(client.id, clientPreferences);
-      setClient({
-        ...client,
-        preferences: clientPreferences,
-      });
-      setPreferencesDialogVisible(false);
-      Alert.alert("Success", "Client preferences updated successfully");
-    } catch (error) {
+
+      // If this was an embedded client, we need to reload the data
+      // because a new real client record was created
+      if (client.id.startsWith("embedded-")) {
+        // Show success message but then reload
+        Alert.alert(
+          "Success",
+          "Client preferences updated successfully. Refreshing client data..."
+        );
+        await loadClientData(); // Reload data to get the new client record
+        setPreferencesDialogVisible(false);
+      } else {
+        // For normal clients, just update the local state
+        setClient({
+          ...client,
+          preferences: clientPreferences,
+        });
+        setPreferencesDialogVisible(false);
+        Alert.alert("Success", "Client preferences updated successfully");
+      }
+    } catch (error: any) {
       console.error("Error updating client preferences:", error);
+      // Show the specific error message if available
       Alert.alert(
         "Error",
-        "Failed to update client preferences. Please try again."
+        error.message ||
+          "Failed to update client preferences. Please try again."
       );
     }
   };
@@ -323,8 +360,53 @@ const ClientDetailsScreen = () => {
         </TouchableOpacity>
         <Text style={styles.headerTitle}>Client Details</Text>
         <TouchableOpacity
-          onPress={() => router.push(`/chatScreen?userId=${client.userId}`)}
           style={styles.chatButton}
+          onPress={async () => {
+            // Only navigate if we have valid IDs
+            if (!rawUser?.id || !client?.userId) {
+              console.error("Cannot open chat: Missing user IDs", {
+                agentId: rawUser?.id,
+                clientUserId: client?.userId,
+              });
+              Alert.alert(
+                "Error",
+                "Unable to open chat. Missing user information."
+              );
+              return;
+            }
+
+            try {
+              // First check if there's an existing chat room between these users
+              const existingRoomId = await findExistingChatRoom(
+                rawUser.id,
+                client.userId
+              );
+              let roomId;
+
+              if (existingRoomId) {
+                // Use existing room
+                console.log("Using existing chat room:", existingRoomId);
+                roomId = existingRoomId;
+              } else {
+                // Create a new room
+                console.log("No existing chat found, creating new room");
+                roomId = getChatRoomId(rawUser.id, client.userId);
+              }
+
+              // Navigate to chat screen with all required parameters
+              router.push({
+                pathname: "/chatScreen",
+                params: {
+                  room_id: roomId,
+                  agentId: rawUser.id,
+                  userId: client.userId,
+                },
+              });
+            } catch (error) {
+              console.error("Error opening chat:", error);
+              Alert.alert("Error", "Unable to open chat. Please try again.");
+            }
+          }}
         >
           <Ionicons
             name="chatbubble-ellipses-outline"

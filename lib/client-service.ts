@@ -15,6 +15,7 @@ import {
   deleteDoc,
   DocumentData,
   limit,
+  writeBatch
 } from "firebase/firestore";
 import { getAuth } from "firebase/auth";
 import { firestore, COLLECTIONS } from "./firebase/firebase-config";
@@ -463,17 +464,157 @@ export const updateClientPreferences = async (
   preferences: Client['preferences']
 ): Promise<boolean> => {
   try {
-    const clientRef = doc(firestore, COLLECTIONS.CLIENTS, clientId);
+    // Get current authenticated user
+    const auth = getAuth();
+    const currentUser = auth.currentUser;
     
-    await updateDoc(clientRef, {
-      preferences,
-      updatedAt: serverTimestamp()
+    if (!currentUser) {
+      console.error("Error updating client preferences: User not authenticated");
+      throw new Error("You must be logged in to update client preferences");
+    }
+
+    console.log(`Attempting to update preferences for client: ${clientId}, current user: ${currentUser.uid}`);
+
+    // Special handling for embedded clients
+    if (clientId.startsWith('embedded-')) {
+      console.log(`Handling embedded client for preferences update: ${clientId}`);
+      
+      // Extract the userId from the embedded clientId
+      const userId = clientId.replace('embedded-', '');
+      
+      if (!userId) {
+        console.error(`Invalid embedded client ID format: ${clientId}`);
+        throw new Error("Invalid client ID format");
+      }
+      
+      // Verify agent permissions - the user should be in agent mode
+      const userRef = doc(firestore, COLLECTIONS.USERS, currentUser.uid);
+      console.log(`Checking user document for preferences update: ${userRef.path}`);
+      const userSnapshot = await getDoc(userRef);
+      
+      if (!userSnapshot.exists()) {
+        console.error("Error updating client preferences: User record not found");
+        throw new Error("User profile not found");
+      }
+      
+      const userData = userSnapshot.data();
+      console.log(`User data for preferences permission check:`, {
+        isAgent: userData.isAgent,
+        isAgentTemp: userData.isAgentTemp
+      });
+      
+      const isInAgentMode = userData.isAgent === true || userData.isAgentTemp === true;
+      
+      if (!isInAgentMode) {
+        console.error("Error updating client preferences: User doesn't have permission for embedded clients");
+        throw new Error("You don't have permission to update preferences for this client");
+      }
+      
+      // Get client details from bookings
+      console.log(`Getting client details from bookings for preferences update: agent ${currentUser.uid}, user ${userId}`);
+      const clientDetails = await getClientDetailsFromBookings(currentUser.uid, userId);
+      
+      if (!clientDetails) {
+        console.error(`Client details not found for embedded client preferences: ${clientId}`);
+        throw new Error("Client details not found");
+      }
+      
+      // Create a real client record in the database
+      console.log(`Creating real client record for embedded client with preferences: ${clientId}`);
+      
+      // Important: We need to ensure we're setting agentId to current user's ID
+      // This is critical for Firestore security rules
+      const clientsRef = collection(firestore, COLLECTIONS.CLIENTS);
+      
+      const clientData = {
+        // Always set the agent ID to the current user ID (who has agent permissions)
+        agentId: currentUser.uid,
+        userId: userId,
+        bookings: clientDetails.bookings || [],
+        lastBookingDate: clientDetails.lastBookingDate || new Date(),
+        totalBookings: clientDetails.totalBookings || 0,
+        totalSpent: clientDetails.totalSpent || 0,
+        status: 'active',
+        preferences: preferences, // Include the preferences we're trying to save
+        contactInfo: clientDetails.contactInfo || {},
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
+      };
+      
+      console.log(`Client preferences data to be saved:`, JSON.stringify(clientData, null, 2));
+      
+      try {
+        const newClientDoc = await addDoc(clientsRef, clientData);
+        console.log(`Successfully created real client record with preferences: ${newClientDoc.id}`);
+        return true; // We've already saved the preferences in the new client record
+      } catch (addError) {
+        console.error(`Error creating client record with preferences:`, addError);
+        throw addError; // Re-throw to maintain error chain
+      }
+    }
+    
+    // Regular client record handling (non-embedded)
+    // First, get the client document to check permissions
+    const clientRef = doc(firestore, COLLECTIONS.CLIENTS, clientId);
+    console.log(`Checking existing client document for preferences: ${clientRef.path}`);
+    
+    const clientSnapshot = await getDoc(clientRef);
+    
+    if (!clientSnapshot.exists()) {
+      console.error(`Error updating client preferences: Client ${clientId} not found`);
+      throw new Error("Client not found");
+    }
+    
+    const clientData = clientSnapshot.data();
+    console.log(`Client data for preferences permission check:`, {
+      clientAgentId: clientData.agentId,
+      currentUserId: currentUser.uid
     });
     
-    return true;
+    // Check if current user is the agent for this client
+    const isClientAgent = clientData.agentId === currentUser.uid;
+    
+    if (!isClientAgent) {
+      // If not the agent, check if user is in agent mode
+      const userRef = doc(firestore, COLLECTIONS.USERS, currentUser.uid);
+      const userSnapshot = await getDoc(userRef);
+      
+      if (!userSnapshot.exists()) {
+        console.error("Error updating client preferences: User record not found");
+        throw new Error("User profile not found");
+      }
+      
+      const userData = userSnapshot.data();
+      console.log(`User agent mode check for preferences:`, {
+        isAgent: userData.isAgent,
+        isAgentTemp: userData.isAgentTemp
+      });
+      
+      const isInAgentMode = userData.isAgent === true || userData.isAgentTemp === true;
+      
+      if (!isInAgentMode) {
+        console.error("Error updating client preferences: User doesn't have permission");
+        throw new Error("You don't have permission to update preferences for this client");
+      }
+    }
+    
+    // If we reached here, user has permission to update the preferences
+    console.log(`Updating preferences for client ${clientId}`);
+    try {
+      await updateDoc(clientRef, {
+        preferences,
+        updatedAt: serverTimestamp()
+      });
+      
+      console.log(`Successfully updated preferences for client ${clientId}`);
+      return true;
+    } catch (updateError) {
+      console.error(`Error updating client preferences:`, updateError);
+      throw updateError; // Re-throw to maintain error chain
+    }
   } catch (error) {
     console.error("Error updating client preferences:", error);
-    return false;
+    throw error; // Rethrow to allow the caller to handle it
   }
 };
 
@@ -485,17 +626,157 @@ export const updateClientNotes = async (
   notes: string
 ): Promise<boolean> => {
   try {
-    const clientRef = doc(firestore, COLLECTIONS.CLIENTS, clientId);
+    // Get current authenticated user
+    const auth = getAuth();
+    const currentUser = auth.currentUser;
     
-    await updateDoc(clientRef, {
-      notes,
-      updatedAt: serverTimestamp()
+    if (!currentUser) {
+      console.error("Error updating client notes: User not authenticated");
+      throw new Error("You must be logged in to update client notes");
+    }
+
+    console.log(`Attempting to update notes for client: ${clientId}, current user: ${currentUser.uid}`);
+
+    // Special handling for embedded clients
+    if (clientId.startsWith('embedded-')) {
+      console.log(`Handling embedded client: ${clientId}`);
+      
+      // Extract the userId from the embedded clientId (format is 'embedded-{userId}')
+      const userId = clientId.replace('embedded-', '');
+      
+      if (!userId) {
+        console.error(`Invalid embedded client ID format: ${clientId}`);
+        throw new Error("Invalid client ID format");
+      }
+      
+      // Verify agent permissions - the user should be in agent mode
+      const userRef = doc(firestore, COLLECTIONS.USERS, currentUser.uid);
+      console.log(`Checking user document: ${userRef.path}`);
+      const userSnapshot = await getDoc(userRef);
+      
+      if (!userSnapshot.exists()) {
+        console.error("Error updating client notes: User record not found");
+        throw new Error("User profile not found");
+      }
+      
+      const userData = userSnapshot.data();
+      console.log(`User data for permission check:`, {
+        isAgent: userData.isAgent,
+        isAgentTemp: userData.isAgentTemp
+      });
+      
+      const isInAgentMode = userData.isAgent === true || userData.isAgentTemp === true;
+      
+      if (!isInAgentMode) {
+        console.error("Error updating client notes: User doesn't have permission for embedded clients");
+        throw new Error("You don't have permission to update notes for this client");
+      }
+      
+      // Get client details from bookings
+      console.log(`Getting client details from bookings for agent ${currentUser.uid}, user ${userId}`);
+      const clientDetails = await getClientDetailsFromBookings(currentUser.uid, userId);
+      
+      if (!clientDetails) {
+        console.error(`Client details not found for embedded client: ${clientId}`);
+        throw new Error("Client details not found");
+      }
+      
+      // Create a real client record in the database
+      console.log(`Creating real client record for embedded client: ${clientId}`);
+      
+      // Important: We need to ensure we're setting agentId to current user's ID
+      // This is critical for Firestore security rules
+      const clientsRef = collection(firestore, COLLECTIONS.CLIENTS);
+      
+      const clientData = {
+        // Always set the agent ID to the current user ID (who has agent permissions)
+        agentId: currentUser.uid,
+        userId: userId,
+        bookings: clientDetails.bookings || [],
+        lastBookingDate: clientDetails.lastBookingDate || new Date(),
+        totalBookings: clientDetails.totalBookings || 0,
+        totalSpent: clientDetails.totalSpent || 0,
+        status: 'active',
+        notes: notes, // Include the notes we're trying to save
+        contactInfo: clientDetails.contactInfo || {},
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
+      };
+      
+      console.log(`Client data to be saved:`, JSON.stringify(clientData, null, 2));
+      
+      try {
+        const newClientDoc = await addDoc(clientsRef, clientData);
+        console.log(`Successfully created real client record: ${newClientDoc.id}`);
+        return true; // We've already saved the notes in the new client record
+      } catch (addError) {
+        console.error(`Error creating client record:`, addError);
+        throw addError; // Re-throw to maintain error chain
+      }
+    }
+    
+    // Regular client record handling (non-embedded)
+    // First, get the client document to check permissions
+    const clientRef = doc(firestore, COLLECTIONS.CLIENTS, clientId);
+    console.log(`Checking existing client document: ${clientRef.path}`);
+    
+    const clientSnapshot = await getDoc(clientRef);
+    
+    if (!clientSnapshot.exists()) {
+      console.error(`Error updating client notes: Client ${clientId} not found`);
+      throw new Error("Client not found");
+    }
+    
+    const clientData = clientSnapshot.data();
+    console.log(`Client data for permission check:`, {
+      clientAgentId: clientData.agentId,
+      currentUserId: currentUser.uid
     });
     
-    return true;
+    // Check if current user is the agent for this client
+    const isClientAgent = clientData.agentId === currentUser.uid;
+    
+    if (!isClientAgent) {
+      // If not the agent, check if user is in agent mode
+      const userRef = doc(firestore, COLLECTIONS.USERS, currentUser.uid);
+      const userSnapshot = await getDoc(userRef);
+      
+      if (!userSnapshot.exists()) {
+        console.error("Error updating client notes: User record not found");
+        throw new Error("User profile not found");
+      }
+      
+      const userData = userSnapshot.data();
+      console.log(`User agent mode check:`, {
+        isAgent: userData.isAgent,
+        isAgentTemp: userData.isAgentTemp
+      });
+      
+      const isInAgentMode = userData.isAgent === true || userData.isAgentTemp === true;
+      
+      if (!isInAgentMode) {
+        console.error("Error updating client notes: User doesn't have permission");
+        throw new Error("You don't have permission to update notes for this client");
+      }
+    }
+    
+    // If we reached here, user has permission to update the notes
+    console.log(`Updating notes for client ${clientId}`);
+    try {
+      await updateDoc(clientRef, {
+        notes,
+        updatedAt: serverTimestamp()
+      });
+      
+      console.log(`Successfully updated notes for client ${clientId}`);
+      return true;
+    } catch (updateError) {
+      console.error(`Error updating client document:`, updateError);
+      throw updateError; // Re-throw to maintain error chain
+    }
   } catch (error) {
     console.error("Error updating client notes:", error);
-    return false;
+    throw error; // Rethrow to allow the caller to handle it
   }
 };
 
@@ -507,17 +788,121 @@ export const updateClientStatus = async (
   status: 'active' | 'inactive'
 ): Promise<boolean> => {
   try {
+    // Get current authenticated user
+    const auth = getAuth();
+    const currentUser = auth.currentUser;
+    
+    if (!currentUser) {
+      console.error("Error updating client status: User not authenticated");
+      throw new Error("You must be logged in to update client status");
+    }
+    
+    // Special handling for embedded clients
+    if (clientId.startsWith('embedded-')) {
+      console.log(`Handling embedded client for status update: ${clientId}`);
+      
+      // Extract the userId from the embedded clientId
+      const userId = clientId.replace('embedded-', '');
+      
+      if (!userId) {
+        console.error(`Invalid embedded client ID format: ${clientId}`);
+        throw new Error("Invalid client ID format");
+      }
+      
+      // Check if the user is in agent mode
+      const userRef = doc(firestore, COLLECTIONS.USERS, currentUser.uid);
+      const userSnapshot = await getDoc(userRef);
+      
+      if (!userSnapshot.exists()) {
+        console.error("Error updating client status: User record not found");
+        throw new Error("User profile not found");
+      }
+      
+      const userData = userSnapshot.data();
+      const isInAgentMode = userData.isAgent === true || userData.isAgentTemp === true;
+      
+      if (!isInAgentMode) {
+        console.error("Error updating client status: User doesn't have permission for embedded clients");
+        throw new Error("You don't have permission to update status for this client");
+      }
+      
+      // Get client details from bookings
+      const clientDetails = await getClientDetailsFromBookings(currentUser.uid, userId);
+      
+      if (!clientDetails) {
+        console.error(`Client details not found for embedded client: ${clientId}`);
+        throw new Error("Client details not found");
+      }
+      
+      // Create a real client record in the database
+      console.log(`Creating real client record for embedded client with status: ${clientId}`);
+      const clientsRef = collection(firestore, COLLECTIONS.CLIENTS);
+      
+      const clientData = {
+        agentId: currentUser.uid,
+        userId: userId,
+        bookings: clientDetails.bookings || [],
+        lastBookingDate: clientDetails.lastBookingDate || new Date(),
+        totalBookings: clientDetails.totalBookings || 0,
+        totalSpent: clientDetails.totalSpent || 0,
+        status: status, // Include the status we're trying to save
+        contactInfo: clientDetails.contactInfo || {},
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
+      };
+      
+      const newClientDoc = await addDoc(clientsRef, clientData);
+      console.log(`Successfully created real client record with status: ${newClientDoc.id}`);
+      
+      return true; // We've already saved the status in the new client record
+    }
+    
+    // Regular client record handling (non-embedded)
     const clientRef = doc(firestore, COLLECTIONS.CLIENTS, clientId);
     
+    // Check if the client exists and if user has permission
+    const clientSnapshot = await getDoc(clientRef);
+    
+    if (!clientSnapshot.exists()) {
+      console.error(`Error updating client status: Client ${clientId} not found`);
+      throw new Error("Client not found");
+    }
+    
+    const clientData = clientSnapshot.data();
+    
+    // Check if current user is the agent for this client
+    const isClientAgent = clientData.agentId === currentUser.uid;
+    
+    if (!isClientAgent) {
+      // If not the agent, check if user is in agent mode
+      const userRef = doc(firestore, COLLECTIONS.USERS, currentUser.uid);
+      const userSnapshot = await getDoc(userRef);
+      
+      if (!userSnapshot.exists()) {
+        console.error("Error updating client status: User record not found");
+        throw new Error("User profile not found");
+      }
+      
+      const userData = userSnapshot.data();
+      const isInAgentMode = userData.isAgent === true || userData.isAgentTemp === true;
+      
+      if (!isInAgentMode) {
+        console.error("Error updating client status: User doesn't have permission");
+        throw new Error("You don't have permission to update status for this client");
+      }
+    }
+    
+    // Update the status
     await updateDoc(clientRef, {
       status,
       updatedAt: serverTimestamp()
     });
     
+    console.log(`Successfully updated status for client ${clientId}`);
     return true;
   } catch (error) {
     console.error("Error updating client status:", error);
-    return false;
+    throw error; // Rethrow to allow the caller to handle it
   }
 };
 

@@ -108,23 +108,20 @@ service cloud.firestore {
     
     // Clients collection
     match /clients/{clientId} {
-      // TEMPORARY: Allow all operations for debugging
-      allow read, write: if isAuthenticated();
+      // Allow read for authenticated users
+      allow read: if isAuthenticated();
       
-      // COMMENTED OUT DURING DEBUGGING
-      // // Anyone can read their own client records or if they're the agent
-      // allow read: if isAuthenticated();
-      // 
-      // // Allow any authenticated user to create client relationships (for debugging)
-      // allow create: if isAuthenticated();
-      // 
-      // // Updates require being the agent for that client
-      // allow update: if isAuthenticated() && 
-      //   (request.auth.uid == resource.data.agentId);
-      // 
-      // // Only agents can delete their own client records
-      // allow delete: if isAuthenticated() && 
-      //   (request.auth.uid == resource.data.agentId);
+      // Allow create for authenticated users
+      allow create: if isAuthenticated();
+      
+      // Allow update if the user is the agent for this client or in agent mode
+      allow update: if isAuthenticated() && (
+        resource.data.agentId == request.auth.uid || 
+        isInAgentMode()
+      );
+      
+      // Allow delete only if the user is the agent for this client
+      allow delete: if isAuthenticated() && resource.data.agentId == request.auth.uid;
     }
   }
 } 

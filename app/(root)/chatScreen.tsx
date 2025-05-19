@@ -65,6 +65,8 @@ const ChatScreen = () => {
   // Get route parameters
   const params = useLocalSearchParams();
   const receivedAgentId = params.agentId as string;
+  const receivedUserId = params.userId as string;
+  const receivedRoomId = params.room_id as string;
   const previousScreen = (params.from as string) || ""; // Track where we came from
 
   // Redux
@@ -111,6 +113,12 @@ const ChatScreen = () => {
 
   // Add a memoized room ID generator
   const generateRoomId = useCallback(async () => {
+    // If we already have a room ID from params, use it
+    if (receivedRoomId) {
+      console.log("[Room ID] Using provided room ID:", receivedRoomId);
+      return receivedRoomId;
+    }
+    
     if (!currentUserId || !receivedAgentId) return null;
 
     try {
@@ -127,7 +135,7 @@ const ChatScreen = () => {
       console.error("[Room ID Error]:", error);
       return null;
     }
-  }, [currentUserId, receivedAgentId]);
+  }, [currentUserId, receivedAgentId, receivedRoomId]);
 
   // Fetch partner profile from Redux cache first, then Firebase
   const fetchPartnerProfile = useCallback(async () => {
@@ -280,11 +288,27 @@ const ChatScreen = () => {
 
   // Setup chat room once with proper cleanup
   const setupChatRoom = useCallback(async () => {
-    if (hasSetupRef.current || !currentUserId || !receivedAgentId) {
-      console.log("[Setup Skipped] Already set up or missing IDs");
+    if (hasSetupRef.current) {
+      console.log("[Setup Skipped] Already set up");
       return;
     }
-
+    
+    // Check if we have the necessary information
+    if (!currentUserId) {
+      console.error("[Setup Error] Missing current user ID");
+      setError("Please log in to continue");
+      setLoading(false);
+      return;
+    }
+    
+    // Make sure we have either a room ID or agent ID
+    if (!receivedRoomId && !receivedAgentId) {
+      console.error("[Setup Error] Missing both room ID and agent ID");
+      setError("Missing chat information");
+      setLoading(false);
+      return;
+    }
+    
     hasSetupRef.current = true; // Set this before async operations
 
     try {
@@ -334,22 +358,24 @@ const ChatScreen = () => {
       setLoading(false);
       setMessagesLoading(false);
     }
-  }, [currentUserId, receivedAgentId, dispatch, messageCache]);
+  }, [currentUserId, receivedAgentId, receivedRoomId, dispatch, messageCache, generateRoomId]);
 
   // Initialize chat room on mount
   useEffect(() => {
-    if (!currentUserId || !receivedAgentId) {
-      setError(
-        !currentUserId
-          ? "Please log in to continue"
-          : "Missing recipient information"
-      );
+    if (!currentUserId) {
+      setError("Please log in to continue");
+      setLoading(false);
+      return;
+    }
+
+    if (!receivedRoomId && !receivedAgentId) {
+      setError("Missing chat information");
       setLoading(false);
       return;
     }
 
     setupChatRoom();
-  }, [currentUserId, receivedAgentId, setupChatRoom]);
+  }, [currentUserId, receivedAgentId, receivedRoomId, setupChatRoom]);
 
   // Optimize message subscription
   useEffect(() => {
@@ -430,7 +456,10 @@ const ChatScreen = () => {
   // Optimize focus effect
   useFocusEffect(
     useCallback(() => {
-      if (!currentUserId || !receivedAgentId) return;
+      if (!currentUserId) return;
+      
+      // We need either a room ID or agent ID
+      if (!receivedRoomId && !receivedAgentId) return;
 
       console.log("[Focus] Setting up chat room");
 
@@ -444,7 +473,7 @@ const ChatScreen = () => {
         console.log("[Unfocus] Cleaning up");
         // Don't clean up subscription on unfocus
       };
-    }, [currentUserId, receivedAgentId, setupChatRoom])
+    }, [currentUserId, receivedAgentId, receivedRoomId, setupChatRoom])
   );
 
   // Scroll to bottom when messages change

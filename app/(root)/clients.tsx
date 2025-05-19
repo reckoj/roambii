@@ -39,6 +39,7 @@ import {
   Timestamp,
 } from "firebase/firestore";
 import { firestore, COLLECTIONS } from "../../lib/firebase/firebase-config";
+import { getChatRoomId, findExistingChatRoom } from "../../lib/chat-service";
 
 // Define colors locally to avoid import issues
 const colors = {
@@ -234,16 +235,31 @@ const ClientsScreen = () => {
   ) => {
     try {
       await updateClientStatus(clientId, newStatus);
-      // Update local state
-      setClients(
-        clients.map((client) =>
-          client.id === clientId ? { ...client, status: newStatus } : client
-        )
-      );
-      Alert.alert("Success", "Client status updated successfully");
-    } catch (error) {
+
+      // If this was an embedded client, we need to reload the clients list
+      // because a new real client record was created with a different ID
+      if (clientId.startsWith("embedded-")) {
+        Alert.alert(
+          "Success",
+          "Client status updated successfully. Refreshing client list..."
+        );
+        loadClients(); // Reload all clients to get the new client record
+      } else {
+        // Update local state for normal clients
+        setClients(
+          clients.map((client) =>
+            client.id === clientId ? { ...client, status: newStatus } : client
+          )
+        );
+        Alert.alert("Success", "Client status updated successfully");
+      }
+    } catch (error: any) {
       console.error("Error updating client status:", error);
-      Alert.alert("Error", "Failed to update client status. Please try again.");
+      // Show the specific error message if available
+      Alert.alert(
+        "Error",
+        error.message || "Failed to update client status. Please try again."
+      );
     }
   };
 
@@ -253,19 +269,35 @@ const ClientsScreen = () => {
 
     try {
       await updateClientNotes(selectedClient.id, clientNotes);
-      // Update local state
-      setClients(
-        clients.map((client) =>
-          client.id === selectedClient.id
-            ? { ...client, notes: clientNotes }
-            : client
-        )
-      );
-      setNotesDialogVisible(false);
-      Alert.alert("Success", "Client notes updated successfully");
-    } catch (error) {
+
+      // If this was an embedded client, we need to reload the clients list
+      // because a new real client record was created with a different ID
+      if (selectedClient.id.startsWith("embedded-")) {
+        setNotesDialogVisible(false);
+        Alert.alert(
+          "Success",
+          "Client notes updated successfully. Refreshing client list..."
+        );
+        loadClients(); // Reload all clients to get the new client record
+      } else {
+        // Update local state for normal clients
+        setClients(
+          clients.map((client) =>
+            client.id === selectedClient.id
+              ? { ...client, notes: clientNotes }
+              : client
+          )
+        );
+        setNotesDialogVisible(false);
+        Alert.alert("Success", "Client notes updated successfully");
+      }
+    } catch (error: any) {
       console.error("Error updating client notes:", error);
-      Alert.alert("Error", "Failed to update client notes. Please try again.");
+      // Show the specific error message if available
+      Alert.alert(
+        "Error",
+        error.message || "Failed to update client notes. Please try again."
+      );
     }
   };
 
@@ -501,7 +533,7 @@ const ClientsScreen = () => {
                 </View>
 
                 <View style={styles.actionButtons}>
-                  <TouchableOpacity
+                  {/* <TouchableOpacity
                     style={styles.actionButton}
                     onPress={() => openNotesDialog(item)}
                   >
@@ -511,8 +543,8 @@ const ClientsScreen = () => {
                       color={colors.primary}
                     />
                     <Text style={styles.actionText}>Notes</Text>
-                  </TouchableOpacity>
-
+                  </TouchableOpacity> */}
+                  {/* 
                   <TouchableOpacity
                     style={styles.actionButton}
                     onPress={() => {
@@ -526,13 +558,63 @@ const ClientsScreen = () => {
                       color={colors.primary}
                     />
                     <Text style={styles.actionText}>Bookings</Text>
-                  </TouchableOpacity>
+                  </TouchableOpacity> */}
 
                   <TouchableOpacity
                     style={styles.actionButton}
-                    onPress={() => {
-                      // Open chat with client
-                      router.push(`/chatScreen?userId=${item.userId}`);
+                    onPress={async () => {
+                      // Only proceed if we have both the current user ID and the client user ID
+                      if (!user?.id || !item.userId) {
+                        console.error("Cannot open chat: Missing user IDs", {
+                          currentUserId: user?.id,
+                          clientUserId: item.userId,
+                        });
+                        Alert.alert(
+                          "Error",
+                          "Unable to open chat. Missing user information."
+                        );
+                        return;
+                      }
+
+                      try {
+                        // First check if there's an existing chat room between these users
+                        const existingRoomId = await findExistingChatRoom(
+                          user.id,
+                          item.userId
+                        );
+                        let roomId;
+
+                        if (existingRoomId) {
+                          // Use existing room
+                          console.log(
+                            "Using existing chat room:",
+                            existingRoomId
+                          );
+                          roomId = existingRoomId;
+                        } else {
+                          // Create a new room
+                          console.log(
+                            "No existing chat found, creating new room"
+                          );
+                          roomId = getChatRoomId(user.id, item.userId);
+                        }
+
+                        // Navigate to chat screen with all required parameters
+                        router.push({
+                          pathname: "/chatScreen",
+                          params: {
+                            room_id: roomId,
+                            agentId: user.id,
+                            userId: item.userId,
+                          },
+                        });
+                      } catch (error) {
+                        console.error("Error opening chat:", error);
+                        Alert.alert(
+                          "Error",
+                          "Unable to open chat. Please try again."
+                        );
+                      }
                     }}
                   >
                     <MaterialIcons
