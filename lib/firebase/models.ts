@@ -225,6 +225,7 @@ export interface Itinerary extends FirebaseDocument {
   endDate: Timestamp | Date;
   destinations: string[];
   sharedWith?: string[]; // Array of user IDs who can edit this itinerary
+  price?: number; // Price of the itinerary (can be set by agents only)
 }
 
 export interface DayPlan extends FirebaseDocument {

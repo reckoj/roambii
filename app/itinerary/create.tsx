@@ -26,6 +26,7 @@ import {
   Plus,
   Check,
   Map,
+  DollarSign,
 } from "lucide-react-native";
 import { LinearGradient } from "expo-linear-gradient";
 
@@ -43,16 +44,20 @@ const COLORS = {
 };
 
 const CreateItineraryScreen = () => {
-  const { rawUser } = useGlobalContext();
+  const { rawUser, isAgent, isAgentTemp } = useGlobalContext();
   const [title, setTitle] = useState("");
   const [destinations, setDestinations] = useState<string[]>([""]);
   const [startDate, setStartDate] = useState(new Date());
   const [endDate, setEndDate] = useState(
     new Date(Date.now() + 7 * 24 * 60 * 60 * 1000)
   );
+  const [price, setPrice] = useState("");
   const [showStartDatePicker, setShowStartDatePicker] = useState(false);
   const [showEndDatePicker, setShowEndDatePicker] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
+
+  // Check if user is in agent mode (either permanent agent or temporary agent mode)
+  const isInAgentMode = isAgent || isAgentTemp;
 
   const scrollViewRef = useRef<ScrollView>(null);
 
@@ -119,26 +124,27 @@ const CreateItineraryScreen = () => {
 
   // Handle form submission
   const handleCreateItinerary = async () => {
-    // Validation
     if (!title.trim()) {
       Alert.alert("Error", "Please enter a title for your itinerary");
       return;
     }
 
-    const filteredDestinations = destinations.filter(
-      (dest) => dest.trim() !== ""
-    );
-    if (filteredDestinations.length === 0) {
-      Alert.alert("Error", "Please enter at least one destination");
+    if (destinations.length === 0) {
+      Alert.alert("Error", "Please add at least one destination");
       return;
     }
 
-    if (endDate < startDate) {
-      Alert.alert("Error", "End date cannot be before start date");
+    if (!startDate || !endDate) {
+      Alert.alert("Error", "Please select both start and end dates");
       return;
     }
 
-    if (!rawUser?.id) {
+    if (startDate > endDate) {
+      Alert.alert("Error", "End date must be after start date");
+      return;
+    }
+
+    if (!rawUser) {
       Alert.alert("Error", "You must be logged in to create an itinerary");
       return;
     }
@@ -146,52 +152,55 @@ const CreateItineraryScreen = () => {
     setIsSubmitting(true);
 
     try {
-      const daysCount = calculateDays();
-
-      // Prepare itinerary data
-      const itineraryData: Omit<Itinerary, "id" | "createdAt" | "updatedAt"> = {
+      // Create itinerary object
+      const itineraryObj: Omit<
+        Itinerary,
+        "id" | "createdAt" | "updatedAt"
+      > = {
         title: title.trim(),
         userId: rawUser.id,
         startDate: startDate,
         endDate: endDate,
-        destinations: filteredDestinations,
+        destinations: destinations.filter((d) => d.trim() !== ""),
+        sharedWith: [], // Initialize empty sharedWith array
       };
 
-      // Prepare day plans
-      const dayPlans: Omit<DayPlan, "id" | "itineraryId" | "createdAt" | "updatedAt">[] = [];
-      const currentDate = new Date(startDate);
+      // Create day plans
+      const dayPlansArray: Omit<
+        DayPlan,
+        "id" | "itineraryId" | "createdAt" | "updatedAt"
+      >[] = [];
 
-      for (let i = 0; i < daysCount; i++) {
-        dayPlans.push({
+      const days = calculateDays();
+      for (let i = 0; i < days; i++) {
+        const date = new Date(startDate);
+        date.setDate(date.getDate() + i);
+
+        dayPlansArray.push({
           day: i + 1,
-          date: new Date(currentDate),
+          date: date,
         });
-
-        // Move to next day
-        currentDate.setDate(currentDate.getDate() + 1);
       }
 
-      // Create itinerary with day plans
-      const createdItinerary = await createItinerary(itineraryData, dayPlans);
+      const newItinerary = await createItinerary(itineraryObj, dayPlansArray);
 
-      if (createdItinerary) {
-        Alert.alert("Success!", "Your itinerary has been created successfully!", [
-          {
-            text: "View Itinerary",
-            onPress: () => {
-              router.push(`/itinerary/${createdItinerary.id}`);
+      if (newItinerary) {
+        Alert.alert(
+          "Success",
+          "Your itinerary has been created successfully!",
+          [
+            {
+              text: "OK",
+              onPress: () => {
+                router.push(`/itinerary/${newItinerary.id}`);
+              },
             },
-          },
-        ]);
-      } else {
-        throw new Error("Failed to create itinerary");
+          ]
+        );
       }
     } catch (error) {
-      console.error("Error creating itinerary:", error);
-      Alert.alert(
-        "Error",
-        "Failed to create itinerary. Please try again later."
-      );
+      console.error("Failed to create itinerary:", error);
+      Alert.alert("Error", "Failed to create itinerary. Please try again.");
     } finally {
       setIsSubmitting(false);
     }
@@ -286,6 +295,28 @@ const CreateItineraryScreen = () => {
               )}
             </View>
           </View>
+
+          {/* Price Input - Only for Agents */}
+          {isInAgentMode && (
+            <View style={styles.formGroup}>
+              <Text style={styles.label}>Price</Text>
+              <View style={styles.destinationInputContainer}>
+                <DollarSign
+                  size={16}
+                  color="#95A5A6"
+                  style={styles.inputIcon}
+                />
+                <TextInput
+                  style={styles.destinationInput}
+                  value={price}
+                  onChangeText={setPrice}
+                  placeholder="Enter price (optional)"
+                  placeholderTextColor="#95A5A6"
+                  keyboardType="decimal-pad"
+                />
+              </View>
+            </View>
+          )}
 
           {/* Trip Summary */}
           <View style={styles.summaryCard}>
@@ -492,12 +523,10 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.primary,
     borderRadius: 12,
     padding: 14,
-    marginTop: 8,
   },
   addButtonText: {
     color: COLORS.white,
     fontSize: 16,
-    fontWeight: "500",
     marginLeft: 8,
   },
   createButtonContainer: {
@@ -505,23 +534,19 @@ const styles = StyleSheet.create({
     bottom: 0,
     left: 0,
     right: 0,
-    padding: 16,
-    backgroundColor: "rgba(255, 255, 255, 0.9)",
+    backgroundColor: COLORS.background,
+    paddingHorizontal: 20,
+    paddingVertical: 16,
     borderTopWidth: 1,
-    borderTopColor: "rgba(0, 0, 0, 0.05)",
+    borderTopColor: COLORS.divider,
   },
   createButton: {
     backgroundColor: COLORS.primary,
     borderRadius: 12,
     padding: 16,
     flexDirection: "row",
-    justifyContent: "center",
     alignItems: "center",
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
+    justifyContent: "center",
   },
   createButtonText: {
     color: COLORS.white,
@@ -529,27 +554,25 @@ const styles = StyleSheet.create({
     fontWeight: "600",
     marginLeft: 8,
   },
-
   header: {
-    paddingTop: StatusBar.currentHeight || 0,
+    paddingTop: 10,
     paddingBottom: 15,
+    paddingHorizontal: 16,
   },
   headerContent: {
     flexDirection: "row",
+    justifyContent: "center",
     alignItems: "center",
-    justifyContent: "space-between",
-    paddingHorizontal: 16,
-    paddingVertical: 10,
   },
   headerTitle: {
     flexDirection: "row",
     alignItems: "center",
   },
   headerText: {
-    fontSize: 22,
-    fontWeight: "700",
     color: COLORS.white,
-    marginLeft: 10,
+    fontSize: 18,
+    fontWeight: "bold",
+    marginLeft: 8,
   },
 });
 

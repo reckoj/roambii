@@ -27,6 +27,7 @@ import {
   deleteItinerary,
   shareItinerary,
   deleteActivity,
+  removeItineraryAccess,
 } from "@/lib/itinerary-service";
 import {
   Itinerary,
@@ -64,6 +65,7 @@ import {
   Coffee,
   Search,
   Share,
+  DollarSign,
 } from "lucide-react-native";
 import { LinearGradient } from "expo-linear-gradient";
 import { BlurView } from "expo-blur";
@@ -161,8 +163,119 @@ const allActivityTypes = Object.keys(activityIcons).map((type) => ({
   color: activityColors[type],
 }));
 
+// Add a component for sharing itineraries
+const ShareItineraryModal = ({
+  visible,
+  onClose,
+  onShare,
+  loading,
+}: {
+  visible: boolean;
+  onClose: () => void;
+  onShare: (email: string) => void;
+  loading: boolean;
+}) => {
+  const [email, setEmail] = useState("");
+
+  // Add reset function
+  const resetAndClose = () => {
+    setEmail("");
+    onClose();
+  };
+
+  return (
+    <Modal visible={visible} transparent animationType="slide">
+      <View style={styles.modalOverlay}>
+        <View style={styles.shareModalContent}>
+          <View style={styles.modalHeader}>
+            <Text style={styles.modalTitle}>Share Itinerary</Text>
+            <TouchableOpacity onPress={resetAndClose}>
+              <X size={24} color={COLORS.text} />
+            </TouchableOpacity>
+          </View>
+
+          <Text style={styles.shareModalText}>
+            Enter the email of the person you'd like to share this itinerary
+            with. They'll be able to view and edit details.
+          </Text>
+
+          <TextInput
+            style={styles.shareInput}
+            value={email}
+            onChangeText={setEmail}
+            placeholder="Email address"
+            placeholderTextColor="#95A5A6"
+            keyboardType="email-address"
+            autoCapitalize="none"
+          />
+
+          <View style={styles.modalFooter}>
+            <TouchableOpacity
+              style={styles.cancelButton}
+              onPress={resetAndClose}
+            >
+              <Text style={styles.cancelButtonText}>Cancel</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={[
+                styles.shareButton,
+                !email.trim() && styles.disabledButton,
+              ]}
+              onPress={() => onShare(email)}
+              disabled={!email.trim() || loading}
+            >
+              {loading ? (
+                <ActivityIndicator size="small" color={COLORS.white} />
+              ) : (
+                <Text style={styles.shareButtonText}>Share</Text>
+              )}
+            </TouchableOpacity>
+          </View>
+        </View>
+      </View>
+    </Modal>
+  );
+};
+
+// Add this component to display shared users
+const SharedUsersList = ({
+  userIds,
+  isOwner,
+  onRemove,
+}: {
+  userIds: string[];
+  isOwner: boolean;
+  onRemove: (userId: string) => void;
+}) => {
+  if (!userIds || userIds.length === 0) {
+    return null;
+  }
+
+  return (
+    <View style={styles.sharedUsersContainer}>
+      <Text style={styles.sharedUsersTitle}>Shared with:</Text>
+      {userIds.map((userId) => (
+        <View key={userId} style={styles.sharedUserItem}>
+          <Text style={styles.sharedUserEmail} numberOfLines={1}>
+            {userId.startsWith("user-") ? userId.replace("user-", "") : userId}
+          </Text>
+          {isOwner && (
+            <TouchableOpacity
+              onPress={() => onRemove(userId)}
+              hitSlop={{ top: 10, right: 10, bottom: 10, left: 10 }}
+            >
+              <X size={16} color={COLORS.danger} />
+            </TouchableOpacity>
+          )}
+        </View>
+      ))}
+    </View>
+  );
+};
+
 const ItineraryDetail = () => {
-  const { rawUser } = useGlobalContext();
+  const { rawUser, isAgent, isAgentTemp } = useGlobalContext();
   const params = useLocalSearchParams();
   const id = Array.isArray(params.id) ? params.id[0] : params.id;
 
@@ -171,6 +284,7 @@ const ItineraryDetail = () => {
     useState<ItineraryWithDetails | null>(null);
   const [editing, setEditing] = useState(false);
   const [editedTitle, setEditedTitle] = useState("");
+  const [editedPrice, setEditedPrice] = useState("");
   const [expandedDays, setExpandedDays] = useState<Record<string, boolean>>({});
 
   // Modal states
@@ -190,10 +304,6 @@ const ItineraryDetail = () => {
   const [searchQuery, setSearchQuery] = useState("");
   const [showTypeSelector, setShowTypeSelector] = useState(false);
   const [isSharing, setIsSharing] = useState(false);
-  const [shareModalVisible, setShareModalVisible] = useState(false);
-  const [shareEmail, setShareEmail] = useState("");
-  // Add this state variable along with your other state declarations
-  const [isDeleting, setIsDeleting] = useState(false);
   const [snackbarVisible, setSnackbarVisible] = useState(false);
   const [snackbarMessage, setSnackbarMessage] = useState("");
 
@@ -202,8 +312,17 @@ const ItineraryDetail = () => {
 
   // Add these new state variables at the top with other states
   const [isSavingActivity, setIsSavingActivity] = useState(false);
-  const [isDeletingActivity, setIsDeletingActivity] = useState<string | null>(null);
-  const [localActivities, setLocalActivities] = useState<Record<string, Activity[]>>({});
+  const [isDeletingActivity, setIsDeletingActivity] = useState<string | null>(
+    null
+  );
+  const [localActivities, setLocalActivities] = useState<
+    Record<string, Activity[]>
+  >({});
+  const [isDeleting, setIsDeleting] = useState(false);
+
+  // State for sharing
+  const [shareModalVisible, setShareModalVisible] = useState(false);
+  const [sharedUsers, setSharedUsers] = useState<string[]>([]);
 
   // Fetch itinerary data
   useEffect(() => {
@@ -234,9 +353,12 @@ const ItineraryDetail = () => {
         Alert.alert("Error", "Failed to load itinerary details");
         return;
       }
-      
+
       setItineraryData(data);
       setEditedTitle(data.itinerary.title);
+      setEditedPrice(
+        data.itinerary.price !== undefined ? String(data.itinerary.price) : ""
+      );
 
       // Initialize expanded state and local activities
       const expanded: Record<string, boolean> = {};
@@ -249,6 +371,11 @@ const ItineraryDetail = () => {
       });
       setExpandedDays(expanded);
       setLocalActivities(activities);
+
+      // Update shared users
+      if (data.itinerary.sharedWith) {
+        setSharedUsers(data.itinerary.sharedWith);
+      }
     } catch (error) {
       console.error("Error fetching itinerary:", error);
       Alert.alert("Error", "Failed to load itinerary details");
@@ -324,7 +451,8 @@ const ItineraryDetail = () => {
 
     setIsSavingActivity(true);
     try {
-      const capitalizedType = activityType.charAt(0).toUpperCase() + activityType.slice(1);
+      const capitalizedType =
+        activityType.charAt(0).toUpperCase() + activityType.slice(1);
       const activityData: Partial<Activity> = {
         dayPlanId: selectedDayPlan.id,
         time: activityTime,
@@ -337,38 +465,47 @@ const ItineraryDetail = () => {
       // Optimistically update the UI
       if (currentActivity?.id) {
         // Update existing activity
-        setLocalActivities(prev => ({
+        setLocalActivities((prev) => ({
           ...prev,
-          [selectedDayPlan.id]: prev[selectedDayPlan.id].map(activity =>
-            activity.id === currentActivity.id ? { ...activity, ...activityData } : activity
-          )
+          [selectedDayPlan.id]: prev[selectedDayPlan.id].map((activity) =>
+            activity.id === currentActivity.id
+              ? { ...activity, ...activityData }
+              : activity
+          ),
         }));
       } else {
         // Add new activity
-        setLocalActivities(prev => ({
+        setLocalActivities((prev) => ({
           ...prev,
-          [selectedDayPlan.id]: [...(prev[selectedDayPlan.id] || []), { 
-            id: 'temp-' + Date.now(),
-            dayPlanId: selectedDayPlan.id,
-            time: activityTime,
-            title: activityTitle.trim(),
-            type: capitalizedType,
-            notes: activityNotes.trim(),
-            createdAt: new Date(),
-            updatedAt: new Date()
-          } as Activity]
+          [selectedDayPlan.id]: [
+            ...(prev[selectedDayPlan.id] || []),
+            {
+              id: "temp-" + Date.now(),
+              dayPlanId: selectedDayPlan.id,
+              time: activityTime,
+              title: activityTitle.trim(),
+              type: capitalizedType,
+              notes: activityNotes.trim(),
+              createdAt: new Date(),
+              updatedAt: new Date(),
+            } as Activity,
+          ],
         }));
       }
 
       // Save to backend
-      const savedActivity = await saveActivity(activityData as Omit<Activity, "createdAt" | "updatedAt"> & { id?: string });
+      const savedActivity = await saveActivity(
+        activityData as Omit<Activity, "createdAt" | "updatedAt"> & {
+          id?: string;
+        }
+      );
       if (savedActivity) {
         // Update with the real activity data
-        setLocalActivities(prev => ({
+        setLocalActivities((prev) => ({
           ...prev,
-          [selectedDayPlan.id]: prev[selectedDayPlan.id].map(activity =>
+          [selectedDayPlan.id]: prev[selectedDayPlan.id].map((activity) =>
             activity.id === activityData.id ? savedActivity : activity
-          )
+          ),
         }));
         setActivityModal(false);
       } else {
@@ -401,9 +538,11 @@ const ItineraryDetail = () => {
             setIsDeletingActivity(activity.id);
             try {
               // Optimistically remove from UI
-              setLocalActivities(prev => ({
+              setLocalActivities((prev) => ({
                 ...prev,
-                [activity.dayPlanId]: prev[activity.dayPlanId].filter(a => a.id !== activity.id)
+                [activity.dayPlanId]: prev[activity.dayPlanId].filter(
+                  (a) => a.id !== activity.id
+                ),
               }));
 
               const success = await deleteActivity(activity.id);
@@ -434,9 +573,23 @@ const ItineraryDetail = () => {
       return;
     }
 
+    // Validate price if provided
+    let priceValue: number | undefined = undefined;
+    if (editedPrice.trim()) {
+      const parsedPrice = parseFloat(editedPrice);
+      if (isNaN(parsedPrice) || parsedPrice < 0) {
+        Alert.alert("Error", "Please enter a valid price");
+        return;
+      }
+      priceValue = parsedPrice;
+    }
+
     try {
       const updatedItinerary = await updateItinerary(id, {
         title: editedTitle.trim(),
+        ...(priceValue !== undefined ? { price: priceValue } : {}),
+        // Keep existing sharedWith array
+        sharedWith: sharedUsers,
       });
 
       if (updatedItinerary) {
@@ -512,7 +665,9 @@ const ItineraryDetail = () => {
   };
 
   // Remove the isAuthorized function and replace its usage with direct comparison
-  const canEdit = rawUser && itineraryData && rawUser.id === itineraryData.itinerary.userId;
+  const canEdit =
+    rawUser && itineraryData && rawUser.id === itineraryData.itinerary.userId;
+  const canEditPrice = (isAgent || isAgentTemp) && canEdit;
 
   // Render activity type item for the grid
   const renderActivityTypeItem = ({
@@ -588,13 +743,9 @@ const ItineraryDetail = () => {
           </View>
 
           <View style={styles.activityContentColumn}>
-            <Text style={styles.activityTitleText}>
-              {activity.title}
-            </Text>
+            <Text style={styles.activityTitleText}>{activity.title}</Text>
             {activity.notes ? (
-              <Text style={styles.activityNotesText}>
-                {activity.notes}
-              </Text>
+              <Text style={styles.activityNotesText}>{activity.notes}</Text>
             ) : null}
           </View>
 
@@ -641,41 +792,61 @@ const ItineraryDetail = () => {
 
   // Add this function to open the share modal
   const openShareModal = () => {
-    setShareEmail("");
     setShareModalVisible(true);
   };
 
   // Add this function to handle the sharing process
-  const handleShareItinerary = async () => {
-    if (!shareEmail.trim()) {
-      Alert.alert("Error", "Please enter an email address");
-      return;
-    }
+  const handleShareItinerary = async (email: string) => {
+    if (!email.trim() || !itineraryData?.itinerary?.id) return;
 
-    if (!itineraryData?.itinerary.id) {
-      Alert.alert("Error", "Unable to share itinerary");
+    // Email validation
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(email)) {
+      Alert.alert("Invalid Email", "Please enter a valid email address");
       return;
     }
 
     setIsSharing(true);
-
     try {
-      // Here you would typically have a function to resolve email to user ID
-      // This is a placeholder - you need to implement this based on your user management
-      const userIdToShare = await resolveUserIdFromEmail(shareEmail.trim());
+      // In a real app, you would implement a backend service to
+      // resolve an email to a user ID. Here we'll use a placeholder.
+      const userIdToShare = await resolveUserIdFromEmail(email.trim());
 
       if (!userIdToShare) {
-        Alert.alert("Error", "User not found");
+        Alert.alert(
+          "User Not Found",
+          "No user was found with that email address"
+        );
         setIsSharing(false);
         return;
       }
 
-      await shareItinerary(itineraryData.itinerary.id, userIdToShare);
-      Alert.alert("Success", "Itinerary shared successfully!");
-      setShareModalVisible(false);
+      // Check if already shared
+      if (
+        itineraryData.itinerary.sharedWith &&
+        itineraryData.itinerary.sharedWith.includes(userIdToShare)
+      ) {
+        Alert.alert(
+          "Already Shared",
+          "This itinerary is already shared with this user"
+        );
+        setIsSharing(false);
+        return;
+      }
 
-      // Refresh the itinerary data to show updated sharing information
-      fetchItineraryData();
+      // Update the sharedWith array in the itinerary
+      const updatedItinerary = await shareItinerary(
+        itineraryData.itinerary.id,
+        userIdToShare
+      );
+
+      if (updatedItinerary) {
+        // Update local state
+        setSharedUsers(updatedItinerary.sharedWith || []);
+        setShareModalVisible(false);
+        Alert.alert("Success", "Itinerary shared successfully");
+        fetchItineraryData(); // Refresh data
+      }
     } catch (error) {
       console.error("Error sharing itinerary:", error);
       Alert.alert("Error", "Failed to share itinerary. Please try again.");
@@ -684,53 +855,84 @@ const ItineraryDetail = () => {
     }
   };
 
-  // You'll need to implement this function to convert email to user ID
+  // Add resolveUserIdFromEmail function (placeholder - would be integrated with your user service)
   const resolveUserIdFromEmail = async (
     email: string
   ): Promise<string | null> => {
-    // This is a placeholder implementation
-    // You need to implement the actual logic to find a user by email
-    // This might involve calling your backend or using Appwrite's user lookup
+    // This is a placeholder - in a real app, you would implement a backend call
+    // to resolve an email to a user ID
     try {
-      // Replace this with your actual implementation
-      // Example: Call Appwrite to find user by email
-      // const result = await account.listUsers([Query.equal("email", email)]);
-      // if (result.total > 0) {
-      //   return result.users[0].$id;
-      // }
+      // Some placeholder logic to simulate finding a user
+      // In real implementation, you might use Firebase Auth, or your own backend API
 
-      // For now, just return a mock value to test the UI
-      return "user-id-for-" + email;
+      // Mock promise resolution for demonstration
+      return new Promise((resolve) => {
+        setTimeout(() => {
+          // Return a mock user ID
+          resolve(`user-${Math.random().toString(36).substring(2, 9)}`);
+        }, 1000);
+      });
     } catch (error) {
       console.error("Error resolving user ID from email:", error);
       return null;
     }
   };
 
+  // Add the function to remove a user's access
+  const handleRemoveAccess = async (userId: string) => {
+    if (!itineraryData?.itinerary.id) return;
+
+    try {
+      const updatedItinerary = await removeItineraryAccess(
+        itineraryData.itinerary.id,
+        userId
+      );
+
+      if (updatedItinerary) {
+        // Update local state
+        setSharedUsers(updatedItinerary.sharedWith || []);
+        Alert.alert("Success", "User access removed successfully");
+        fetchItineraryData(); // Refresh data
+      }
+    } catch (error) {
+      console.error("Error removing user access:", error);
+      Alert.alert("Error", "Failed to remove user access. Please try again.");
+    }
+  };
+
+  // Also, add this to the component definition to calculate if this is a shared itinerary
+  // Add near where you define canEdit and canEditPrice
+  const isShared =
+    itineraryData &&
+    rawUser &&
+    itineraryData.itinerary.userId !== rawUser.id &&
+    itineraryData.itinerary.sharedWith?.includes(rawUser.id);
+
   return (
     <View style={styles.container}>
       <CustomHeader
         title={editing ? "Edit Itinerary" : "Itinerary Details"}
         showBackButton={true}
-        rightIcon={
-          canEdit ? (
-            editing ? (
-              <Save color="#FFF" size={20} />
-            ) : (
-              <View style={{ flexDirection: "row" }}>
-                <TouchableOpacity
-                  onPress={() => openShareModal()}
-                  style={{ marginRight: 15 }}
-                >
-                  <Share color="#FFF" size={20} />
-                </TouchableOpacity>
-              </View>
-            )
-          ) : undefined
-        }
-        onRightIconPress={
-          editing ? handleSaveItinerary : () => setEditing(true)
-        }
+        // rightIcon={
+        //   canEdit ? (
+        //     editing ? (
+        //       <Save color="#FFF" size={20} />
+        //     ) : (
+        //       <View style={{ flexDirection: "row" }}>
+        //         <TouchableOpacity
+        //           onPress={() => setShareModalVisible(true)}
+        //           style={{ marginRight: 15 }}
+        //         >
+        //           <Share color="#FFF" size={20} />
+        //         </TouchableOpacity>
+        //         <Edit2 color="#FFF" size={20} />
+        //       </View>
+        //     )
+        //   ) : undefined
+        // }
+        // onRightIconPress={
+        //   editing ? handleSaveItinerary : () => setEditing(true)
+        // }
       />
 
       <Animated.View style={[styles.content, { opacity: fadeAnim }]}>
@@ -764,6 +966,60 @@ const ItineraryDetail = () => {
               {itineraryData.itinerary.destinations.join(", ")}
             </Text>
           </View>
+
+          {/* Display Price if it exists */}
+          {itineraryData.itinerary.price !== undefined && (
+            <View style={styles.priceContainer}>
+              <DollarSign size={16} color={COLORS.primary} />
+              {editing && canEditPrice ? (
+                <TextInput
+                  style={styles.priceInput}
+                  value={String(editedPrice)}
+                  onChangeText={setEditedPrice}
+                  placeholder="Enter price"
+                  placeholderTextColor="#95A5A6"
+                  keyboardType="decimal-pad"
+                />
+              ) : (
+                <Text style={styles.priceText}>
+                  ${Number(itineraryData.itinerary.price).toFixed(2)}
+                </Text>
+              )}
+            </View>
+          )}
+
+          {/* Add Price button for agents when editing and no price exists */}
+          {editing &&
+            canEditPrice &&
+            itineraryData.itinerary.price === undefined && (
+              <View style={styles.addPriceContainer}>
+                <TextInput
+                  style={styles.priceInput}
+                  value={String(editedPrice)}
+                  onChangeText={setEditedPrice}
+                  placeholder="Add price (optional)"
+                  placeholderTextColor="#95A5A6"
+                  keyboardType="decimal-pad"
+                />
+              </View>
+            )}
+
+          {/* Show sharing status */}
+          {isShared && !canEdit && (
+            <View style={styles.sharedBadgeContainer}>
+              <Share size={14} color={COLORS.primary} />
+              <Text style={styles.sharedBadgeText}>Shared with you</Text>
+            </View>
+          )}
+
+          {/* Show shared users list if owner */}
+          {sharedUsers.length > 0 && (
+            <SharedUsersList
+              userIds={sharedUsers}
+              isOwner={canEdit === true}
+              onRemove={handleRemoveAccess}
+            />
+          )}
         </View>
 
         {/* Days List */}
@@ -807,12 +1063,12 @@ const ItineraryDetail = () => {
               {dayPlan.id && expandedDays[dayPlan.id] && (
                 <View style={styles.activitiesContainer}>
                   {renderActivities(dayPlan)}
-                  
+
                   {canEdit && (
                     <TouchableOpacity
                       style={[
                         styles.addActivityButton,
-                        isSavingActivity && styles.disabledButton
+                        isSavingActivity && styles.disabledButton,
                       ]}
                       onPress={() => openAddActivityModal(dayPlan)}
                       disabled={isSavingActivity}
@@ -1116,6 +1372,14 @@ const ItineraryDetail = () => {
       >
         {snackbarMessage}
       </Snackbar>
+
+      {/* Share Itinerary Modal */}
+      <ShareItineraryModal
+        visible={shareModalVisible}
+        onClose={() => setShareModalVisible(false)}
+        onShare={handleShareItinerary}
+        loading={isSharing}
+      />
     </View>
   );
 };
@@ -1563,6 +1827,107 @@ const styles = StyleSheet.create({
   },
   disabledButton: {
     opacity: 0.7,
+  },
+  priceContainer: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginBottom: 8,
+  },
+  priceInput: {
+    flex: 1,
+    padding: 12,
+    borderWidth: 1,
+    borderColor: COLORS.divider,
+    borderRadius: 8,
+  },
+  priceText: {
+    fontSize: 16,
+    color: COLORS.text,
+  },
+  addPriceContainer: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginBottom: 8,
+  },
+
+  // Share modal styles
+  shareModalContent: {
+    backgroundColor: COLORS.white,
+    borderRadius: 16,
+    padding: 20,
+    width: "90%",
+    maxWidth: 400,
+  },
+  shareModalText: {
+    fontSize: 14,
+    color: COLORS.textLight,
+    marginBottom: 20,
+    lineHeight: 20,
+  },
+  shareInput: {
+    backgroundColor: COLORS.background,
+    borderRadius: 8,
+    padding: 12,
+    fontSize: 16,
+    borderWidth: 1,
+    borderColor: COLORS.divider,
+    marginBottom: 20,
+  },
+  shareButton: {
+    backgroundColor: COLORS.primary,
+    paddingVertical: 10,
+    paddingHorizontal: 16,
+    borderRadius: 8,
+    minWidth: 100,
+    alignItems: "center",
+  },
+  shareButtonText: {
+    color: COLORS.white,
+    fontSize: 16,
+    fontWeight: "600",
+  },
+  sharedUsersContainer: {
+    marginTop: 16,
+    borderTopWidth: 1,
+    borderTopColor: COLORS.divider,
+    paddingTop: 12,
+  },
+  sharedUsersTitle: {
+    fontSize: 14,
+    color: COLORS.textLight,
+    marginBottom: 8,
+  },
+  sharedUserItem: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    backgroundColor: COLORS.background,
+    borderRadius: 6,
+    paddingVertical: 6,
+    paddingHorizontal: 10,
+    marginBottom: 6,
+  },
+  sharedUserEmail: {
+    fontSize: 14,
+    color: COLORS.text,
+    flex: 1,
+    marginRight: 10,
+  },
+  sharedBadgeContainer: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#E3F6F4",
+    paddingVertical: 4,
+    paddingHorizontal: 8,
+    borderRadius: 12,
+    alignSelf: "flex-start",
+    marginTop: 8,
+  },
+  sharedBadgeText: {
+    fontSize: 12,
+    color: COLORS.primary,
+    marginLeft: 4,
+    fontWeight: "500",
   },
 });
 
