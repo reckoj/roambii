@@ -58,11 +58,35 @@ const COLORS = {
   divider: "#EEEEEE",
 };
 
+// Skeleton components for loading states
+const PackageSkeleton = () => (
+  <View style={styles.packageCardContainer}>
+    <View style={[styles.packageCard, { backgroundColor: '#f5f5f5' }]}>
+      <View style={[styles.cardImageContainer, { backgroundColor: '#e0e0e0' }]}>
+        <View style={[styles.cardImage, { backgroundColor: '#e0e0e0' }]} />
+      </View>
+      <View style={styles.cardContent}>
+        <View style={{ height: 16, backgroundColor: '#e0e0e0', width: '70%', borderRadius: 4, marginBottom: 8 }} />
+        <View style={{ height: 12, backgroundColor: '#e0e0e0', width: '50%', borderRadius: 4, marginBottom: 12 }} />
+        <View style={{ height: 10, backgroundColor: '#e0e0e0', width: '80%', borderRadius: 4 }} />
+      </View>
+    </View>
+  </View>
+);
+
+const FeaturedSkeleton = () => (
+  <View style={[styles.featuredCardContainer, { width: width * 0.75, marginLeft: 8 }]}>
+    <View style={{ height: 180, backgroundColor: '#e0e0e0', borderRadius: 16, marginBottom: 8 }} />
+    <View style={{ height: 16, backgroundColor: '#e0e0e0', width: '70%', borderRadius: 4, marginBottom: 8 }} />
+    <View style={{ height: 12, backgroundColor: '#e0e0e0', width: '50%', borderRadius: 4 }} />
+  </View>
+);
+
 const HomeScreen = () => {
   // Add state to control when content is ready to be shown
-  const [readyToShow, setReadyToShow] = useState(false);
+  const [isFirstLoad, setIsFirstLoad] = useState(true);
   const [initialAnimationValue] = useState(new Animated.Value(0));
-  const { rawUser, isAgent, loading } = useGlobalContext();
+  const { rawUser, isAgent, loading: userLoading } = useGlobalContext();
   const greeting = getGreeting();
   const dispatch = useDispatch<AppDispatch>();
   
@@ -73,6 +97,7 @@ const HomeScreen = () => {
   const isScrolling = useRef(false);
   const scrollTimeout = useRef<NodeJS.Timeout>();
   const lastLoadMoreTime = useRef(0);
+  const dataFetchedRef = useRef(false);
 
   // Redux selectors
   const {
@@ -90,38 +115,48 @@ const HomeScreen = () => {
   useEffect(() => {
     // Start the animation
     Animated.sequence([
-      // Delay for 300ms so the animation is visible
-      Animated.delay(300),
-      // Then fade in over 500ms
+      // Delay for a shorter time
+      Animated.delay(200),
+      // Then fade in quickly
       Animated.timing(initialAnimationValue, {
         toValue: 1,
-        duration: 500,
+        duration: 300,
         useNativeDriver: true,
       }),
     ]).start();
   }, [initialAnimationValue]);
 
-  // Wait for global context to settle and then mark content as ready to show
+  // Initial data fetch
   useEffect(() => {
-    if (!loading) {
-      // Small delay to ensure UI state has settled
-      // Adding a little more delay for a smoother experience
-      const timer = setTimeout(() => {
-        setReadyToShow(true);
-      }, 900);
+    // Only run this effect once
+    if (!dataFetchedRef.current && !isAgent) {
+      dataFetchedRef.current = true;
       
-      return () => clearTimeout(timer);
+      // Start fetching data immediately
+      const fetchData = async () => {
+        try {
+          // Fetch both in parallel
+          await Promise.all([
+            dispatch(fetchPackagesAsync({ limit: 6, offset: 0, reset: true })),
+            dispatch(fetchFeaturedPackagesAsync())
+          ]);
+          
+          // Short delay before showing content to avoid flicker
+          setTimeout(() => {
+            setIsFirstLoad(false);
+          }, 300);
+        } catch (error) {
+          console.error('Error fetching initial data:', error);
+          setIsFirstLoad(false);
+        }
+      };
+      
+      fetchData();
     }
-  }, [loading]);
-
-  // Initial Fetch - we'll keep this for conditional execution
-  useEffect(() => {
-    // Only fetch data if not an agent and content is ready to show
-    if (!isAgent && readyToShow) {
-      if (packages.length === 0) {
-        dispatch(fetchPackagesAsync({ limit: 6, offset: 0, reset: true }));
-      }
-      dispatch(fetchFeaturedPackagesAsync());
+    
+    // If user is agent, just stop showing the loader
+    if (isAgent) {
+      setIsFirstLoad(false);
     }
 
     return () => {
@@ -129,7 +164,7 @@ const HomeScreen = () => {
         clearTimeout(scrollTimeout.current);
       }
     };
-  }, [dispatch, packages.length, readyToShow, isAgent]);
+  }, [dispatch, isAgent]);
 
   // Load More Data When Reaching Bottom
   const handleLoadMore = useCallback(() => {
@@ -196,14 +231,14 @@ const HomeScreen = () => {
     router.push(`/properties/${id}`);
   }, []);
 
-  // Show loading screen until we're ready to display content
-  if (!readyToShow) {
+  // Show loading screen only on first app load
+  if (isFirstLoad) {
     return (
       <View style={styles.initialLoadingContainer}>
         <StatusBar backgroundColor="#FFFFFF" barStyle="dark-content" />
         <Animated.View style={{ 
           opacity: initialAnimationValue,
-          transform: [{ scale: Animated.add(0.8, Animated.multiply(initialAnimationValue, 0.2)) }]
+          transform: [{ scale: Animated.add(0.9, Animated.multiply(initialAnimationValue, 0.1)) }]
         }}>
           <ActivityIndicator size="large" color={COLORS.primary} />
         </Animated.View>
@@ -218,10 +253,6 @@ const HomeScreen = () => {
   if (isAgent) {
     return <Bookings />;
   }
-
-  // For non-agent users, we'll let the normal home screen render
-  // even if readyToShow is false, since we'll show loading indicators
-  // for the packages within the UI itself
 
   // Animated header values
   const headerTranslateY = scrollY.interpolate({
@@ -317,9 +348,9 @@ const HomeScreen = () => {
               </View>
             )}
 
-            {item.guestAmount && (
+            {item.guestCount && (
               <View style={styles.featureItem}>
-                <Text style={styles.featureValue}>{item.guestAmount}</Text>
+                <Text style={styles.featureValue}>{item.guestCount}</Text>
                 <Text style={styles.featureLabel}>Guests</Text>
               </View>
             )}
@@ -360,6 +391,10 @@ const HomeScreen = () => {
       <Text style={styles.quickActionText}>{title}</Text>
     </TouchableOpacity>
   );
+
+  // Determine if we should show skeletons
+  const showFeaturedSkeletons = packagesLoading && featuredPackages.length === 0;
+  const showPackageSkeletons = packagesLoading && packages.length === 0;
 
   return (
     <View style={styles.container}>
@@ -475,17 +510,17 @@ const HomeScreen = () => {
             })}
 
             <View style={styles.featuredContainer}>
-              {packagesLoading && featuredPackages.length === 0 ? (
-                <View style={styles.loaderContainer}>
-                  <ActivityIndicator
-                    size="large"
-                    color="#1ABC9C"
-                    style={styles.loader}
-                  />
-                  <Text style={styles.loaderText}>Loading packages...</Text>
-                </View>
+              {showFeaturedSkeletons ? (
+                <FlatList
+                  data={[1, 2, 3]}
+                  renderItem={() => <FeaturedSkeleton />}
+                  keyExtractor={(item) => `featured-skeleton-${item}`}
+                  horizontal
+                  showsHorizontalScrollIndicator={false}
+                  contentContainerStyle={styles.featuredList}
+                />
               ) : featuredPackages.length === 0 ? (
-                <NoResults />
+                <NoResults message="No featured packages available" />
               ) : (
                 <FlatList
                   data={featuredPackages}
@@ -510,15 +545,28 @@ const HomeScreen = () => {
 
             {/* All Packages Section */}
             {renderSectionHeader({ title: "All Packages" })}
+            
+            {/* Show skeletons while loading instead of a separate loading indicator */}
+            {showPackageSkeletons && (
+              <View style={styles.skeletonGrid}>
+                {[1, 2, 3, 4].map((item) => (
+                  <PackageSkeleton key={`skeleton-${item}`} />
+                ))}
+              </View>
+            )}
           </View>
         )}
+        ListEmptyComponent={() => 
+          !showPackageSkeletons && (
+            <View style={styles.emptyContainer}>
+              <NoResults message="No packages found" />
+            </View>
+          )
+        }
         ListFooterComponent={() =>
           loadingMore ? (
-            <View style={styles.loaderContainer}>
+            <View style={styles.footerLoader}>
               <ActivityIndicator size="small" color="#1ABC9C" />
-              <Text style={styles.loaderText}>
-                Loading more packages...
-              </Text>
             </View>
           ) : null
         }
@@ -767,28 +815,18 @@ const styles = StyleSheet.create({
     fontSize: 10,
     color: "#95A5A6",
   },
-  loader: {
-    marginVertical: 20,
+  skeletonGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    justifyContent: 'space-between',
   },
-  loaderContainer: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    padding: 20,
-    backgroundColor: "#FFFFFF",
-    borderRadius: 12,
-    marginVertical: 10,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.05,
-    shadowRadius: 5,
-    elevation: 1,
+  footerLoader: {
+    paddingVertical: 20,
+    alignItems: 'center',
   },
-  loaderText: {
-    marginLeft: 10,
-    fontSize: 16,
-    fontWeight: "500",
-    color: "#34495E",
+  emptyContainer: {
+    marginTop: 30,
+    alignItems: 'center',
   },
   initialLoadingContainer: {
     flex: 1,
