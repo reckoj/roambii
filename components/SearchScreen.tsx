@@ -6,15 +6,17 @@ import {
   TouchableOpacity,
   FlatList,
   ActivityIndicator,
-  SafeAreaView,
   Image,
   StyleSheet,
   KeyboardAvoidingView,
   Platform,
   Keyboard,
   TouchableWithoutFeedback,
+  StatusBar,
+  Alert,
 } from "react-native";
 import { router, useRouter } from "expo-router";
+import { SafeAreaView } from 'react-native-safe-area-context';
 import {
   X,
   ChevronDown,
@@ -45,6 +47,9 @@ const SearchScreen: React.FC = () => {
   const [searchResults, setSearchResults] = useState<PackageItem[]>([]);
   const [loading, setLoading] = useState<boolean>(false);
   const [keyboardVisible, setKeyboardVisible] = useState<boolean>(false);
+  
+  // Create a map to track image loading errors by package ID
+  const [imageErrors, setImageErrors] = useState<Record<string, boolean>>({});
 
   // Set up keyboard listeners
   useEffect(() => {
@@ -73,24 +78,41 @@ const SearchScreen: React.FC = () => {
     performSearch(query, selectedType);
   }, 500);
 
+  // Trigger search when type changes and on initial component mount
   useEffect(() => {
     debouncedSearch(searchQuery);
   }, [searchQuery, selectedType]);
 
-  const performSearch = async (query: string, type: string) => {
-    if (!query && type === "All") {
-      setSearchResults([]);
-      return;
-    }
+  // Run an initial search on component mount
+  useEffect(() => {
+    console.log('Initial search on component mount');
+    performSearch('', 'All');
+  }, []);
 
+  const performSearch = async (query: string, type: string) => {
+    // Add logging to debug search issues
+    console.log('Searching with query:', query, 'and type:', type);
+    
     setLoading(true);
     try {
-      // Use "All" for region since we're not using regions now
+      // Always perform search even if query is empty
+      console.log('Calling searchPackages with:', { query, region: 'All', type, limit: 20 });
       const results = await searchPackages(query, "All", type, 20);
-      setSearchResults(results);
+      console.log('Search results received:', results ? results.length : 0, 'items');
+      
+      // Check if results have valid structure
+      if (results && Array.isArray(results)) {
+        console.log('First result (if any):', results.length > 0 ? JSON.stringify(results[0]).substring(0, 100) + '...' : 'No results');
+        setSearchResults(results);
+      } else {
+        console.error('Unexpected results format:', results);
+        setSearchResults([]);
+        Alert.alert('Search Error', 'Received unexpected data format from search');
+      }
     } catch (error) {
       console.error("Search error:", error);
       setSearchResults([]);
+      Alert.alert('Search Error', 'An error occurred while searching. Please try again.');
     } finally {
       setLoading(false);
     }
@@ -102,10 +124,17 @@ const SearchScreen: React.FC = () => {
   };
 
   const handlePackagePress = (packageId: string) => {
-    router.push(`/properties/${packageId}`);
+    console.log('Package pressed:', packageId);
+    // Navigate only if we have a valid ID
+    if (packageId) {
+      router.push(`/properties/${packageId}`);
+    } else {
+      console.error('Invalid package ID');
+    }
   };
 
   const handleAgentPress = (agentId: string | null) => {
+    console.log('Agent pressed:', agentId);
     if (agentId) {
       router.push(`/agents/${agentId}`);
     }
@@ -119,53 +148,79 @@ const SearchScreen: React.FC = () => {
     Keyboard.dismiss();
   };
 
-  const renderPackageItem = ({ item }: { item: PackageItem }) => (
-    <TouchableOpacity
-      style={styles.resultItem}
-      onPress={() => handlePackagePress(item.$id)}
-    >
-      <View style={styles.resultContent}>
-        <View style={styles.imageContainer}>
-          {item.image || item.imageUrl ? (
-            <Image
-              source={{ uri: (item.image || item.imageUrl) as string }}
-              style={styles.packageImage}
-              resizeMode="cover"
-            />
-          ) : (
-            <View style={[styles.packageImage, styles.placeholderImage]}>
-              <Text style={styles.placeholderText}>No Image</Text>
-            </View>
-          )}
-        </View>
+  // Handle image loading error
+  const handleImageError = (packageId: string) => {
+    setImageErrors(prev => ({
+      ...prev,
+      [packageId]: true
+    }));
+  };
 
-        <View style={styles.detailsContainer}>
-          <Text style={styles.packageName}>
-            {item.name || "Unnamed Package"}
-          </Text>
-          <Text style={styles.packagePrice}>
-            ${item.price?.toLocaleString() || "0"}
-          </Text>
-          <Text style={styles.packageType}>{item.type || "Unknown Type"}</Text>
+  // Render package item with better error checking
+  const renderPackageItem = ({ item }: { item: PackageItem }) => {
+    console.log('Rendering package:', item.id, item.name);
+    console.log('Image sources:', { image: item.image, imageUrl: item.imageUrl });
+    
+    // Determine the image source, with fallback
+    const imageSource = item.image || item.imageUrl || null;
+    console.log('Using image source:', imageSource);
+    
+    // Check if this image has errored
+    const hasError = imageErrors[item.id] || false;
+    
+    return (
+      <TouchableOpacity
+        style={styles.resultItem}
+        onPress={() => handlePackagePress(item.id)}
+      >
+        <View style={styles.resultContent}>
+          <View style={styles.imageContainer}>
+            {imageSource && !hasError ? (
+              <Image
+                source={{ uri: imageSource }}
+                style={styles.packageImage}
+                resizeMode="cover"
+                onError={() => {
+                  console.error('Image loading error for image URL:', imageSource);
+                  handleImageError(item.id);
+                }}
+              />
+            ) : (
+              <View style={[styles.packageImage, styles.placeholderImage]}>
+                <Text style={styles.placeholderText}>No Image</Text>
+              </View>
+            )}
+          </View>
 
-          <TouchableOpacity
-            style={styles.agentButton}
-            onPress={() => handleAgentPress(item.agent.id)}
-          >
-            <Text style={styles.agentName}>By: {item.agent.name}</Text>
-          </TouchableOpacity>
+          <View style={styles.detailsContainer}>
+            <Text style={styles.packageName} numberOfLines={2}>
+              {item.name || "Unnamed Package"}
+            </Text>
+            <Text style={styles.packagePrice}>
+              ${item.price?.toLocaleString() || "0"}
+            </Text>
+            <Text style={styles.packageType}>{item.type || "Unknown Type"}</Text>
+
+            <TouchableOpacity
+              style={styles.agentButton}
+              onPress={() => handleAgentPress(item.agent?.id)}
+            >
+              <Text style={styles.agentName}>By: {item.agent?.name || "Unknown Agent"}</Text>
+            </TouchableOpacity>
+          </View>
         </View>
-      </View>
-    </TouchableOpacity>
-  );
+      </TouchableOpacity>
+    );
+  };
 
   return (
-    <KeyboardAvoidingView
-      style={styles.container}
-      behavior={Platform.OS === "ios" ? "padding" : undefined}
-      keyboardVerticalOffset={Platform.OS === "ios" ? 64 : 0}
-    >
-      <SafeAreaView style={styles.container}>
+    <SafeAreaView style={styles.safeArea} edges={['bottom', 'left', 'right']}>
+      <StatusBar barStyle="dark-content" backgroundColor="#FFFFFF" translucent={true} />
+      <KeyboardAvoidingView
+        style={styles.container}
+        behavior={Platform.OS === "ios" ? "padding" : undefined}
+        keyboardVerticalOffset={Platform.OS === "ios" ? 64 : 0}
+      >
         <TouchableWithoutFeedback onPress={dismissKeyboard}>
           <View style={styles.container}>
             {/* Header */}
@@ -173,8 +228,11 @@ const SearchScreen: React.FC = () => {
               <TouchableOpacity
                 onPress={() => router.back()}
                 style={styles.backButton}
+                hitSlop={{ top: 20, bottom: 20, left: 20, right: 20 }}
               >
-                <ArrowLeft size={24} color="#1ABC9C" />
+                <View style={styles.backButtonContainer}>
+                  <ArrowLeft size={24} color="#FFFFFF" />
+                </View>
               </TouchableOpacity>
               <Text style={styles.headerTitle}>Search</Text>
             </View>
@@ -251,7 +309,7 @@ const SearchScreen: React.FC = () => {
                 {searchResults.length > 0 ? (
                   <FlatList
                     data={searchResults}
-                    keyExtractor={(item) => item.$id}
+                    keyExtractor={(item) => item.id || Math.random().toString()}
                     renderItem={renderPackageItem}
                     contentContainerStyle={styles.resultsList}
                     keyboardShouldPersistTaps="handled"
@@ -288,12 +346,16 @@ const SearchScreen: React.FC = () => {
             )}
           </View>
         </TouchableWithoutFeedback>
-      </SafeAreaView>
-    </KeyboardAvoidingView>
+      </KeyboardAvoidingView>
+    </SafeAreaView>
   );
 };
 
 const styles = StyleSheet.create({
+  safeArea: {
+    flex: 1,
+    backgroundColor: "#FFFFFF",
+  },
   container: {
     flex: 1,
     backgroundColor: "#fff",
@@ -302,10 +364,29 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     paddingHorizontal: 16,
-    height: 56,
+    paddingTop: Platform.OS === "android" ? 50 : 8,
+    paddingBottom: 8,
+    height: Platform.OS === "android" ? 90 : 56,
+    backgroundColor: "#FFFFFF",
+    borderBottomWidth: 1,
+    borderBottomColor: "#f0f0f0",
+    marginTop: Platform.OS === "android" ? StatusBar.currentHeight || 0 : 0,
   },
   backButton: {
-    padding: 8,
+    padding: 5,
+  },
+  backButtonContainer: {
+    backgroundColor: "#1ABC9C",
+    borderRadius: 30,
+    width: 40,
+    height: 40,
+    justifyContent: "center",
+    alignItems: "center",
+    elevation: 3,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.2,
+    shadowRadius: 1.5,
   },
   headerTitle: {
     fontSize: 18,
@@ -413,9 +494,13 @@ const styles = StyleSheet.create({
     backgroundColor: "#f0f0f0",
     justifyContent: "center",
     alignItems: "center",
+    position: "relative",
+    overflow: "hidden",
   },
   placeholderText: {
     color: "#999",
+    fontSize: 12,
+    fontWeight: "bold",
   },
   detailsContainer: {
     flex: 1,

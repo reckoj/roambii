@@ -116,7 +116,11 @@ export interface Package extends FirebaseDocument {
   description?: string;
   price: number;
   type: string;
-  image?: string;
+  
+  // Image fields - either image or imageUrl can be used
+  image?: string;    // Main image URL
+  imageUrl?: string; // Alternative image URL field
+  
   rating?: number;
   agent: {
     id: string;
