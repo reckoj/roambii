@@ -142,6 +142,7 @@ const UnreadMessageTracker = ({
 
 const TabsLayout = () => {
   const [unreadMessageCount, setUnreadMessageCount] = useState(0);
+  const { isAgent } = useGlobalContext();
 
   return (
     <>

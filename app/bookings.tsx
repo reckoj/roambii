@@ -110,11 +110,32 @@ const Bookings = () => {
           text: "Delete",
           style: "destructive",
           onPress: async () => {
-            const success = await deletePackage(packageId);
-            if (success) {
-              setPackages(packages.filter((pkg) => pkg.$id !== packageId));
-            } else {
-              Alert.alert("Error", "Failed to delete package.");
+            try {
+              console.log(`Attempting to delete package: ${packageId}`);
+              const success = await deletePackage(packageId);
+              
+              if (success) {
+                console.log(`Successfully deleted package: ${packageId}`);
+                
+                // Filter out the deleted package from the packages list
+                // Handle both $id and id formats
+                setPackages(packages.filter((pkg) => {
+                  const pkgId = pkg.$id || pkg.id;
+                  return pkgId !== packageId;
+                }));
+                
+                // Show success message
+                Alert.alert("Success", "Package deleted successfully.");
+              } else {
+                console.error(`Failed to delete package: ${packageId}`);
+                Alert.alert(
+                  "Delete Failed", 
+                  "Failed to delete package. You may not have permission or the package doesn't exist."
+                );
+              }
+            } catch (error) {
+              console.error("Error in package deletion:", error);
+              Alert.alert("Error", "An error occurred while deleting the package.");
             }
           },
         },
@@ -124,6 +145,7 @@ const Bookings = () => {
 
   /** Handle editing a package */
   const handleEdit = (packageId: string) => {
+    console.log(`Navigating to edit package: ${packageId}`);
     router.push({
       pathname: "/editPackage",
       params: { id: packageId },
@@ -151,26 +173,31 @@ const Bookings = () => {
   }
 
   // Render hidden row item (for actions like edit/delete)
-  const renderHiddenItem = (data: any) => (
-    <View style={styles.rowBack}>
-      <TouchableOpacity
-        style={[styles.actionButton, styles.editButton]}
-        onPress={() => handleEdit(data.item.$id)}
-      >
-        <Edit size={20} color="#FFF" />
-      </TouchableOpacity>
-      <TouchableOpacity
-        style={[styles.actionButton, styles.deleteButton]}
-        onPress={() => handleDelete(data.item.$id)}
-      >
-        <Trash2 size={20} color="#FFF" />
-      </TouchableOpacity>
-    </View>
-  );
+  const renderHiddenItem = (data: any) => {
+    const packageId = data.item.$id || data.item.id;
+    
+    return (
+      <View style={styles.rowBack}>
+        <TouchableOpacity
+          style={[styles.actionButton, styles.editButton]}
+          onPress={() => handleEdit(packageId)}
+        >
+          <Edit size={20} color="#FFF" />
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={[styles.actionButton, styles.deleteButton]}
+          onPress={() => handleDelete(packageId)}
+        >
+          <Trash2 size={20} color="#FFF" />
+        </TouchableOpacity>
+      </View>
+    );
+  };
 
   // Render visible row item (package card)
   const renderItem = (data: any) => {
     const pkg = data.item;
+    const packageId = pkg.$id || pkg.id;
 
     return (
       <View
@@ -180,7 +207,7 @@ const Bookings = () => {
         <TouchableOpacity
           style={styles.packageCard}
           activeOpacity={0.9}
-          onPress={() => handleEdit(pkg.$id)}
+          onPress={() => handleEdit(packageId)}
         >
           {/* Card content */}
           <View style={styles.cardContent}>

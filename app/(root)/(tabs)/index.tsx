@@ -59,22 +59,14 @@ const COLORS = {
 };
 
 const HomeScreen = () => {
-  const { rawUser, isAgent } = useGlobalContext();
+  // Add state to control when content is ready to be shown
+  const [readyToShow, setReadyToShow] = useState(false);
+  const [initialAnimationValue] = useState(new Animated.Value(0));
+  const { rawUser, isAgent, loading } = useGlobalContext();
   const greeting = getGreeting();
   const dispatch = useDispatch<AppDispatch>();
-
-  // Redux selectors
-  const {
-    packages,
-    featuredPackages,
-    loading,
-    loadingMore,
-    hasMore,
-    offset,
-    filter,
-    query,
-  } = useSelector((state: RootState) => state.packages);
-
+  
+  // Define state and refs
   const [refreshing, setRefreshing] = useState(false);
   const scrollY = useRef(new Animated.Value(0)).current;
   const listRef = useRef<FlatList>(null);
@@ -82,19 +74,62 @@ const HomeScreen = () => {
   const scrollTimeout = useRef<NodeJS.Timeout>();
   const lastLoadMoreTime = useRef(0);
 
-  // Initial Fetch
+  // Redux selectors
+  const {
+    packages,
+    featuredPackages,
+    loading: packagesLoading,
+    loadingMore,
+    hasMore,
+    offset,
+    filter,
+    query,
+  } = useSelector((state: RootState) => state.packages);
+
+  // Animate the initial loading indicator
   useEffect(() => {
-    if (packages.length === 0) {
-      dispatch(fetchPackagesAsync({ limit: 6, offset: 0, reset: true }));
+    // Start the animation
+    Animated.sequence([
+      // Delay for 300ms so the animation is visible
+      Animated.delay(300),
+      // Then fade in over 500ms
+      Animated.timing(initialAnimationValue, {
+        toValue: 1,
+        duration: 500,
+        useNativeDriver: true,
+      }),
+    ]).start();
+  }, [initialAnimationValue]);
+
+  // Wait for global context to settle and then mark content as ready to show
+  useEffect(() => {
+    if (!loading) {
+      // Small delay to ensure UI state has settled
+      // Adding a little more delay for a smoother experience
+      const timer = setTimeout(() => {
+        setReadyToShow(true);
+      }, 900);
+      
+      return () => clearTimeout(timer);
     }
-    dispatch(fetchFeaturedPackagesAsync());
+  }, [loading]);
+
+  // Initial Fetch - we'll keep this for conditional execution
+  useEffect(() => {
+    // Only fetch data if not an agent and content is ready to show
+    if (!isAgent && readyToShow) {
+      if (packages.length === 0) {
+        dispatch(fetchPackagesAsync({ limit: 6, offset: 0, reset: true }));
+      }
+      dispatch(fetchFeaturedPackagesAsync());
+    }
 
     return () => {
       if (scrollTimeout.current) {
         clearTimeout(scrollTimeout.current);
       }
     };
-  }, [dispatch]);
+  }, [dispatch, packages.length, readyToShow, isAgent]);
 
   // Load More Data When Reaching Bottom
   const handleLoadMore = useCallback(() => {
@@ -157,7 +192,36 @@ const HomeScreen = () => {
     []
   );
 
-  const handleCardPress = (id: string) => router.push(`/properties/${id}`);
+  const handleCardPress = useCallback((id: string) => {
+    router.push(`/properties/${id}`);
+  }, []);
+
+  // Show loading screen until we're ready to display content
+  if (!readyToShow) {
+    return (
+      <View style={styles.initialLoadingContainer}>
+        <StatusBar backgroundColor="#FFFFFF" barStyle="dark-content" />
+        <Animated.View style={{ 
+          opacity: initialAnimationValue,
+          transform: [{ scale: Animated.add(0.8, Animated.multiply(initialAnimationValue, 0.2)) }]
+        }}>
+          <ActivityIndicator size="large" color={COLORS.primary} />
+        </Animated.View>
+        <Animated.Text style={[styles.loadingAppText, { opacity: initialAnimationValue }]}>
+          Loading Roambii...
+        </Animated.Text>
+      </View>
+    );
+  }
+
+  // If user is an agent, render the Bookings component
+  if (isAgent) {
+    return <Bookings />;
+  }
+
+  // For non-agent users, we'll let the normal home screen render
+  // even if readyToShow is false, since we'll show loading indicators
+  // for the packages within the UI itself
 
   // Animated header values
   const headerTranslateY = scrollY.interpolate({
@@ -296,9 +360,6 @@ const HomeScreen = () => {
       <Text style={styles.quickActionText}>{title}</Text>
     </TouchableOpacity>
   );
-  if (isAgent) {
-    return <Bookings />;
-  }
 
   return (
     <View style={styles.container}>
@@ -414,12 +475,15 @@ const HomeScreen = () => {
             })}
 
             <View style={styles.featuredContainer}>
-              {loading && featuredPackages.length === 0 ? (
-                <ActivityIndicator
-                  size="large"
-                  color="#1ABC9C"
-                  style={styles.loader}
-                />
+              {packagesLoading && featuredPackages.length === 0 ? (
+                <View style={styles.loaderContainer}>
+                  <ActivityIndicator
+                    size="large"
+                    color="#1ABC9C"
+                    style={styles.loader}
+                  />
+                  <Text style={styles.loaderText}>Loading packages...</Text>
+                </View>
               ) : featuredPackages.length === 0 ? (
                 <NoResults />
               ) : (
@@ -450,9 +514,9 @@ const HomeScreen = () => {
         )}
         ListFooterComponent={() =>
           loadingMore ? (
-            <View style={styles.footerLoader}>
+            <View style={styles.loaderContainer}>
               <ActivityIndicator size="small" color="#1ABC9C" />
-              <Text style={styles.loadingMoreText}>
+              <Text style={styles.loaderText}>
                 Loading more packages...
               </Text>
             </View>
@@ -706,17 +770,36 @@ const styles = StyleSheet.create({
   loader: {
     marginVertical: 20,
   },
-  footerLoader: {
+  loaderContainer: {
     flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    padding: 20,
+    backgroundColor: "#FFFFFF",
+    borderRadius: 12,
+    marginVertical: 10,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 5,
+    elevation: 1,
+  },
+  loaderText: {
+    marginLeft: 10,
+    fontSize: 16,
+    fontWeight: "500",
+    color: "#34495E",
+  },
+  initialLoadingContainer: {
+    flex: 1,
     justifyContent: "center",
     alignItems: "center",
-    paddingVertical: 16,
-    backgroundColor: "transparent",
-    marginBottom: 20,
+    backgroundColor: "#FFFFFF",
   },
-  loadingMoreText: {
-    marginLeft: 8,
-    fontSize: 14,
-    color: "#95A5A6",
+  loadingAppText: {
+    fontSize: 18,
+    fontWeight: "600",
+    color: "#34495E",
+    marginTop: 20,
   },
 });

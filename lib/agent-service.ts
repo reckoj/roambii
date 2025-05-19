@@ -18,6 +18,7 @@ import { ref, get, update } from "firebase/database";
 import { firestore, firebaseDb as database, COLLECTIONS } from "./firebase/firebase-config";
 import { Agent } from "./firebase/models";
 import { uploadProfileImage } from "./storage-service";
+import { auth } from "./firebase/firebase-config";
 
 /**
  * Get agent profile by ID with enhanced error handling
@@ -521,6 +522,17 @@ export const getAgentPackages = async (
  */
 export const deletePackage = async (packageId: string): Promise<boolean> => {
   try {
+    console.log(`Starting package deletion process for ID: ${packageId}`);
+    
+    // Get current user
+    const currentUser = auth.currentUser;
+    if (!currentUser) {
+      console.error("No authenticated user found when trying to delete package");
+      return false;
+    }
+    
+    console.log(`Authenticated user: ${currentUser.uid}`);
+    
     // Try to delete from 'packages' collection
     try {
       console.log(`Attempting to delete package ${packageId} from 'packages' collection`);
@@ -529,14 +541,85 @@ export const deletePackage = async (packageId: string): Promise<boolean> => {
 
       if (packageDoc.exists()) {
         const packageData = packageDoc.data();
+        console.log(`Package found, data:`, packageData);
+        
+        // Check if current user is the agent for this package
+        let isAuthorized = false;
+        
+        // Check different ways the agent might be referenced
+        if (packageData.agentId === currentUser.uid) {
+          console.log(`User is authorized: agentId matches current user`);
+          isAuthorized = true;
+        } else if (packageData.agent && typeof packageData.agent === 'object') {
+          // Check if agent is a document reference
+          if ('id' in packageData.agent && packageData.agent.id === currentUser.uid) {
+            console.log(`User is authorized: agent.id matches current user`);
+            isAuthorized = true;
+          }
+          // Check if it's a Firestore reference
+          else if ('path' in packageData.agent) {
+            const agentPath = packageData.agent.path;
+            const agentId = agentPath.split('/').pop();
+            if (agentId === currentUser.uid) {
+              console.log(`User is authorized: agent reference path matches current user`);
+              isAuthorized = true;
+            }
+          }
+        }
+        
+        if (!isAuthorized) {
+          console.log(`Current user ${currentUser.uid} is not authorized to delete this package`);
+          // Try to get the user document to check if they're an agent/admin
+          const userRef = doc(firestore, COLLECTIONS.USERS, currentUser.uid);
+          const userDoc = await getDoc(userRef);
+          
+          if (userDoc.exists()) {
+            const userData = userDoc.data();
+            if (userData.isAgent || userData.isAgentTemp) {
+              console.log(`User is ${userData.isAgent ? 'a permanent agent' : 'in temporary agent mode'}`);
+              isAuthorized = true;
+            }
+          }
+        }
+        
+        if (!isAuthorized) {
+          console.error(`User ${currentUser.uid} is not authorized to delete package ${packageId}`);
+          return false;
+        }
 
         // Delete flight info if it exists
         if (packageData.flight_info) {
           try {
-            await deleteDoc(doc(firestore, "flight_info", packageData.flight_info));
-            console.log("Deleted associated flight info document");
+            // Check what type of reference we're dealing with
+            if (typeof packageData.flight_info === 'string' && packageData.flight_info.trim() !== '') {
+              // If it's a string ID, use it directly
+              await deleteDoc(doc(firestore, "flight_info", packageData.flight_info));
+              console.log("Deleted associated flight info document by ID");
+            } else if (packageData.flight_info && typeof packageData.flight_info === 'object') {
+              // If it's a reference object
+              if ('path' in packageData.flight_info && packageData.flight_info.path) {
+                // For a document reference with path
+                const pathParts = packageData.flight_info.path.split('/');
+                if (pathParts.length >= 2) {
+                  const flightId = pathParts[pathParts.length - 1];
+                  await deleteDoc(doc(firestore, "flight_info", flightId));
+                  console.log("Deleted associated flight info document by reference path");
+                } else {
+                  console.log("Flight info path format invalid:", packageData.flight_info.path);
+                }
+              } else if ('id' in packageData.flight_info && packageData.flight_info.id) {
+                // For an object with just an ID
+                await deleteDoc(doc(firestore, "flight_info", packageData.flight_info.id));
+                console.log("Deleted associated flight info document by object ID");
+              } else {
+                console.log("Flight info reference format not recognized:", packageData.flight_info);
+              }
+            } else {
+              console.log("Skipping flight info deletion - invalid reference format");
+            }
           } catch (error) {
             console.error("Error deleting flight info:", error);
+            // Continue with package deletion even if flight info deletion fails
           }
         }
 
@@ -559,14 +642,74 @@ export const deletePackage = async (packageId: string): Promise<boolean> => {
 
       if (packageInfoDoc.exists()) {
         const packageData = packageInfoDoc.data();
+        console.log(`Package found in package_info collection, data:`, packageData);
+        
+        // Check if current user is the agent for this package
+        let isAuthorized = false;
+        
+        if (packageData.agentId === currentUser.uid) {
+          console.log(`User is authorized: agentId matches current user`);
+          isAuthorized = true;
+        } else if (packageData.agent && typeof packageData.agent === 'object' && 'id' in packageData.agent) {
+          if (packageData.agent.id === currentUser.uid) {
+            console.log(`User is authorized: agent.id matches current user`);
+            isAuthorized = true;
+          }
+        }
+        
+        if (!isAuthorized) {
+          console.log(`Current user ${currentUser.uid} is not listed as agent for package_info`);
+          // Try to get the user document to check if they're an agent/admin
+          const userRef = doc(firestore, COLLECTIONS.USERS, currentUser.uid);
+          const userDoc = await getDoc(userRef);
+          
+          if (userDoc.exists()) {
+            const userData = userDoc.data();
+            if (userData.isAgent || userData.isAgentTemp) {
+              console.log(`User is ${userData.isAgent ? 'a permanent agent' : 'in temporary agent mode'}`);
+              isAuthorized = true;
+            }
+          }
+        }
+        
+        if (!isAuthorized) {
+          console.error(`User ${currentUser.uid} is not authorized to delete package info ${packageId}`);
+          return false;
+        }
 
         // Delete flight info if it exists and is a reference to another document
-        if (packageData.flight_info && typeof packageData.flight_info === 'string') {
+        if (packageData.flight_info) {
           try {
-            await deleteDoc(doc(firestore, "flight_info", packageData.flight_info));
-            console.log("Deleted associated flight info document");
+            // Check what type of reference we're dealing with
+            if (typeof packageData.flight_info === 'string' && packageData.flight_info.trim() !== '') {
+              // If it's a string ID, use it directly
+              await deleteDoc(doc(firestore, "flight_info", packageData.flight_info));
+              console.log("Deleted associated flight info document by ID");
+            } else if (packageData.flight_info && typeof packageData.flight_info === 'object') {
+              // If it's a reference object
+              if ('path' in packageData.flight_info && packageData.flight_info.path) {
+                // For a document reference with path
+                const pathParts = packageData.flight_info.path.split('/');
+                if (pathParts.length >= 2) {
+                  const flightId = pathParts[pathParts.length - 1];
+                  await deleteDoc(doc(firestore, "flight_info", flightId));
+                  console.log("Deleted associated flight info document by reference path");
+                } else {
+                  console.log("Flight info path format invalid:", packageData.flight_info.path);
+                }
+              } else if ('id' in packageData.flight_info && packageData.flight_info.id) {
+                // For an object with just an ID
+                await deleteDoc(doc(firestore, "flight_info", packageData.flight_info.id));
+                console.log("Deleted associated flight info document by object ID");
+              } else {
+                console.log("Flight info reference format not recognized:", packageData.flight_info);
+              }
+            } else {
+              console.log("Skipping flight info deletion - invalid reference format");
+            }
           } catch (error) {
             console.error("Error deleting flight info:", error);
+            // Continue with package deletion even if flight info deletion fails
           }
         }
 
@@ -582,6 +725,7 @@ export const deletePackage = async (packageId: string): Promise<boolean> => {
     }
 
     // If we've reached this point, we weren't able to delete the package
+    console.log("Could not delete package - not found or not authorized");
     return false;
   } catch (error) {
     console.error("Error deleting package:", error);
