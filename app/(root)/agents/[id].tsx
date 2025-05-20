@@ -109,7 +109,21 @@ const AgentProfile = () => {
         try {
           setLoadingPackages(true);
           const agentPackages = await agentService.getAgentPackages(agentId);
-          setPackages(agentPackages);
+          
+          // Filter out duplicates using a Map to track unique IDs
+          const uniquePackagesMap = new Map();
+          agentPackages.forEach(pkg => {
+            const id = pkg.$id || pkg.id;
+            if (id && !uniquePackagesMap.has(id)) {
+              uniquePackagesMap.set(id, pkg);
+            }
+          });
+          
+          // Convert back to array
+          const uniquePackages = Array.from(uniquePackagesMap.values());
+          
+          console.log(`Found ${agentPackages.length} packages, ${uniquePackages.length} after filtering duplicates`);
+          setPackages(uniquePackages);
         } catch (error) {
           console.error("Error fetching agent's packages:", error);
           // Don't show an alert for packages failure to avoid multiple alerts
@@ -305,7 +319,7 @@ const AgentProfile = () => {
             {getAgentSpecialties()}
             Specialist
           </Text>
-
+          {/* 
           <View style={styles.agentRatingContainer}>
             {agent?.rating && (
               <Fragment>
@@ -319,7 +333,7 @@ const AgentProfile = () => {
                 </Text>
               </Fragment>
             )}
-          </View>
+          </View> */}
 
           <TouchableOpacity
             style={styles.contactButton}
@@ -401,7 +415,7 @@ const AgentProfile = () => {
                   />
                 </View>
               )}
-              keyExtractor={(item) => item.$id || item.id}
+              keyExtractor={(item, index) => `package-${item.$id || item.id}-${index}`}
               showsHorizontalScrollIndicator={false}
               contentContainerStyle={styles.packagesList}
             />

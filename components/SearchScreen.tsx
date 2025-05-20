@@ -16,7 +16,7 @@ import {
   Alert,
 } from "react-native";
 import { router, useRouter } from "expo-router";
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView } from "react-native-safe-area-context";
 import {
   X,
   ChevronDown,
@@ -27,6 +27,7 @@ import { useDebouncedCallback } from "use-debounce";
 
 // Import types from searchFunctions
 import { searchPackages, PackageWithAgent } from "@/lib/searchFunctions";
+import CustomHeader from "./HeaderComponent";
 
 // Local interface for component UI structure
 interface PackageItem extends PackageWithAgent {}
@@ -47,7 +48,7 @@ const SearchScreen: React.FC = () => {
   const [searchResults, setSearchResults] = useState<PackageItem[]>([]);
   const [loading, setLoading] = useState<boolean>(false);
   const [keyboardVisible, setKeyboardVisible] = useState<boolean>(false);
-  
+
   // Create a map to track image loading errors by package ID
   const [imageErrors, setImageErrors] = useState<Record<string, boolean>>({});
 
@@ -85,34 +86,54 @@ const SearchScreen: React.FC = () => {
 
   // Run an initial search on component mount
   useEffect(() => {
-    console.log('Initial search on component mount');
-    performSearch('', 'All');
+    console.log("Initial search on component mount");
+    performSearch("", "All");
   }, []);
 
   const performSearch = async (query: string, type: string) => {
     // Add logging to debug search issues
-    console.log('Searching with query:', query, 'and type:', type);
-    
+    console.log("Searching with query:", query, "and type:", type);
+
     setLoading(true);
     try {
       // Always perform search even if query is empty
-      console.log('Calling searchPackages with:', { query, region: 'All', type, limit: 20 });
+      console.log("Calling searchPackages with:", {
+        query,
+        region: "All",
+        type,
+        limit: 20,
+      });
       const results = await searchPackages(query, "All", type, 20);
-      console.log('Search results received:', results ? results.length : 0, 'items');
-      
+      console.log(
+        "Search results received:",
+        results ? results.length : 0,
+        "items"
+      );
+
       // Check if results have valid structure
       if (results && Array.isArray(results)) {
-        console.log('First result (if any):', results.length > 0 ? JSON.stringify(results[0]).substring(0, 100) + '...' : 'No results');
+        console.log(
+          "First result (if any):",
+          results.length > 0
+            ? JSON.stringify(results[0]).substring(0, 100) + "..."
+            : "No results"
+        );
         setSearchResults(results);
       } else {
-        console.error('Unexpected results format:', results);
+        console.error("Unexpected results format:", results);
         setSearchResults([]);
-        Alert.alert('Search Error', 'Received unexpected data format from search');
+        Alert.alert(
+          "Search Error",
+          "Received unexpected data format from search"
+        );
       }
     } catch (error) {
       console.error("Search error:", error);
       setSearchResults([]);
-      Alert.alert('Search Error', 'An error occurred while searching. Please try again.');
+      Alert.alert(
+        "Search Error",
+        "An error occurred while searching. Please try again."
+      );
     } finally {
       setLoading(false);
     }
@@ -124,17 +145,17 @@ const SearchScreen: React.FC = () => {
   };
 
   const handlePackagePress = (packageId: string) => {
-    console.log('Package pressed:', packageId);
+    console.log("Package pressed:", packageId);
     // Navigate only if we have a valid ID
     if (packageId) {
       router.push(`/properties/${packageId}`);
     } else {
-      console.error('Invalid package ID');
+      console.error("Invalid package ID");
     }
   };
 
   const handleAgentPress = (agentId: string | null) => {
-    console.log('Agent pressed:', agentId);
+    console.log("Agent pressed:", agentId);
     if (agentId) {
       router.push(`/agents/${agentId}`);
     }
@@ -150,24 +171,27 @@ const SearchScreen: React.FC = () => {
 
   // Handle image loading error
   const handleImageError = (packageId: string) => {
-    setImageErrors(prev => ({
+    setImageErrors((prev) => ({
       ...prev,
-      [packageId]: true
+      [packageId]: true,
     }));
   };
 
   // Render package item with better error checking
   const renderPackageItem = ({ item }: { item: PackageItem }) => {
-    console.log('Rendering package:', item.id, item.name);
-    console.log('Image sources:', { image: item.image, imageUrl: item.imageUrl });
-    
+    console.log("Rendering package:", item.id, item.name);
+    console.log("Image sources:", {
+      image: item.image,
+      imageUrl: item.imageUrl,
+    });
+
     // Determine the image source, with fallback
     const imageSource = item.image || item.imageUrl || null;
-    console.log('Using image source:', imageSource);
-    
+    console.log("Using image source:", imageSource);
+
     // Check if this image has errored
     const hasError = imageErrors[item.id] || false;
-    
+
     return (
       <TouchableOpacity
         style={styles.resultItem}
@@ -181,7 +205,10 @@ const SearchScreen: React.FC = () => {
                 style={styles.packageImage}
                 resizeMode="cover"
                 onError={() => {
-                  console.error('Image loading error for image URL:', imageSource);
+                  console.error(
+                    "Image loading error for image URL:",
+                    imageSource
+                  );
                   handleImageError(item.id);
                 }}
               />
@@ -199,13 +226,17 @@ const SearchScreen: React.FC = () => {
             <Text style={styles.packagePrice}>
               ${item.price?.toLocaleString() || "0"}
             </Text>
-            <Text style={styles.packageType}>{item.type || "Unknown Type"}</Text>
+            <Text style={styles.packageType}>
+              {item.type || "Unknown Type"}
+            </Text>
 
             <TouchableOpacity
               style={styles.agentButton}
               onPress={() => handleAgentPress(item.agent?.id)}
             >
-              <Text style={styles.agentName}>By: {item.agent?.name || "Unknown Agent"}</Text>
+              <Text style={styles.agentName}>
+                By: {item.agent?.name || "Unknown Agent"}
+              </Text>
             </TouchableOpacity>
           </View>
         </View>
@@ -214,8 +245,13 @@ const SearchScreen: React.FC = () => {
   };
 
   return (
-    <SafeAreaView style={styles.safeArea} edges={['bottom', 'left', 'right']}>
-      <StatusBar barStyle="dark-content" backgroundColor="#FFFFFF" translucent={true} />
+    <View style={styles.safeArea}>
+      {/* <StatusBar
+        barStyle="dark-content"
+        backgroundColor="#FFFFFF"
+        translucent={true}
+      /> */}
+      <CustomHeader title="Search" showBackButton={true} />
       <KeyboardAvoidingView
         style={styles.container}
         behavior={Platform.OS === "ios" ? "padding" : undefined}
@@ -224,7 +260,7 @@ const SearchScreen: React.FC = () => {
         <TouchableWithoutFeedback onPress={dismissKeyboard}>
           <View style={styles.container}>
             {/* Header */}
-            <View style={styles.header}>
+            {/* <View style={styles.header}>
               <TouchableOpacity
                 onPress={() => router.back()}
                 style={styles.backButton}
@@ -235,7 +271,7 @@ const SearchScreen: React.FC = () => {
                 </View>
               </TouchableOpacity>
               <Text style={styles.headerTitle}>Search</Text>
-            </View>
+            </View> */}
 
             {/* Search Input */}
             <View style={styles.searchInputContainer}>
@@ -347,7 +383,7 @@ const SearchScreen: React.FC = () => {
           </View>
         </TouchableWithoutFeedback>
       </KeyboardAvoidingView>
-    </SafeAreaView>
+    </View>
   );
 };
 
@@ -365,7 +401,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
     paddingHorizontal: 16,
     paddingTop: Platform.OS === "android" ? 50 : 8,
-    paddingBottom: 8,
+    paddingBottom: 20,
     height: Platform.OS === "android" ? 90 : 56,
     backgroundColor: "#FFFFFF",
     borderBottomWidth: 1,
@@ -396,7 +432,7 @@ const styles = StyleSheet.create({
   },
   searchInputContainer: {
     paddingHorizontal: 16,
-    marginBottom: 8,
+    marginVertical: 8,
   },
   searchBar: {
     flexDirection: "row",

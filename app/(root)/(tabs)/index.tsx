@@ -18,7 +18,7 @@ import images from "@/constants/images";
 import NoResults from "@/components/NoResults";
 import { FeaturedCard } from "@/components/Cards";
 import { useGlobalContext } from "@/lib/global-provider";
-import RecommendedAgents from '@/app/components/agents/RecommendedAgents';
+import RecommendedAgents from "@/app/components/agents/RecommendedAgents";
 import Bookings from "@/app/bookings";
 import { Calendar, Home, MapPin, Heart, SearchIcon } from "lucide-react-native";
 
@@ -61,24 +61,74 @@ const COLORS = {
 // Skeleton components for loading states
 const PackageSkeleton = () => (
   <View style={styles.packageCardContainer}>
-    <View style={[styles.packageCard, { backgroundColor: '#f5f5f5' }]}>
-      <View style={[styles.cardImageContainer, { backgroundColor: '#e0e0e0' }]}>
-        <View style={[styles.cardImage, { backgroundColor: '#e0e0e0' }]} />
+    <View style={[styles.packageCard, { backgroundColor: "#f5f5f5" }]}>
+      <View style={[styles.cardImageContainer, { backgroundColor: "#e0e0e0" }]}>
+        <View style={[styles.cardImage, { backgroundColor: "#e0e0e0" }]} />
       </View>
       <View style={styles.cardContent}>
-        <View style={{ height: 16, backgroundColor: '#e0e0e0', width: '70%', borderRadius: 4, marginBottom: 8 }} />
-        <View style={{ height: 12, backgroundColor: '#e0e0e0', width: '50%', borderRadius: 4, marginBottom: 12 }} />
-        <View style={{ height: 10, backgroundColor: '#e0e0e0', width: '80%', borderRadius: 4 }} />
+        <View
+          style={{
+            height: 16,
+            backgroundColor: "#e0e0e0",
+            width: "70%",
+            borderRadius: 4,
+            marginBottom: 8,
+          }}
+        />
+        <View
+          style={{
+            height: 12,
+            backgroundColor: "#e0e0e0",
+            width: "50%",
+            borderRadius: 4,
+            marginBottom: 12,
+          }}
+        />
+        <View
+          style={{
+            height: 10,
+            backgroundColor: "#e0e0e0",
+            width: "80%",
+            borderRadius: 4,
+          }}
+        />
       </View>
     </View>
   </View>
 );
 
 const FeaturedSkeleton = () => (
-  <View style={[styles.featuredCardContainer, { width: width * 0.75, marginLeft: 8 }]}>
-    <View style={{ height: 180, backgroundColor: '#e0e0e0', borderRadius: 16, marginBottom: 8 }} />
-    <View style={{ height: 16, backgroundColor: '#e0e0e0', width: '70%', borderRadius: 4, marginBottom: 8 }} />
-    <View style={{ height: 12, backgroundColor: '#e0e0e0', width: '50%', borderRadius: 4 }} />
+  <View
+    style={[
+      styles.featuredCardContainer,
+      { width: width * 0.75, marginLeft: 8 },
+    ]}
+  >
+    <View
+      style={{
+        height: 180,
+        backgroundColor: "#e0e0e0",
+        borderRadius: 16,
+        marginBottom: 8,
+      }}
+    />
+    <View
+      style={{
+        height: 16,
+        backgroundColor: "#e0e0e0",
+        width: "70%",
+        borderRadius: 4,
+        marginBottom: 8,
+      }}
+    />
+    <View
+      style={{
+        height: 12,
+        backgroundColor: "#e0e0e0",
+        width: "50%",
+        borderRadius: 4,
+      }}
+    />
   </View>
 );
 
@@ -89,7 +139,7 @@ const HomeScreen = () => {
   const { rawUser, isAgent, loading: userLoading } = useGlobalContext();
   const greeting = getGreeting();
   const dispatch = useDispatch<AppDispatch>();
-  
+
   // Define state and refs
   const [refreshing, setRefreshing] = useState(false);
   const scrollY = useRef(new Animated.Value(0)).current;
@@ -131,29 +181,29 @@ const HomeScreen = () => {
     // Only run this effect once
     if (!dataFetchedRef.current && !isAgent) {
       dataFetchedRef.current = true;
-      
+
       // Start fetching data immediately
       const fetchData = async () => {
         try {
           // Fetch both in parallel
           await Promise.all([
             dispatch(fetchPackagesAsync({ limit: 6, offset: 0, reset: true })),
-            dispatch(fetchFeaturedPackagesAsync())
+            dispatch(fetchFeaturedPackagesAsync()),
           ]);
-          
+
           // Short delay before showing content to avoid flicker
           setTimeout(() => {
             setIsFirstLoad(false);
           }, 300);
         } catch (error) {
-          console.error('Error fetching initial data:', error);
+          console.error("Error fetching initial data:", error);
           setIsFirstLoad(false);
         }
       };
-      
+
       fetchData();
     }
-    
+
     // If user is agent, just stop showing the loader
     if (isAgent) {
       setIsFirstLoad(false);
@@ -236,13 +286,24 @@ const HomeScreen = () => {
     return (
       <View style={styles.initialLoadingContainer}>
         <StatusBar backgroundColor="#FFFFFF" barStyle="dark-content" />
-        <Animated.View style={{ 
-          opacity: initialAnimationValue,
-          transform: [{ scale: Animated.add(0.9, Animated.multiply(initialAnimationValue, 0.1)) }]
-        }}>
+        <Animated.View
+          style={{
+            opacity: initialAnimationValue,
+            transform: [
+              {
+                scale: Animated.add(
+                  0.9,
+                  Animated.multiply(initialAnimationValue, 0.1)
+                ),
+              },
+            ],
+          }}
+        >
           <ActivityIndicator size="large" color={COLORS.primary} />
         </Animated.View>
-        <Animated.Text style={[styles.loadingAppText, { opacity: initialAnimationValue }]}>
+        <Animated.Text
+          style={[styles.loadingAppText, { opacity: initialAnimationValue }]}
+        >
           Loading Roambii...
         </Animated.Text>
       </View>
@@ -393,7 +454,8 @@ const HomeScreen = () => {
   );
 
   // Determine if we should show skeletons
-  const showFeaturedSkeletons = packagesLoading && featuredPackages.length === 0;
+  const showFeaturedSkeletons =
+    packagesLoading && featuredPackages.length === 0;
   const showPackageSkeletons = packagesLoading && packages.length === 0;
 
   return (
@@ -520,7 +582,7 @@ const HomeScreen = () => {
                   contentContainerStyle={styles.featuredList}
                 />
               ) : featuredPackages.length === 0 ? (
-                <NoResults message="No featured packages available" />
+                <NoResults />
               ) : (
                 <FlatList
                   data={featuredPackages}
@@ -545,7 +607,7 @@ const HomeScreen = () => {
 
             {/* All Packages Section */}
             {renderSectionHeader({ title: "All Packages" })}
-            
+
             {/* Show skeletons while loading instead of a separate loading indicator */}
             {showPackageSkeletons && (
               <View style={styles.skeletonGrid}>
@@ -556,10 +618,10 @@ const HomeScreen = () => {
             )}
           </View>
         )}
-        ListEmptyComponent={() => 
+        ListEmptyComponent={() =>
           !showPackageSkeletons && (
             <View style={styles.emptyContainer}>
-              <NoResults message="No packages found" />
+              <NoResults />
             </View>
           )
         }
@@ -816,17 +878,17 @@ const styles = StyleSheet.create({
     color: "#95A5A6",
   },
   skeletonGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    justifyContent: 'space-between',
+    flexDirection: "row",
+    flexWrap: "wrap",
+    justifyContent: "space-between",
   },
   footerLoader: {
     paddingVertical: 20,
-    alignItems: 'center',
+    alignItems: "center",
   },
   emptyContainer: {
     marginTop: 30,
-    alignItems: 'center',
+    alignItems: "center",
   },
   initialLoadingContainer: {
     flex: 1,

@@ -60,30 +60,50 @@ export const createBooking = async (
     const now = new Date();
 
     // Prepare client relationship data - embedded in the booking
-    const clientRelationshipData = packageData.agent?.id ? {
-      clientRelationship: {
-        agentId: packageData.agent.id,
-        userId: userId,
-        createdAt: now,
-        updatedAt: now,
-        status: 'active',
-        isEmbedded: true,
-        contactInfo: {
-          name: userProfile?.name || "",
-          email: userProfile?.email || "",
-          phone: userProfile?.legalInformation?.phoneNumber || "",
+    // Include both camelCase and snake_case versions for compatibility
+    const agentId = packageData.agent?.id;
+    let clientRelationshipData = null;
+    
+    if (agentId) {
+      clientRelationshipData = {
+        clientRelationship: {
+          agentId: agentId,
+          userId: userId,
+          createdAt: now,
+          updatedAt: now,
+          status: 'active',
+          isEmbedded: true,
+          contactInfo: {
+            name: userProfile?.name || "",
+            email: userProfile?.email || "",
+            phone: userProfile?.legalInformation?.phoneNumber || "",
+          }
+        },
+        // Add snake_case version for web app compatibility
+        client_relationship: {
+          agent_id: agentId,
+          user_id: userId,
+          created_at: now,
+          updated_at: now,
+          status: 'active',
+          is_embedded: true,
+          contact_info: {
+            name: userProfile?.name || "",
+            email: userProfile?.email || "",
+            phone: userProfile?.legalInformation?.phoneNumber || "",
+          }
         }
-      }
-    } : null;
+      };
+    }
 
     console.log("DEBUG - Client relationship data prepared:", {
-      hasAgentId: !!packageData.agent?.id,
-      agentId: packageData.agent?.id,
+      hasAgentId: !!agentId,
+      agentId: agentId,
       agentRef: packageData.agent ? JSON.stringify(packageData.agent) : "No agent ref",
       data: clientRelationshipData
     });
 
-    // Merge booking data with client relationship data
+    // Include both camelCase and snake_case field names for compatibility
     const newBooking = {
       user: doc(firestore, COLLECTIONS.USERS, userId),
       package: doc(firestore, COLLECTIONS.PACKAGES, packageId),
@@ -91,6 +111,15 @@ export const createBooking = async (
         ...packageData,
         id: packageId,
       },
+      // Add snake_case equivalent
+      package_details: {
+        ...packageData,
+        id: packageId,
+      },
+      userId: userId,
+      user_id: userId,
+      agentId: agentId, 
+      agent_id: agentId,
       status: "pending",
       payment: {
         id: paymentId,
@@ -107,9 +136,17 @@ export const createBooking = async (
       check_out_time: packageData.check_out_time || now,
       createdAt: serverTimestamp(),
       updatedAt: serverTimestamp(),
+      // Add snake_case equivalents
+      created_at: serverTimestamp(),
+      updated_at: serverTimestamp(),
       // Include user's legal information if available
       travelerInfo: userProfile?.legalInformation || {
         fullName: userProfile?.name || "",
+        email: userProfile?.email || "",
+      },
+      // Add snake_case equivalent
+      traveler_info: userProfile?.legalInformation || {
+        full_name: userProfile?.name || "",
         email: userProfile?.email || "",
       },
       // Add client relationship data if package has an agent
@@ -121,8 +158,23 @@ export const createBooking = async (
     console.log("Booking created with ID:", bookingDoc.id);
     
     // Report on client relationship status
-    if (packageData.agent?.id) {
+    if (agentId) {
       console.log("Client relationship embedded in booking document");
+
+      // CRITICAL FIX: Create a proper client relationship record in the CLIENTS collection
+      try {
+        const clientRelationshipId = await createOrUpdateClientRelationship(
+          agentId,
+          userId,
+          bookingDoc.id,
+          paymentAmount
+        );
+        console.log("Client relationship created/updated with ID:", clientRelationshipId);
+      } catch (clientError) {
+        console.error("Failed to create client relationship:", clientError);
+        // We don't throw here to avoid failing the booking creation
+        // The relationship will be visible through embedded data, but not in clients list
+      }
     } else {
       console.log("No agent information available for client relationship");
     }
@@ -439,19 +491,26 @@ export const updateBookingStatus = async (
       return null;
     }
 
-    const bookingData = bookingDoc.data() as Booking;
+    const bookingData = bookingDoc.data();
     
     // Prepare update data
     const updateData: any = {
       status: status,
       updatedAt: serverTimestamp(),
+      updated_at: serverTimestamp(), // Add snake_case version
     };
     
+    // Check if there's an agent in the package details
+    const packageDetails = bookingData.packageDetails || bookingData.package_details;
+    const agent = packageDetails?.agent;
+    const agentId = agent?.id || packageDetails?.agentId || packageDetails?.agent_id;
+    
     // If status is confirmed and there's an agent, embed client relationship if not already there
-    if (status === 'confirmed' && bookingData.packageDetails?.agent?.id && !bookingData.clientRelationship) {
+    if (status === 'confirmed' && agentId && 
+        !bookingData.clientRelationship && !bookingData.client_relationship) {
       console.log("Adding embedded client relationship for confirmed booking", {
-        agentId: bookingData.packageDetails.agent.id,
-        userId: bookingData.userId,
+        agentId: agentId,
+        userId: bookingData.userId || bookingData.user_id,
       });
       
       const now = new Date();
@@ -459,7 +518,8 @@ export const updateBookingStatus = async (
       // Get user profile for contact info
       let contactInfo: { name: string; email: string; phone?: string } = { name: "", email: "" };
       try {
-        const userProfile = await getUserProfile(bookingData.userId);
+        const userId = bookingData.userId || bookingData.user_id;
+        const userProfile = await getUserProfile(userId);
         if (userProfile) {
           contactInfo = {
             name: userProfile.name || "",
@@ -471,15 +531,30 @@ export const updateBookingStatus = async (
         console.error("Error getting user profile for client relationship:", err);
       }
       
-      // Add client relationship data
+      // Add client relationship data in both camelCase and snake_case formats
       updateData.clientRelationship = {
-        agentId: bookingData.packageDetails.agent.id,
-        userId: bookingData.userId,
+        agentId: agentId,
+        userId: bookingData.userId || bookingData.user_id,
         createdAt: now,
         updatedAt: now,
         status: 'active',
         isEmbedded: true,
         contactInfo
+      };
+      
+      // Add snake_case version for web app
+      updateData.client_relationship = {
+        agent_id: agentId,
+        user_id: bookingData.userId || bookingData.user_id,
+        created_at: now,
+        updated_at: now,
+        status: 'active',
+        is_embedded: true,
+        contact_info: {
+          name: contactInfo.name,
+          email: contactInfo.email,
+          phone: contactInfo.phone
+        }
       };
     }
 
@@ -488,6 +563,26 @@ export const updateBookingStatus = async (
     
     if (updateData.clientRelationship) {
       console.log("Client relationship embedded in booking document during status update");
+      
+      // CRITICAL FIX: Create a proper client relationship record in the CLIENTS collection
+      try {
+        // Extract payment amount from booking data
+        const paymentAmount = 
+          (bookingData.payment && bookingData.payment.amount) || 
+          (packageDetails && packageDetails.price) || 0;
+        
+        const userId = bookingData.userId || bookingData.user_id;
+        const clientRelationshipId = await createOrUpdateClientRelationship(
+          agentId,
+          userId,
+          bookingId,
+          paymentAmount
+        );
+        console.log("Client relationship created/updated with ID:", clientRelationshipId);
+      } catch (clientError) {
+        console.error("Failed to create client relationship during status update:", clientError);
+        // We don't throw here to avoid failing the booking status update
+      }
     }
 
     // Get updated booking

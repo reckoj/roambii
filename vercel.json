@@ -1,0 +1,7 @@
+{
+  "version": 2,
+  "buildCommand": "expo export:web",
+  "outputDirectory": "web-build",
+  "framework": "other",
+  "regions": ["sfo1"]
+} 

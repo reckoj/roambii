@@ -18,7 +18,9 @@ import {
   testClientCollectionPermissions,
   createMinimalClientRecord,
   createBasicClientRelationship,
+  forceClientRelationshipUpdate,
 } from "@/lib/client-service";
+import { useGlobalContext } from "../lib/global-provider";
 
 // Format date/time helper function
 const formatDateTime = (
@@ -84,11 +86,13 @@ interface BookingDetails {
 }
 
 const BookingConfirmationScreen = () => {
-  const { id } = useLocalSearchParams<{ id: string }>();
+  const { id, debug } = useLocalSearchParams<{ id: string; debug: string }>();
   const [booking, setBooking] = useState<BookingDetails | null>(null);
   const [packageData, setPackageData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [updatingClient, setUpdatingClient] = useState(false);
+  const { rawUser } = useGlobalContext();
 
   // Create minimal client record function
   const handleCreateMinimalClient = async () => {
@@ -174,6 +178,40 @@ const BookingConfirmationScreen = () => {
     } catch (error) {
       console.error("DEBUG - Error creating basic client:", error);
       Alert.alert("Error Creating Basic Client", JSON.stringify(error));
+    }
+  };
+
+  // Add function to force update client relationship
+  const handleUpdateClientRelationship = async () => {
+    if (!booking || !booking.packageDetails?.agent?.id) {
+      Alert.alert("Error", "No agent information found for this booking");
+      return;
+    }
+
+    setUpdatingClient(true);
+    try {
+      const result = await forceClientRelationshipUpdate(
+        rawUser?.id || "",
+        booking.packageDetails.agent.id,
+        booking.id
+      );
+      
+      if (result) {
+        Alert.alert(
+          "Success", 
+          "Client relationship has been updated. The agent should now see you in their clients list."
+        );
+      } else {
+        Alert.alert(
+          "Error", 
+          "Failed to update client relationship. Please try again or contact support."
+        );
+      }
+    } catch (error) {
+      console.error("Error updating client relationship:", error);
+      Alert.alert("Error", "An unexpected error occurred");
+    } finally {
+      setUpdatingClient(false);
     }
   };
 
@@ -457,6 +495,23 @@ const BookingConfirmationScreen = () => {
           >
             <Text style={styles.primaryButtonText}>Back to Home</Text>
           </TouchableOpacity>
+          
+          {/* Debug/Fix button - show it in more cases to help users who have client relationship issues */}
+          {(debug === 'true' || __DEV__ || true) && booking && booking.packageDetails?.agent?.id && (
+            <TouchableOpacity
+              style={styles.fixButton}
+              onPress={handleUpdateClientRelationship}
+              disabled={updatingClient}
+            >
+              {updatingClient ? (
+                <ActivityIndicator size="small" color="#FFF" />
+              ) : (
+                <Text style={styles.fixButtonText}>
+                  Fix Client Relationship
+                </Text>
+              )}
+            </TouchableOpacity>
+          )}
         </View>
       </ScrollView>
     </SafeAreaView>
@@ -630,57 +685,31 @@ const styles = StyleSheet.create({
     textAlign: "center",
   },
   buttonsContainer: {
-    marginBottom: 20,
+    marginBottom: 30,
   },
   primaryButton: {
     backgroundColor: "#1ABC9C",
     borderRadius: 8,
-    paddingVertical: 16,
+    paddingVertical: 14,
     alignItems: "center",
     marginBottom: 12,
   },
   primaryButtonText: {
-    color: "white",
-    fontWeight: "bold",
+    color: "#FFFFFF",
     fontSize: 16,
+    fontWeight: "600",
   },
-  debugButtonsRow: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    marginTop: 10,
-  },
-  debugButtonHalf: {
-    flex: 0.48, // Leave a small gap between buttons
-  },
-  debugButtonThird: {
-    flex: 0.32, // Leave a small gap between buttons
-  },
-  debugButton: {
-    backgroundColor: "#3498DB",
-    padding: 16,
+  fixButton: {
+    backgroundColor: "#E74C3C",
     borderRadius: 8,
+    paddingVertical: 14,
     alignItems: "center",
-    justifyContent: "center",
+    marginTop: 8,
   },
-  debugButtonText: {
-    color: "white",
+  fixButtonText: {
+    color: "#FFFFFF",
     fontSize: 16,
-    fontWeight: "bold",
-  },
-  debugResults: {
-    marginTop: 20,
-    padding: 16,
-    backgroundColor: "#F0F0F0",
-    borderRadius: 8,
-  },
-  debugTitle: {
-    fontSize: 18,
-    fontWeight: "bold",
-    marginBottom: 10,
-  },
-  debugText: {
-    fontFamily: "monospace",
-    fontSize: 12,
+    fontWeight: "600",
   },
 });
 

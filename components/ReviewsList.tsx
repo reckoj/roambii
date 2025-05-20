@@ -15,6 +15,7 @@ import { collection, query, where, getDocs, doc, getDoc, addDoc, serverTimestamp
 import { firestore, COLLECTIONS } from "@/lib/firebase/firebase-config";
 import CustomInput from "@/components/CustomInput";
 import ReviewModal, { ReviewDetails } from "./ReviewModal";
+import { getClientDetailsFromBookings } from "@/lib/client-service";
 
 // Using the ReviewDetails interface imported from ReviewModal.tsx
 
@@ -41,13 +42,43 @@ const ReviewsList: React.FC<ReviewsListProps> = ({ agentId }) => {
   const [loading, setLoading] = useState(true);
   const [userHasReviewed, setUserHasReviewed] = useState(false);
   const [selectedReview, setSelectedReview] = useState<ReviewDetails | null>(null);
+  const [hasPurchasedPackage, setHasPurchasedPackage] = useState(false);
+  const [checkingPurchaseStatus, setCheckingPurchaseStatus] = useState(false);
 
   useEffect(() => {
     if (agentId) {
       console.log("Fetching reviews for agent:", agentId);
       fetchReviews();
+      
+      // Check if user has purchased a package from this agent
+      if (rawUser && rawUser.id) {
+        checkUserPurchaseStatus(rawUser.id, agentId);
+      }
     }
-  }, [agentId]);
+  }, [agentId, rawUser]);
+
+  const checkUserPurchaseStatus = async (userId: string, agentId: string) => {
+    try {
+      setCheckingPurchaseStatus(true);
+      console.log(`Checking if user ${userId} has purchased a package from agent ${agentId}`);
+      
+      // Use getClientDetailsFromBookings to check if there's a client relationship
+      const clientDetails = await getClientDetailsFromBookings(agentId, userId);
+      
+      // If clientDetails is not null and they have at least one booking, they've purchased a package
+      const hasPurchased = !!clientDetails && 
+                          !!clientDetails.bookings && 
+                          clientDetails.bookings.length > 0;
+      
+      console.log(`User has${hasPurchased ? '' : ' not'} purchased a package from this agent`);
+      setHasPurchasedPackage(hasPurchased);
+    } catch (error) {
+      console.error("Error checking purchase status:", error);
+      setHasPurchasedPackage(false);
+    } finally {
+      setCheckingPurchaseStatus(false);
+    }
+  };
 
   const fetchReviews = async () => {
     try {
@@ -147,6 +178,15 @@ const ReviewsList: React.FC<ReviewsListProps> = ({ agentId }) => {
       return;
     }
 
+    if (!hasPurchasedPackage) {
+      Alert.alert(
+        "Not Eligible", 
+        "You need to purchase a package from this agent before leaving a review."
+      );
+      setIsReviewModalVisible(false);
+      return;
+    }
+
     try {
       console.log("Submitting review for agent:", agentId);
 
@@ -199,13 +239,18 @@ const ReviewsList: React.FC<ReviewsListProps> = ({ agentId }) => {
       {/* Header with review count and add button */}
       <View style={styles.header}>
         <Text style={styles.sectionTitle}>Reviews ({reviews.length})</Text>
-        {!userHasReviewed && (
+        {!userHasReviewed && !checkingPurchaseStatus && hasPurchasedPackage && (
           <TouchableOpacity
             style={styles.addReviewButton}
             onPress={() => setIsReviewModalVisible(true)}
           >
             <Text style={styles.addReviewText}>Add Review</Text>
           </TouchableOpacity>
+        )}
+        {!userHasReviewed && !checkingPurchaseStatus && !hasPurchasedPackage && rawUser && (
+          <Text style={styles.notEligibleText}>
+            Purchase Required to Review
+          </Text>
         )}
       </View>
 
@@ -460,6 +505,11 @@ const styles = StyleSheet.create({
     color: "white",
     fontWeight: "600",
     fontSize: 16,
+  },
+  notEligibleText: {
+    color: "#8A8D9F",
+    fontSize: 12,
+    fontStyle: "italic",
   },
 });
 

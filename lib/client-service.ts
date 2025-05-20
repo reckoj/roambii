@@ -188,23 +188,47 @@ export const createOrUpdateClientRelationship = async (
 
     // Check if this client relationship already exists
     const clientsRef = collection(firestore, COLLECTIONS.CLIENTS);
-    const q = query(
+    
+    // Try both camelCase and snake_case field names for compatibility
+    // First try camelCase fields (mobile app)
+    let q = query(
       clientsRef,
       where("agentId", "==", agentId),
       where("userId", "==", userId)
     );
     
-    console.log("DEBUG - createOrUpdateClientRelationship - Checking for existing relationship with query:", {
+    console.log("DEBUG - createOrUpdateClientRelationship - Checking for existing relationship with camelCase query:", {
       collection: COLLECTIONS.CLIENTS,
       agentId,
       userId
     });
     
-    const querySnapshot = await getDocs(q);
-    console.log("DEBUG - createOrUpdateClientRelationship - Query results:", {
+    let querySnapshot = await getDocs(q);
+    console.log("DEBUG - createOrUpdateClientRelationship - camelCase query results:", {
       empty: querySnapshot.empty,
       size: querySnapshot.size
     });
+    
+    // If no results with camelCase, try snake_case (web app)
+    if (querySnapshot.empty) {
+      q = query(
+        clientsRef,
+        where("agent_id", "==", agentId),
+        where("user_id", "==", userId)
+      );
+      
+      console.log("DEBUG - createOrUpdateClientRelationship - Checking for existing relationship with snake_case query:", {
+        collection: COLLECTIONS.CLIENTS,
+        agent_id: agentId,
+        user_id: userId
+      });
+      
+      querySnapshot = await getDocs(q);
+      console.log("DEBUG - createOrUpdateClientRelationship - snake_case query results:", {
+        empty: querySnapshot.empty,
+        size: querySnapshot.size
+      });
+    }
 
     // Get user details to cache in the client record
     const userProfile = await getUserProfile(userId);
@@ -227,7 +251,7 @@ export const createOrUpdateClientRelationship = async (
     // If client relationship exists, update it
     if (!querySnapshot.empty) {
       const clientDoc = querySnapshot.docs[0];
-      const clientData = clientDoc.data() as Client;
+      const clientData = clientDoc.data();
       
       // Security rule check - only the agent can update an existing client relationship
       if (currentUser && currentUser.uid !== agentId) {
@@ -235,24 +259,49 @@ export const createOrUpdateClientRelationship = async (
         throw new Error("Permission denied: Only the agent can update client relationships");
       }
       
+      // Determine if document uses camelCase or snake_case
+      const isSnakeCase = clientData.agent_id !== undefined;
+      
       // Only add booking ID if it's not already in the array
-      const bookings = clientData.bookings || [];
+      const bookings = clientData.bookings || clientData.bookings || [];
       if (!bookings.includes(bookingId)) {
         bookings.push(bookingId);
       }
 
-      const updateData = {
-        bookings,
-        lastBookingDate: now,
-        totalBookings: bookings.length,
-        totalSpent: (clientData.totalSpent || 0) + bookingAmount,
-        status: 'active',
-        updatedAt: serverTimestamp(),
-        contactInfo,
-      };
+      // Create update data in the appropriate case format
+      let updateData;
+      
+      if (isSnakeCase) {
+        // snake_case format for web app
+        updateData = {
+          bookings,
+          last_booking_date: now,
+          total_bookings: bookings.length,
+          total_spent: (clientData.total_spent || 0) + bookingAmount,
+          status: 'active',
+          updated_at: serverTimestamp(),
+          contact_info: {
+            name: contactInfo.name,
+            email: contactInfo.email,
+            phone: contactInfo.phone,
+          },
+        };
+      } else {
+        // camelCase format for mobile app
+        updateData = {
+          bookings,
+          lastBookingDate: now,
+          totalBookings: bookings.length,
+          totalSpent: (clientData.totalSpent || 0) + bookingAmount,
+          status: 'active',
+          updatedAt: serverTimestamp(),
+          contactInfo,
+        };
+      }
 
       console.log("DEBUG - createOrUpdateClientRelationship - Updating existing relationship:", {
         id: clientDoc.id,
+        format: isSnakeCase ? "snake_case" : "camelCase",
         updateData
       });
 
@@ -267,21 +316,25 @@ export const createOrUpdateClientRelationship = async (
     }
 
     // Create new client relationship - ensure it complies with security rules
-    // (current user must be either the userId or agentId)
-    let newClientData = {
-      agentId,
-      userId,
+    // Use snake_case format for web compatibility
+    const newClientData = {
+      agent_id: agentId,
+      user_id: userId,
       bookings: [bookingId],
-      lastBookingDate: now,
-      totalBookings: 1,
-      totalSpent: bookingAmount,
+      last_booking_date: now,
+      total_bookings: 1,
+      total_spent: bookingAmount,
       status: 'active' as const,
-      createdAt: serverTimestamp(),
-      updatedAt: serverTimestamp(),
-      contactInfo,
+      created_at: serverTimestamp(),
+      updated_at: serverTimestamp(),
+      contact_info: {
+        name: contactInfo.name,
+        email: contactInfo.email,
+        phone: contactInfo.phone,
+      },
     };
 
-    console.log("DEBUG - createOrUpdateClientRelationship - Creating new relationship:", newClientData);
+    console.log("DEBUG - createOrUpdateClientRelationship - Creating new relationship in snake_case format:", newClientData);
 
     try {
       const clientDoc = await addDoc(clientsRef, newClientData);
@@ -307,7 +360,7 @@ export const createOrUpdateClientRelationship = async (
         try {
           const adaptedClientData = {
             ...newClientData,
-            userId: currentUser.uid,
+            user_id: currentUser.uid,
           };
           
           console.log("DEBUG - Creating adapted client relationship:", adaptedClientData);
@@ -1006,17 +1059,22 @@ export const createBasicClientRelationship = async (
       email: "unknown@example.com"
     };
     
+    // Use snake_case format for web compatibility
     const clientData = {
-      agentId,
-      userId,
+      agent_id: agentId,
+      user_id: userId,
       bookings: [bookingId],
-      lastBookingDate: now,
-      totalBookings: 1,
-      totalSpent: bookingAmount,
+      last_booking_date: now,
+      total_bookings: 1,
+      total_spent: bookingAmount,
       status: 'active' as const,
-      createdAt: serverTimestamp(),
-      updatedAt: serverTimestamp(),
-      contactInfo,
+      created_at: serverTimestamp(),
+      updated_at: serverTimestamp(),
+      contact_info: {
+        name: contactInfo.name,
+        email: contactInfo.email,
+        phone: contactInfo.phone,
+      },
       // Add a flag to indicate this was created in debug mode
       _debug_created: true
     };
@@ -1046,47 +1104,95 @@ export const getAgentClientsFromBookings = async (
   try {
     const bookingsRef = collection(firestore, COLLECTIONS.BOOKINGS);
     
-    // Simplified query to avoid needing a composite index
-    // Just get all bookings for this agent
-    const q = query(
+    // Try multiple query approaches to find all bookings for this agent
+    const bookingDocs = new Map();
+    
+    // 1. Try with packageDetails.agent.id (camelCase)
+    console.log(`DEBUG - Querying bookings with packageDetails.agent.id: ${agentId}`);
+    const q1 = query(
       bookingsRef,
-      where("packageDetails.agent.id", "==", agentId),
-      orderBy("createdAt", options?.sortDirection || "desc")
+      where("packageDetails.agent.id", "==", agentId)
     );
+    const snapshot1 = await getDocs(q1);
+    console.log(`DEBUG - Found ${snapshot1.size} bookings with packageDetails.agent.id`);
+    snapshot1.forEach(doc => bookingDocs.set(doc.id, doc));
     
-    console.log(`DEBUG - Querying bookings for agent ${agentId}`);
+    // 2. Try with packageDetails.agentId (camelCase)
+    console.log(`DEBUG - Querying bookings with packageDetails.agentId: ${agentId}`);
+    const q2 = query(
+      bookingsRef,
+      where("packageDetails.agentId", "==", agentId)
+    );
+    const snapshot2 = await getDocs(q2);
+    console.log(`DEBUG - Found ${snapshot2.size} bookings with packageDetails.agentId`);
+    snapshot2.forEach(doc => bookingDocs.set(doc.id, doc));
     
-    const querySnapshot = await getDocs(q);
-    console.log(`DEBUG - Found ${querySnapshot.size} bookings for agent`);
+    // 3. Try with package_details.agent_id (snake_case)
+    console.log(`DEBUG - Querying bookings with package_details.agent_id: ${agentId}`);
+    const q3 = query(
+      bookingsRef,
+      where("package_details.agent_id", "==", agentId)
+    );
+    const snapshot3 = await getDocs(q3);
+    console.log(`DEBUG - Found ${snapshot3.size} bookings with package_details.agent_id`);
+    snapshot3.forEach(doc => bookingDocs.set(doc.id, doc));
     
-    // Group bookings by user to create client records
-    const clientsMap = new Map<string, Client>();
+    // 4. Try with agent_id (snake_case)
+    console.log(`DEBUG - Querying bookings with agent_id: ${agentId}`);
+    const q4 = query(
+      bookingsRef,
+      where("agent_id", "==", agentId)
+    );
+    const snapshot4 = await getDocs(q4);
+    console.log(`DEBUG - Found ${snapshot4.size} bookings with agent_id`);
+    snapshot4.forEach(doc => bookingDocs.set(doc.id, doc));
     
-    // Filter for bookings with client relationships in memory
-    querySnapshot.forEach((doc) => {
-      const bookingData = doc.data();
+    const bookingsSnapshot = Array.from(bookingDocs.values());
+    console.log(`DEBUG - Combined total of ${bookingsSnapshot.length} unique bookings`);
+    
+    // Process bookings to extract client relationships
+    const clientMap = new Map<string, Client>();
+    
+    for (const doc of bookingsSnapshot) {
+      const booking = doc.data();
       
       // Skip if this booking doesn't have clientRelationship data
-      if (!bookingData.clientRelationship) {
-        return;
+      // Check both camelCase and snake_case
+      const hasClientRelationship = booking.clientRelationship || booking.client_relationship;
+      if (!hasClientRelationship) {
+        continue;
+      }
+      
+      // Get userId from appropriate field (camelCase or snake_case)
+      const clientRelationship = booking.clientRelationship || booking.client_relationship;
+      const userId = clientRelationship.userId || clientRelationship.user_id;
+      if (!userId) {
+        continue;
       }
       
       // Skip if the relationship doesn't match our agent
-      if (bookingData.clientRelationship.agentId !== agentId) {
-        return;
+      const relationshipAgentId = clientRelationship.agentId || clientRelationship.agent_id;
+      if (relationshipAgentId && relationshipAgentId !== agentId) {
+        continue;
       }
       
-      const userId = bookingData.clientRelationship.userId;
-      const existingClient = clientsMap.get(userId);
+      const existingClient = clientMap.get(userId);
       
       // Calculate booking amount - either from payment or from package price
+      // Handle both camelCase and snake_case
       const bookingAmount = 
-        (bookingData.payment?.amount) || 
-        (bookingData.packageDetails?.price) || 0;
+        (booking.payment?.amount) || 
+        (booking.payment && booking.payment.amount) ||
+        (booking.packageDetails?.price) || 
+        (booking.packageDetails && booking.packageDetails.price) ||
+        (booking.package_details?.price) ||
+        (booking.package_details && booking.package_details.price) || 0;
       
-      const bookingDate = bookingData.createdAt instanceof Timestamp 
-        ? bookingData.createdAt.toDate() 
-        : new Date(bookingData.createdAt);
+      // Get created date - handle both camelCase and snake_case
+      const bookingCreatedAt = booking.createdAt || booking.created_at;
+      const bookingDate = bookingCreatedAt instanceof Timestamp 
+        ? bookingCreatedAt.toDate() 
+        : new Date(bookingCreatedAt || Date.now());
       
       if (existingClient) {
         // Update existing client record
@@ -1105,6 +1211,13 @@ export const getAgentClientsFromBookings = async (
           existingClient.lastBookingDate = bookingDate;
         }
       } else {
+        // Get contact info from appropriate fields (camelCase or snake_case)
+        const contactInfo = clientRelationship.contactInfo || clientRelationship.contact_info || {
+          name: booking.travelerInfo?.fullName || booking.traveler_info?.full_name || "Unknown",
+          email: booking.travelerInfo?.email || booking.traveler_info?.email || "",
+          phone: booking.travelerInfo?.phoneNumber || booking.traveler_info?.phone_number || "",
+        };
+        
         // Create new client record
         const newClient: Client = {
           id: `embedded-${userId}`, // Virtual ID for embedded relationships
@@ -1115,20 +1228,17 @@ export const getAgentClientsFromBookings = async (
           totalBookings: 1,
           totalSpent: bookingAmount,
           status: 'active',
-          contactInfo: bookingData.clientRelationship.contactInfo || {
-            name: bookingData.travelerInfo?.fullName || "Unknown",
-            email: bookingData.travelerInfo?.email || "",
-          },
+          contactInfo: contactInfo,
           createdAt: bookingDate,
           updatedAt: bookingDate,
         };
         
-        clientsMap.set(userId, newClient);
+        clientMap.set(userId, newClient);
       }
-    });
+    }
     
     // Convert map to array and sort if needed
-    let clients = Array.from(clientsMap.values());
+    let clients = Array.from(clientMap.values());
     console.log(`DEBUG - Created ${clients.length} client records from bookings`);
     
     // Apply sorting
@@ -1256,5 +1366,75 @@ export const getClientDetailsFromBookings = async (
   } catch (error) {
     console.error("Error fetching client details from bookings:", error);
     return null;
+  }
+};
+
+/**
+ * Force update a client relationship - useful for debugging
+ * This will attempt to create or update a client relationship based on a booking
+ */
+export const forceClientRelationshipUpdate = async (
+  userId: string,
+  agentId: string,
+  bookingId: string
+): Promise<boolean> => {
+  try {
+    console.log("Forcing client relationship update:", {
+      userId,
+      agentId,
+      bookingId
+    });
+    
+    // 1. Get the booking information
+    const bookingRef = doc(firestore, COLLECTIONS.BOOKINGS, bookingId);
+    const bookingDoc = await getDoc(bookingRef);
+    
+    if (!bookingDoc.exists()) {
+      console.error("Booking not found:", bookingId);
+      return false;
+    }
+    
+    const bookingData = bookingDoc.data();
+    
+    // 2. Get the payment amount - handle possible undefined properties safely
+    const paymentAmount = 
+      (bookingData.payment && bookingData.payment.amount) || 
+      (bookingData.packageDetails && bookingData.packageDetails.price) || 0;
+    
+    console.log("Got payment amount:", paymentAmount);
+    
+    // 3. Create or update client relationship
+    try {
+      const clientRelationshipId = await createOrUpdateClientRelationship(
+        agentId,
+        userId,
+        bookingId,
+        paymentAmount
+      );
+      
+      console.log("Successfully created/updated client relationship:", clientRelationshipId);
+      return true;
+    } catch (error) {
+      console.error("Error creating/updating client relationship:", error);
+      
+      // Fallback to basic client relationship
+      try {
+        const basicClientId = await createBasicClientRelationship(
+          agentId,
+          userId,
+          bookingId,
+          paymentAmount
+        );
+        
+        console.log("Created basic client relationship:", basicClientId);
+        return !!basicClientId;
+      } catch (basicError) {
+        console.error("Error creating basic client relationship:", basicError);
+        return false;
+      }
+    }
+  } catch (error) {
+    console.error("Error in forceClientRelationshipUpdate:", error);
+    return false;
   }
 }; 

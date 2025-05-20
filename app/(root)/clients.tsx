@@ -103,104 +103,181 @@ const ClientsScreen = () => {
         errorMessage += "Failed to query clients collection. ";
       }
 
-      // If no clients found, try the embedded approach
-      if (clientsData.length === 0) {
+      // Always check for embedded clients to ensure we have the most complete list
+      console.log(
+        "Checking for embedded clients in bookings"
+      );
+
+      try {
+        const embeddedClientsData = await getAgentClientsFromBookings(user.id, {
+          sortBy,
+          sortDirection,
+        });
         console.log(
-          "No clients found in clients collection, trying embedded approach"
+          `Found ${embeddedClientsData.length} clients using embedded approach`
         );
 
-        try {
-          clientsData = await getAgentClientsFromBookings(user.id, {
-            sortBy,
-            sortDirection,
-          });
-          console.log(
-            `Found ${clientsData.length} clients using embedded approach`
+        // Add any embedded clients not already in the main collection
+        if (embeddedClientsData.length > 0) {
+          // Get the user IDs of clients we already have
+          const existingUserIds = new Set(clientsData.map(client => client.userId));
+          
+          // Filter out any embedded clients we already have
+          const newEmbeddedClients = embeddedClientsData.filter(
+            client => !existingUserIds.has(client.userId)
           );
-        } catch (error) {
-          console.error("Error with embedded approach:", error);
-          errorMessage += "Failed to query embedded client relationships. ";
-
-          // Last resort: Try a different way to get bookings with client relationships
-          try {
-            // Get all the agent's bookings and filter for client relationships client-side
-            const bookingsCollection = collection(
-              firestore,
-              COLLECTIONS.BOOKINGS
-            );
-            const bookingsQuery = query(
-              bookingsCollection,
-              where("packageDetails.agent.id", "==", user.id)
-            );
-            const bookingsSnapshot = await getDocs(bookingsQuery);
-
-            console.log(`Found ${bookingsSnapshot.size} bookings for agent`);
-
-            // Process bookings manually to find client relationships
-            const clientMap = new Map<string, Client>();
-
-            bookingsSnapshot.forEach((doc) => {
-              const booking = doc.data();
-              if (
-                booking.clientRelationship &&
-                booking.clientRelationship.userId
-              ) {
-                const userId = booking.clientRelationship.userId;
-                const existingClient = clientMap.get(userId);
-
-                const bookingDate =
-                  booking.createdAt instanceof Timestamp
-                    ? booking.createdAt.toDate()
-                    : new Date(booking.createdAt);
-
-                const bookingAmount =
-                  booking.payment?.amount || booking.packageDetails?.price || 0;
-
-                if (existingClient) {
-                  // Update existing client
-                  existingClient.bookings.push(doc.id);
-                  existingClient.totalBookings++;
-                  existingClient.totalSpent += bookingAmount;
-
-                  // Update last booking date if newer
-                  const existingDate =
-                    existingClient.lastBookingDate instanceof Date
-                      ? existingClient.lastBookingDate
-                      : new Date(0);
-
-                  if (bookingDate > existingDate) {
-                    existingClient.lastBookingDate = bookingDate;
-                  }
-                } else {
-                  // Create new client entry
-                  clientMap.set(userId, {
-                    id: `embedded-${userId}`,
-                    agentId: user.id,
-                    userId: userId,
-                    bookings: [doc.id],
-                    totalBookings: 1,
-                    totalSpent: bookingAmount,
-                    lastBookingDate: bookingDate,
-                    status: "active",
-                    createdAt: bookingDate,
-                    updatedAt: bookingDate,
-                    contactInfo: booking.clientRelationship.contactInfo || {
-                      name: booking.travelerInfo?.fullName || "Unknown",
-                      email: booking.travelerInfo?.email || "",
-                    },
-                  });
-                }
-              }
-            });
-
-            clientsData = Array.from(clientMap.values());
-            console.log(
-              `Found ${clientsData.length} clients using fallback method`
-            );
-          } catch (fallbackError) {
-            console.error("Fallback approach also failed:", fallbackError);
-            errorMessage += "Fallback method also failed. ";
+          
+          if (newEmbeddedClients.length > 0) {
+            console.log(`Adding ${newEmbeddedClients.length} new embedded clients to list`);
+            clientsData = [...clientsData, ...newEmbeddedClients];
           }
+        }
+      } catch (error) {
+        console.error("Error with embedded approach:", error);
+        errorMessage += "Failed to query embedded client relationships. ";
+
+        // Last resort: Try a different way to get bookings with client relationships
+        try {
+          // Get all the agent's bookings and filter for client relationships client-side
+          const bookingsCollection = collection(
+            firestore,
+            COLLECTIONS.BOOKINGS
+          );
+          
+          // Try multiple query approaches to find all agent bookings
+          const bookingDocs = new Map();
+          
+          // 1. Try with packageDetails.agent.id
+          const q1 = query(
+            bookingsCollection,
+            where("packageDetails.agent.id", "==", user.id)
+          );
+          const snapshot1 = await getDocs(q1);
+          console.log(`Found ${snapshot1.size} bookings with packageDetails.agent.id`);
+          snapshot1.forEach(doc => bookingDocs.set(doc.id, doc));
+          
+          // 2. Try with packageDetails.agentId
+          const q2 = query(
+            bookingsCollection,
+            where("packageDetails.agentId", "==", user.id)
+          );
+          const snapshot2 = await getDocs(q2);
+          console.log(`Found ${snapshot2.size} bookings with packageDetails.agentId`);
+          snapshot2.forEach(doc => bookingDocs.set(doc.id, doc));
+          
+          // 3. Try with package_details.agent_id
+          const q3 = query(
+            bookingsCollection,
+            where("package_details.agent_id", "==", user.id)
+          );
+          const snapshot3 = await getDocs(q3);
+          console.log(`Found ${snapshot3.size} bookings with package_details.agent_id`);
+          snapshot3.forEach(doc => bookingDocs.set(doc.id, doc));
+          
+          // 4. Try with agent_id
+          const q4 = query(
+            bookingsCollection,
+            where("agent_id", "==", user.id)
+          );
+          const snapshot4 = await getDocs(q4);
+          console.log(`Found ${snapshot4.size} bookings with agent_id`);
+          snapshot4.forEach(doc => bookingDocs.set(doc.id, doc));
+          
+          const bookingsSnapshot = Array.from(bookingDocs.values());
+          console.log(`Found ${bookingsSnapshot.length} bookings for agent`);
+
+          // Process bookings manually to find client relationships
+          const clientMap = new Map<string, Client>();
+
+          bookingsSnapshot.forEach((doc) => {
+            const booking = doc.data();
+            
+            // Check both camelCase and snake_case formats
+            const clientRelationship = booking.clientRelationship || booking.client_relationship;
+            if (clientRelationship) {
+              const userId = clientRelationship.userId || clientRelationship.user_id;
+              if (!userId) return;
+              
+              const existingClient = clientMap.get(userId);
+
+              const bookingDate =
+                booking.createdAt instanceof Timestamp
+                  ? booking.createdAt.toDate()
+                  : booking.created_at instanceof Timestamp
+                    ? booking.created_at.toDate()
+                    : new Date();
+
+              const bookingAmount =
+                (booking.payment?.amount) || 
+                (booking.payment && booking.payment.amount) ||
+                (booking.packageDetails?.price) || 
+                (booking.packageDetails && booking.packageDetails.price) ||
+                (booking.package_details?.price) || 0;
+
+              if (existingClient) {
+                // Update existing client
+                existingClient.bookings.push(doc.id);
+                existingClient.totalBookings++;
+                existingClient.totalSpent += bookingAmount;
+
+                // Update last booking date if newer
+                const existingDate =
+                  existingClient.lastBookingDate instanceof Date
+                    ? existingClient.lastBookingDate
+                    : new Date(0);
+
+                if (bookingDate > existingDate) {
+                  existingClient.lastBookingDate = bookingDate;
+                }
+              } else {
+                // Get contact info from appropriate fields
+                const contactInfo = clientRelationship.contactInfo || clientRelationship.contact_info || {
+                  name: booking.travelerInfo?.fullName || booking.traveler_info?.full_name || "Unknown",
+                  email: booking.travelerInfo?.email || booking.traveler_info?.email || "",
+                  phone: booking.travelerInfo?.phone || booking.traveler_info?.phone || "",
+                };
+                
+                // Create new client entry
+                clientMap.set(userId, {
+                  id: `embedded-${userId}`,
+                  agentId: user.id,
+                  userId: userId,
+                  bookings: [doc.id],
+                  totalBookings: 1,
+                  totalSpent: bookingAmount,
+                  lastBookingDate: bookingDate,
+                  status: 'active',
+                  createdAt: bookingDate,
+                  updatedAt: bookingDate,
+                  contactInfo,
+                });
+              }
+            }
+          });
+
+          const fallbackClients = Array.from(clientMap.values());
+          console.log(
+            `Found ${fallbackClients.length} clients using fallback method`
+          );
+          
+          // Merge with existing clients
+          if (fallbackClients.length > 0) {
+            // Get the user IDs of clients we already have
+            const existingUserIds = new Set(clientsData.map(client => client.userId));
+            
+            // Filter out any fallback clients we already have
+            const newFallbackClients = fallbackClients.filter(
+              client => !existingUserIds.has(client.userId)
+            );
+            
+            if (newFallbackClients.length > 0) {
+              console.log(`Adding ${newFallbackClients.length} new fallback clients to list`);
+              clientsData = [...clientsData, ...newFallbackClients];
+            }
+          }
+        } catch (fallbackError) {
+          console.error("Fallback approach also failed:", fallbackError);
+          errorMessage += "Fallback method also failed. ";
         }
       }
 
@@ -209,6 +286,35 @@ const ClientsScreen = () => {
       console.log(
         `After security filtering: ${clientsData.length} clients remain`
       );
+
+      // Sort clients by the specified criteria
+      if (sortBy === 'lastBookingDate') {
+        clientsData.sort((a, b) => {
+          const dateA = a.lastBookingDate instanceof Date 
+            ? a.lastBookingDate.getTime() 
+            : a.lastBookingDate instanceof Timestamp
+              ? a.lastBookingDate.toDate().getTime()
+              : 0;
+          const dateB = b.lastBookingDate instanceof Date 
+            ? b.lastBookingDate.getTime() 
+            : b.lastBookingDate instanceof Timestamp
+              ? b.lastBookingDate.toDate().getTime()
+              : 0;
+          return sortDirection === 'desc' ? dateB - dateA : dateA - dateB;
+        });
+      } else if (sortBy === 'totalSpent') {
+        clientsData.sort((a, b) => {
+          return sortDirection === 'desc' 
+            ? b.totalSpent - a.totalSpent 
+            : a.totalSpent - b.totalSpent;
+        });
+      } else if (sortBy === 'totalBookings') {
+        clientsData.sort((a, b) => {
+          return sortDirection === 'desc' 
+            ? b.totalBookings - a.totalBookings 
+            : a.totalBookings - b.totalBookings;
+        });
+      }
 
       setClients(clientsData);
 
@@ -366,9 +472,23 @@ const ClientsScreen = () => {
       <FontAwesome5 name="users" size={64} color="#ccc" />
       <Text style={styles.emptyTitle}>No Clients Yet</Text>
       <Text style={styles.emptyDescription}>
-        When users book your packages, they'll appear here as client
-        relationships.
+        When users book your packages, they'll appear here as client relationships.
       </Text>
+      <Text style={styles.emptyTip}>
+        If a user has booked your package but doesn't appear here:
+      </Text>
+      <View style={styles.emptySteps}>
+        <Text style={styles.emptyStep}>1. Ask them to check their booking confirmation screen</Text>
+        <Text style={styles.emptyStep}>2. Have them tap the "Fix Client Relationship" button</Text>
+        <Text style={styles.emptyStep}>3. Refresh this list using the refresh button above</Text>
+      </View>
+      <TouchableOpacity
+        style={styles.refreshButtonLarge}
+        onPress={loadClients}
+      >
+        <Ionicons name="refresh" size={20} color="#fff" />
+        <Text style={styles.refreshButtonText}>Refresh Clients List</Text>
+      </TouchableOpacity>
     </View>
   );
 
@@ -385,12 +505,29 @@ const ClientsScreen = () => {
           <Ionicons name="arrow-back" size={24} color={colors.text} />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>My Clients</Text>
-        <TouchableOpacity
-          onPress={() => setMenuVisible(true)}
-          style={styles.sortButton}
-        >
-          <Ionicons name="options-outline" size={24} color={colors.text} />
-        </TouchableOpacity>
+        
+        <View style={styles.headerActions}>
+          {/* Refresh button */}
+          <TouchableOpacity
+            onPress={() => loadClients()}
+            style={styles.refreshButton}
+            disabled={loading}
+          >
+            <Ionicons 
+              name="refresh" 
+              size={24} 
+              color={loading ? colors.secondary : colors.text} 
+            />
+          </TouchableOpacity>
+          
+          {/* Sort button */}
+          <TouchableOpacity
+            onPress={() => setMenuVisible(true)}
+            style={styles.sortButton}
+          >
+            <Ionicons name="options-outline" size={24} color={colors.text} />
+          </TouchableOpacity>
+        </View>
       </View>
 
       {/* Sort menu */}
@@ -686,6 +823,14 @@ const styles = StyleSheet.create({
     flex: 1,
     textAlign: "center",
   },
+  headerActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  refreshButton: {
+    marginRight: 8,
+    padding: 8,
+  },
   sortButton: {
     padding: 8,
   },
@@ -847,6 +992,37 @@ const styles = StyleSheet.create({
     marginVertical: 8,
     minHeight: 100,
     textAlignVertical: "top",
+  },
+  emptyTip: {
+    fontSize: 16,
+    fontWeight: "bold",
+    color: colors.text,
+    marginTop: 16,
+    marginBottom: 8,
+  },
+  emptySteps: {
+    flexDirection: "column",
+    marginBottom: 24,
+    width: '90%',
+  },
+  emptyStep: {
+    fontSize: 14,
+    color: "#666",
+    paddingVertical: 4,
+  },
+  refreshButtonLarge: {
+    padding: 12,
+    borderRadius: 8,
+    backgroundColor: colors.primary,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  refreshButtonText: {
+    marginLeft: 8,
+    fontSize: 16,
+    fontWeight: "bold",
+    color: "#fff",
   },
 });
 
