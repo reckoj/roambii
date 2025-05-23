@@ -14,6 +14,7 @@ import {
 import * as ImagePicker from "expo-image-picker";
 import { useGlobalContext } from "@/lib/global-provider";
 import images from "@/constants/images";
+import { pickImageWithPermissions } from "@/lib/utils/imagePermissions";
 import {
   Bell,
   Calendar,
@@ -163,8 +164,7 @@ const Profile: React.FC = () => {
 
   const pickImage = async () => {
     try {
-      // Use the helper function for permission handling
-      const { pickImageWithPermissions } = await import('@/lib/utils/imagePermissions');
+      // No need to import dynamically anymore
       const pickerResult = await pickImageWithPermissions({ aspect: [1, 1] });
       
       if (pickerResult) {

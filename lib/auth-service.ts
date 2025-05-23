@@ -186,13 +186,17 @@ export const loginUser = async (
     );
     const firebaseUser = userCredential.user;
 
+    // Reload the user to get the latest emailVerified status
+    await firebaseUser.reload();
+
     // Check if email is verified directly from Firebase Auth
     if (!firebaseUser.emailVerified) {
       // Sign out since email isn't verified
       await signOut(auth);
+      
       return {
         success: false,
-        message: "Please verify your email before logging in.",
+        message: "Please verify your email before logging in. Check your inbox for the verification link.",
         requiresVerification: true,
         userId: firebaseUser.uid,
       };
@@ -202,6 +206,7 @@ export const loginUser = async (
     const userRef = doc(firestore, COLLECTIONS.USERS, firebaseUser.uid);
     await updateDoc(userRef, {
       updatedAt: new Date(),
+      isEmailVerified: true, // Ensure this field is set in Firestore as well
     });
 
     return { success: true, message: "Login successful!" };
@@ -308,6 +313,13 @@ export const getCurrentUser = async (): Promise<User | null> => {
 
     if (!firebaseUser) {
       console.log("getCurrentUser: No authenticated user found");
+      return null;
+    }
+
+    // IMPORTANT: Check if the user's email is verified
+    if (!firebaseUser.emailVerified) {
+      console.log("getCurrentUser: User email not verified, signing out");
+      await signOut(auth);
       return null;
     }
 
@@ -694,94 +706,67 @@ export const handleVerificationDeepLink = async (
   url: string
 ): Promise<{ success: boolean; message: string; status: VerificationStatus }> => {
   try {
-    // Parse action code from URL
+    // Extract the action code (verification code) from the URL
     const actionCode = url.split('oobCode=')[1]?.split('&')[0];
-    
     if (!actionCode) {
-      return {
-        success: false,
-        message: 'Invalid verification link. Please request a new verification email.',
-        status: VerificationStatus.INVALID
+      return { 
+        success: false, 
+        message: 'Invalid verification link', 
+        status: VerificationStatus.INVALID 
       };
     }
 
+    // Verify the action code
     try {
-      // Check the action code first
-      await checkActionCode(auth, actionCode);
-      
-      // Apply the verification code
+      // Apply the action code to confirm email verification
       await applyActionCode(auth, actionCode);
       
-      // Get current user
+      // After successful verification, update the user document in Firestore
       const user = auth.currentUser;
-      
-      // If user is signed in, reload to update the emailVerified status
       if (user) {
-        await user.reload();
+        const userRef = doc(firestore, COLLECTIONS.USERS, user.uid);
+        await updateDoc(userRef, {
+          isEmailVerified: true,
+          updatedAt: new Date()
+        });
         
-        if (user.emailVerified) {
-          // Update user document in Firestore
-          const userRef = doc(firestore, COLLECTIONS.USERS, user.uid);
-          await updateDoc(userRef, {
-            isEmailVerified: true,
-            updatedAt: new Date()
-          });
-          
-          return {
-            success: true,
-            message: 'Your email has been verified! You can now use all features of the app.',
-            status: VerificationStatus.VERIFIED
-          };
-        } else {
-          return {
-            success: false,
-            message: 'Email verification applied but your account shows as not verified. Please try signing in again.',
-            status: VerificationStatus.FAILED
-          };
-        }
+        console.log("Email verification status updated in Firestore");
       }
       
-      return {
-        success: true,
-        message: 'Your email has been verified! Please sign in to continue.',
-        status: VerificationStatus.VERIFIED
+      return { 
+        success: true, 
+        message: 'Email verified successfully', 
+        status: VerificationStatus.VERIFIED 
       };
     } catch (error: any) {
       console.error('Error verifying email:', error);
-      const errorCode = error.code;
-      
-      if (errorCode === 'auth/invalid-action-code') {
-        return {
-          success: false,
-          message: 'Invalid verification link. Please request a new verification email.',
-          status: VerificationStatus.INVALID
+      // Handle various Firebase error codes
+      if (error.code === 'auth/invalid-action-code') {
+        return { 
+          success: false, 
+          message: 'Invalid verification link. It may have expired or already been used.', 
+          status: VerificationStatus.INVALID 
         };
-      } else if (errorCode === 'auth/expired-action-code') {
-        return {
-          success: false,
-          message: 'This verification link has expired. Please request a new verification email.',
-          status: VerificationStatus.EXPIRED
-        };
-      } else if (errorCode === 'auth/user-disabled') {
-        return {
-          success: false,
-          message: 'This account has been disabled. Please contact support.',
-          status: VerificationStatus.FAILED
+      } else if (error.code === 'auth/expired-action-code') {
+        return { 
+          success: false, 
+          message: 'Verification link has expired. Please request a new one.', 
+          status: VerificationStatus.EXPIRED 
         };
       } else {
-        return {
-          success: false,
-          message: 'Failed to verify email. Please try again or request a new verification email.',
-          status: VerificationStatus.FAILED
+        return { 
+          success: false, 
+          message: 'Failed to verify email: ' + error.message, 
+          status: VerificationStatus.FAILED 
         };
       }
     }
   } catch (error: any) {
-    console.error('Error handling verification deep link:', error);
-    return {
-      success: false,
-      message: 'An unexpected error occurred. Please try again later.',
-      status: VerificationStatus.FAILED
+    console.error('Error handling verification link:', error);
+    return { 
+      success: false, 
+      message: 'An error occurred: ' + error.message, 
+      status: VerificationStatus.FAILED 
     };
   }
 };
