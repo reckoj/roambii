@@ -25,7 +25,7 @@ import {
 
 const SubscriptionPlansScreen = () => {
   const { rawUser } = useGlobalContext();
-  const stripe = useStripe();
+  const { confirmPayment, initPaymentSheet, presentPaymentSheet } = useStripe();
   const [plans, setPlans] = useState<SubscriptionPlan[]>([]);
   const [currentStatus, setCurrentStatus] = useState<SubscriptionStatus | null>(null);
   const [loading, setLoading] = useState(true);
@@ -40,6 +40,13 @@ const SubscriptionPlansScreen = () => {
 
     try {
       setLoading(true);
+      
+      // Clean up any test/invalid subscriptions first
+      await subscriptionService.cleanupTestSubscriptions(rawUser.id);
+      
+      // Validate and sync subscription with Stripe
+      await subscriptionService.validateAndSyncSubscription(rawUser.id);
+      
       const [plansData, statusData] = await Promise.all([
         subscriptionService.getSubscriptionPlans(),
         subscriptionService.checkSubscriptionStatus(rawUser.id),
@@ -76,7 +83,7 @@ const SubscriptionPlansScreen = () => {
       return;
     }
 
-    // Paid plan - use payment intent flow like bookings
+    // Paid plan - use real Stripe subscription flow
     try {
       setPurchasing(plan.id);
       
@@ -87,51 +94,85 @@ const SubscriptionPlansScreen = () => {
         rawUser.name
       );
 
-      if (result.clientSecret) {
-        // Initialize and present the payment sheet
-        const { error: initError } = await stripe.initPaymentSheet({
-          merchantDisplayName: "Roambii Travel",
-          paymentIntentClientSecret: result.clientSecret,
-          defaultBillingDetails: {
-            name: rawUser.name,
-            email: rawUser.email,
-          },
-          returnURL: "roambii://stripe-redirect",
-          style: "automatic",
-          appearance: {
-            colors: {
-              primary: "#1ABC9C",
+      if (result.subscriptionId) {
+        if (result.clientSecret) {
+          // Initialize payment sheet with confirmation secret (Stripe's official approach)
+          const { error: initError } = await initPaymentSheet({
+            merchantDisplayName: "Roambii Travel",
+            paymentIntentClientSecret: result.clientSecret,
+            defaultBillingDetails: {
+              name: rawUser.name,
+              email: rawUser.email,
             },
-          },
-        });
+            returnURL: "roambii://stripe-redirect",
+          });
 
-        if (initError) {
-          throw new Error(initError.message);
-        }
-
-        // Present the payment sheet
-        const { error: presentError } = await stripe.presentPaymentSheet();
-
-        if (presentError) {
-          if (presentError.code === "Canceled") {
-            console.log("Payment was canceled by user");
+          if (initError) {
+            console.error("Payment sheet initialization error:", initError);
+            Alert.alert("Payment Setup Failed", initError.message);
             return;
           }
-          throw new Error(presentError.message);
+
+          // Present the payment sheet
+          const { error: presentError } = await presentPaymentSheet();
+
+          if (presentError) {
+            console.error("Payment sheet presentation error:", presentError);
+            
+            // Cleanup the incomplete subscription from Stripe
+            if (result.subscriptionId) {
+              console.log("Cleaning up incomplete subscription due to payment cancellation:", result.subscriptionId);
+              await subscriptionService.cleanupIncompleteSubscription(result.subscriptionId);
+            }
+            
+            // Only show error alert if it's not a user cancellation
+            if (presentError.code !== "Canceled") {
+              Alert.alert("Payment Failed", presentError.message);
+            } else {
+              console.log("Payment was cancelled by user, subscription cleaned up");
+            }
+            return;
+          } else {
+            // Payment successful - complete the subscription
+            console.log("Payment successful, completing subscription with:", {
+              subscriptionId: result.subscriptionId,
+              customerId: result.customerId
+            });
+            
+            await subscriptionService.completeSubscription(
+              rawUser.id,
+              plan.id,
+              result.subscriptionId,
+              result.customerId || "stripe_customer"
+            );
+
+            Alert.alert(
+              "Success", 
+              "Subscription activated successfully!",
+              [{ text: "OK", onPress: () => router.back() }]
+            );
+          }
+        } else {
+          // Subscription created but no client secret - this shouldn't happen for paid plans
+          console.error("Subscription created without payment confirmation:", {
+            subscriptionId: result.subscriptionId,
+            customerId: result.customerId,
+            status: result.status
+          });
+          
+          // Cleanup the incomplete subscription from Stripe
+          if (result.subscriptionId) {
+            console.log("Cleaning up subscription without client secret:", result.subscriptionId);
+            await subscriptionService.cleanupIncompleteSubscription(result.subscriptionId);
+          }
+          
+          // Don't complete the subscription if it requires payment but has no client_secret
+          Alert.alert(
+            "Payment Required", 
+            "This subscription requires payment confirmation. Please try again.",
+            [{ text: "OK" }]
+          );
         }
-
-        // Payment successful - complete the subscription
-        await subscriptionService.completeSubscription(
-          rawUser.id,
-          plan.id,
-          "payment_intent_success" // In a real app, you'd get the actual payment intent ID
-        );
-
-        Alert.alert(
-          "Success", 
-          "Subscription activated successfully!",
-          [{ text: "OK", onPress: () => router.back() }]
-        );
       } else if (result.success) {
         // Free plan success
         Alert.alert(
@@ -146,6 +187,41 @@ const SubscriptionPlansScreen = () => {
     } finally {
       setPurchasing(null);
     }
+  };
+
+  const handleCancel = async () => {
+    if (!rawUser?.id || !currentStatus) {
+      Alert.alert("Error", "User information missing");
+      return;
+    }
+
+    Alert.alert(
+      "Cancel Subscription",
+      "Are you sure you want to cancel your subscription? You'll continue to have access until your current billing period ends, but no refund will be provided.",
+      [
+        { text: "Keep Subscription", style: "cancel" },
+        {
+          text: "Cancel Subscription",
+          style: "destructive",
+          onPress: async () => {
+            try {
+              setLoading(true);
+              await subscriptionService.cancelSubscription(rawUser.id);
+              Alert.alert(
+                "Subscription Cancelled",
+                "Your subscription has been cancelled. You'll continue to have access until your current billing period ends.",
+                [{ text: "OK", onPress: () => loadData() }]
+              );
+            } catch (error) {
+              console.error("Error cancelling subscription:", error);
+              Alert.alert("Error", "Failed to cancel subscription");
+            } finally {
+              setLoading(false);
+            }
+          },
+        },
+      ]
+    );
   };
 
   const renderPlanCard = (plan: SubscriptionPlan) => {
@@ -222,6 +298,30 @@ const SubscriptionPlansScreen = () => {
             </>
           )}
         </TouchableOpacity>
+
+        {/* Cancel button for current premium plan */}
+        {isCurrentPlan && isPremium && currentStatus?.isActive && !currentStatus?.isCancelled && (
+          <TouchableOpacity
+            style={styles.cancelButton}
+            onPress={handleCancel}
+            disabled={loading}
+          >
+            <Text style={styles.cancelButtonText}>Cancel Subscription</Text>
+          </TouchableOpacity>
+        )}
+
+        {/* Cancellation notice for cancelled premium plan */}
+        {isCurrentPlan && isPremium && currentStatus?.isCancelled && (
+          <View style={styles.cancelledNotice}>
+            <Text style={styles.cancelledText}>
+              Subscription cancelled - Access until{" "}
+              {currentStatus.periodEndDate 
+                ? currentStatus.periodEndDate.toLocaleDateString()
+                : "period end"
+              }
+            </Text>
+          </View>
+        )}
       </View>
     );
   };
@@ -252,7 +352,7 @@ const SubscriptionPlansScreen = () => {
   }
 
   return (
-    <SafeAreaView style={styles.container}>
+    <View style={styles.container}>
       <CustomHeader title="Subscription Plans" showBackButton={true} />
       
       <ScrollView style={styles.scrollContainer} showsVerticalScrollIndicator={false}>
@@ -294,7 +394,7 @@ const SubscriptionPlansScreen = () => {
           </View>
         </View>
       </ScrollView>
-    </SafeAreaView>
+    </View>
   );
 };
 
@@ -490,6 +590,34 @@ const styles = StyleSheet.create({
     color: "#7F8C8D",
     textAlign: "center",
     lineHeight: 20,
+  },
+  cancelButton: {
+    backgroundColor: "#E74C3C",
+    padding: 12,
+    borderRadius: 8,
+    alignItems: "center",
+    marginTop: 12,
+    borderWidth: 1,
+    borderColor: "#C0392B",
+  },
+  cancelButtonText: {
+    fontSize: 14,
+    fontWeight: "600",
+    color: "#FFF",
+  },
+  cancelledNotice: {
+    backgroundColor: "#FFF3CD",
+    padding: 12,
+    borderRadius: 8,
+    marginTop: 12,
+    borderWidth: 1,
+    borderColor: "#FFEAA7",
+  },
+  cancelledText: {
+    fontSize: 14,
+    color: "#856404",
+    textAlign: "center",
+    fontWeight: "500",
   },
 });
 

@@ -5,7 +5,7 @@ export interface SubscriptionPlan {
   name: string;
   description: string;
   price: number;
-  interval: 'month' | 'year';
+  interval: "month" | "year";
   stripePriceId: string;
   features: string[];
   isActive: boolean;
@@ -16,7 +16,7 @@ export interface Subscription {
   id: string;
   userId: string;
   planId: string;
-  status: 'active' | 'canceled' | 'past_due' | 'incomplete' | 'trialing';
+  status: "active" | "canceled" | "past_due" | "incomplete" | "trialing";
   stripeSubscriptionId: string;
   stripeCustomerId: string;
   currentPeriodStart: Timestamp | Date;
@@ -32,4 +32,8 @@ export interface SubscriptionStatus {
   packageLimit: number;
   currentPackageCount?: number;
   canCreatePackage: boolean;
-} 
+  isCancelled?: boolean;
+  periodEndDate?: Date;
+}
+
+// do you need to me supply you with any info as it seems you are not solving this issue. or is there another way to go about solving this issue

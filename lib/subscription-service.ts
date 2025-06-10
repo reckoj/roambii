@@ -8,6 +8,7 @@ import {
   deleteDoc,
   query,
   where,
+  orderBy,
   serverTimestamp,
   Timestamp,
 } from "firebase/firestore";
@@ -47,7 +48,7 @@ const DEFAULT_PLANS: SubscriptionPlan[] = [
     description: "For professional travel agents",
     price: 19.99,
     interval: "month",
-    stripePriceId: process.env.EXPO_PUBLIC_STRIPE_PREMIUM_PRICE_ID || "price_premium",
+    stripePriceId: process.env.EXPO_PUBLIC_STRIPE_PRICE_ID || "price_premium",
     features: [
       "Up to 20 package listings",
       "Advanced booking management",
@@ -121,11 +122,21 @@ export const subscriptionService = {
    */
   async getSubscriptionPlans(): Promise<SubscriptionPlan[]> {
     try {
-      // Force update plans to ensure they match the current DEFAULT_PLANS
-      await this.updateSubscriptionPlans();
-      
       const plansRef = collection(firestore, "subscriptionPlans");
       const querySnapshot = await getDocs(plansRef);
+      
+      // If no plans exist in database, initialize them once
+      if (querySnapshot.empty) {
+        console.log("No plans found in database, initializing...");
+        await this.initializeSubscriptionPlans();
+        
+        // Fetch again after initialization
+        const newQuerySnapshot = await getDocs(plansRef);
+        return newQuerySnapshot.docs
+          .map(doc => ({ id: doc.id, ...doc.data() } as SubscriptionPlan))
+          .filter(plan => plan.isActive)
+          .sort((a, b) => a.price - b.price);
+      }
       
       return querySnapshot.docs
         .map(doc => ({ id: doc.id, ...doc.data() } as SubscriptionPlan))
@@ -143,21 +154,85 @@ export const subscriptionService = {
   async getUserSubscription(userId: string): Promise<Subscription | null> {
     try {
       const subscriptionsRef = collection(firestore, "subscriptions");
-      const q = query(subscriptionsRef, where("userId", "==", userId));
+      const q = query(
+        subscriptionsRef, 
+        where("userId", "==", userId),
+        orderBy("createdAt", "desc") // Get most recent first
+      );
       const querySnapshot = await getDocs(q);
 
       if (querySnapshot.empty) {
         return null;
       }
 
-      const subscriptionDoc = querySnapshot.docs[0];
-      return {
-        id: subscriptionDoc.id,
-        ...subscriptionDoc.data(),
+      // Find the most recent active subscription
+      for (const subscriptionDoc of querySnapshot.docs) {
+        const subscription = {
+          id: subscriptionDoc.id,
+          ...subscriptionDoc.data(),
+        } as Subscription;
+        
+        console.log("Checking subscription:", subscription.id, "status:", subscription.status, "planId:", subscription.planId);
+        
+        // Return active subscriptions first
+        if (subscription.status === "active") {
+          const periodEnd = toDate(subscription.currentPeriodEnd);
+          if (periodEnd > new Date() && !subscription.cancelAtPeriodEnd) {
+            console.log("Found active subscription:", subscription.id);
+            return subscription;
+          }
+        }
+      }
+      
+      // If no active subscription found, return the most recent one
+      const mostRecentDoc = querySnapshot.docs[0];
+      const mostRecent = {
+        id: mostRecentDoc.id,
+        ...mostRecentDoc.data(),
       } as Subscription;
+      
+      console.log("No active subscription found, returning most recent:", mostRecent.id, "status:", mostRecent.status);
+      return mostRecent;
     } catch (error) {
       console.error("Error getting user subscription:", error);
       return null;
+    }
+  },
+
+  /**
+   * Clean up test/invalid subscriptions with placeholder IDs and expired subscriptions
+   */
+  async cleanupTestSubscriptions(userId: string): Promise<void> {
+    try {
+      const subscriptionsRef = collection(firestore, "subscriptions");
+      const q = query(subscriptionsRef, where("userId", "==", userId));
+      const querySnapshot = await getDocs(q);
+
+      for (const subscriptionDoc of querySnapshot.docs) {
+        const data = subscriptionDoc.data();
+        
+        // Remove subscriptions with placeholder/test IDs
+        if (data.stripeSubscriptionId === "payment_intent_success" || 
+            data.stripeSubscriptionId === "stripe_subscription" ||
+            !data.stripeSubscriptionId ||
+            data.stripeSubscriptionId === "test") {
+          
+          console.log("Removing test subscription:", subscriptionDoc.id);
+          await deleteDoc(subscriptionDoc.ref);
+        }
+        // Remove expired/incomplete subscriptions that are older than 1 hour
+        else if (data.status === "incomplete" || data.status === "incomplete_expired") {
+          const createdAt = data.createdAt?.toDate() || new Date(0);
+          const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000);
+          
+          if (createdAt < oneHourAgo) {
+            console.log("Removing expired incomplete subscription:", subscriptionDoc.id);
+            await deleteDoc(subscriptionDoc.ref);
+          }
+        }
+      }
+    } catch (error) {
+      console.error("Error cleaning up test subscriptions:", error);
     }
   },
 
@@ -184,12 +259,13 @@ export const subscriptionService = {
           packageLimit,
           currentPackageCount,
           canCreatePackage: currentPackageCount < packageLimit,
+          isCancelled: false,
         };
       }
 
       // Check if subscription is active and not expired
-      const isActive = subscription.status === "active" && 
-        toDate(subscription.currentPeriodEnd) > new Date();
+      const periodEnd = toDate(subscription.currentPeriodEnd);
+      const isActive = subscription.status === "active" && periodEnd > new Date();
 
       if (!isActive) {
         // Expired/inactive subscription = basic plan
@@ -202,6 +278,7 @@ export const subscriptionService = {
           packageLimit,
           currentPackageCount,
           canCreatePackage: currentPackageCount < packageLimit,
+          isCancelled: false,
         };
       }
 
@@ -215,6 +292,8 @@ export const subscriptionService = {
         packageLimit,
         currentPackageCount,
         canCreatePackage: currentPackageCount < packageLimit,
+        isCancelled: subscription.cancelAtPeriodEnd || false,
+        periodEndDate: periodEnd,
       };
     } catch (error) {
       console.error("Error checking subscription status:", error);
@@ -225,19 +304,20 @@ export const subscriptionService = {
         packageLimit: 3,
         currentPackageCount: 0,
         canCreatePackage: true,
+        isCancelled: false,
       };
     }
   },
 
   /**
-   * Create subscription via Stripe - using payment intent like bookings
+   * Create subscription via Stripe - using real Stripe subscriptions for dashboard visibility
    */
   async createSubscription(
     userId: string,
     planId: string,
     userEmail: string,
     userName: string
-  ): Promise<{ clientSecret?: string; success?: boolean }> {
+  ): Promise<{ clientSecret?: string; success?: boolean; subscriptionId?: string; customerId?: string; status?: string }> {
     try {
       const plans = await this.getSubscriptionPlans();
       const plan = plans.find(p => p.id === planId);
@@ -252,21 +332,18 @@ export const subscriptionService = {
         return { success: true };
       }
 
-      // Paid plan - use payment intent like bookings
-      const amountInCents = Math.round(plan.price * 100);
-      
-      const response = await fetch("http://192.168.4.47:4000/create-payment-intent", {
+      // Paid plan - use real Stripe subscriptions for dashboard visibility
+      const response = await fetch("http://192.168.4.47:4000/create-subscription", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          amount: amountInCents,
-          currency: "usd",
-          packageId: `subscription_${planId}`, // Use subscription as package ID
+          userId,
+          planId,
+          priceId: plan.stripePriceId,
           email: userEmail,
           name: userName,
-          description: `${plan.name} subscription payment`,
         }),
       });
 
@@ -293,7 +370,11 @@ export const subscriptionService = {
         throw new Error(data.error.message);
       }
 
-      return { clientSecret: data.clientSecret };
+      return { 
+        clientSecret: data.clientSecret,
+        subscriptionId: data.subscriptionId,
+        customerId: data.customerId,
+      };
     } catch (error) {
       console.error("Error creating subscription:", error);
       throw error;
@@ -302,13 +383,18 @@ export const subscriptionService = {
 
   /**
    * Complete subscription after successful payment
+   * With Stripe's official confirmation_secret approach, this is simplified
    */
   async completeSubscription(
     userId: string,
     planId: string,
-    paymentIntentId: string
+    subscriptionId: string,
+    customerId: string
   ): Promise<void> {
     try {
+      console.log("Creating local subscription record for successful payment...");
+
+      // Create local subscription record
       const subscriptionRef = doc(collection(firestore, "subscriptions"));
       const now = new Date();
       const oneMonthFromNow = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000);
@@ -317,14 +403,16 @@ export const subscriptionService = {
         userId,
         planId,
         status: "active",
-        stripeSubscriptionId: paymentIntentId, // Use payment intent ID
-        stripeCustomerId: "payment_intent", // Not a real customer for one-time payments
+        stripeSubscriptionId: subscriptionId, // Real Stripe subscription ID
+        stripeCustomerId: customerId, // Real Stripe customer ID
         currentPeriodStart: now,
         currentPeriodEnd: oneMonthFromNow,
         cancelAtPeriodEnd: false,
         createdAt: serverTimestamp(),
         updatedAt: serverTimestamp(),
       });
+      
+      console.log("✅ Subscription record created successfully");
     } catch (error) {
       console.error("Error completing subscription:", error);
       throw error;
@@ -359,30 +447,168 @@ export const subscriptionService = {
   },
 
   /**
-   * Cancel subscription
+   * Cleanup incomplete subscription from Stripe (complete deletion)
    */
-  async cancelSubscription(subscriptionId: string): Promise<void> {
+  async cleanupIncompleteSubscription(subscriptionId: string): Promise<void> {
     try {
+      console.log("Cleaning up incomplete subscription:", subscriptionId);
+      
+      const response = await fetch("http://192.168.4.47:4000/cleanup-subscription", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ 
+          subscriptionId: subscriptionId 
+        }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        console.error("Failed to cleanup subscription:", errorData);
+        throw new Error(`Failed to cleanup subscription: ${errorData.error?.message || 'Unknown error'}`);
+      }
+
+      const result = await response.json();
+      console.log("✅ Incomplete subscription cleaned up successfully:", result);
+    } catch (error) {
+      console.error("Error cleaning up incomplete subscription:", error);
+      // Don't throw error - cleanup is best effort
+      console.log("Cleanup failed, but continuing...");
+    }
+  },
+
+  /**
+   * Cancel subscription - cancels in Stripe dashboard AND updates local database
+   */
+  async cancelSubscription(userId: string): Promise<void> {
+    try {
+      const subscription = await this.getUserSubscription(userId);
+      
+      if (!subscription) {
+        throw new Error("No active subscription found");
+      }
+
+      console.log("Found subscription to cancel:", {
+        id: subscription.id,
+        planId: subscription.planId,
+        stripeSubscriptionId: subscription.stripeSubscriptionId,
+        status: subscription.status
+      });
+
+      if (subscription.planId === "basic") {
+        throw new Error("Cannot cancel free Basic plan");
+      }
+
+      if (!subscription.stripeSubscriptionId || subscription.stripeSubscriptionId === "free") {
+        throw new Error("No Stripe subscription to cancel");
+      }
+
+      // Cancel in Stripe - this will show up in Stripe dashboard
+      console.log("Cancelling Stripe subscription:", subscription.stripeSubscriptionId);
       const response = await fetch("http://192.168.4.47:4000/cancel-subscription", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({ subscriptionId }),
+        body: JSON.stringify({ 
+          subscriptionId: subscription.stripeSubscriptionId 
+        }),
       });
 
       if (!response.ok) {
-        throw new Error("Failed to cancel subscription");
+        const errorText = await response.text();
+        console.error("Server error response:", errorText);
+        throw new Error(`Failed to cancel subscription in Stripe: ${errorText}`);
       }
 
+      const cancelResult = await response.json();
+      console.log("Stripe cancellation result:", cancelResult);
+
       // Update local record
-      await updateDoc(doc(firestore, "subscriptions", subscriptionId), {
+      const subscriptionRef = doc(firestore, "subscriptions", subscription.id);
+      await updateDoc(subscriptionRef, {
         cancelAtPeriodEnd: true,
+        cancelledAt: serverTimestamp(),
         updatedAt: serverTimestamp(),
       });
+
+      console.log("Subscription cancelled in both Stripe dashboard and local database");
     } catch (error) {
-      console.error("Error canceling subscription:", error);
+      console.error("Error cancelling subscription:", error);
       throw error;
+    }
+  },
+
+  /**
+   * Check if subscription is cancelled (but may still be active)
+   */
+  async isSubscriptionCancelled(userId: string): Promise<boolean> {
+    try {
+      const subscription = await this.getUserSubscription(userId);
+      return subscription?.cancelAtPeriodEnd || false;
+    } catch (error) {
+      console.error("Error checking cancellation status:", error);
+      return false;
+    }
+  },
+
+  /**
+   * Validate and sync subscription status with Stripe
+   * Removes invalid subscriptions that don't exist in Stripe
+   */
+  async validateAndSyncSubscription(userId: string): Promise<void> {
+    try {
+      const subscription = await this.getUserSubscription(userId);
+      
+      if (!subscription || !subscription.stripeSubscriptionId) {
+        console.log("No subscription to validate");
+        return;
+      }
+
+      // Skip validation for free subscriptions
+      if (subscription.stripeSubscriptionId === "free") {
+        console.log("Free subscription, no validation needed");
+        return;
+      }
+
+      // Remove test/invalid subscriptions
+      if (subscription.stripeSubscriptionId.startsWith("payment_intent_") || 
+          subscription.stripeSubscriptionId === "test") {
+        console.log("Removing invalid test subscription:", subscription.stripeSubscriptionId);
+        
+        const subscriptionRef = doc(firestore, "subscriptions", subscription.id);
+        await deleteDoc(subscriptionRef);
+        return;
+      }
+
+      // Validate with Stripe
+      try {
+        const response = await fetch("http://192.168.4.47:4000/validate-subscription", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            subscriptionId: subscription.stripeSubscriptionId,
+          }),
+        });
+
+        const data = await response.json();
+
+        if (!data.exists) {
+          console.log("Subscription not found in Stripe, removing local record:", subscription.stripeSubscriptionId);
+          
+          const subscriptionRef = doc(firestore, "subscriptions", subscription.id);
+          await deleteDoc(subscriptionRef);
+        } else {
+          console.log("Subscription validated successfully in Stripe");
+        }
+      } catch (error) {
+        console.error("Error validating subscription with Stripe:", error);
+      }
+    } catch (error) {
+      console.error("Error in validateAndSyncSubscription:", error);
     }
   },
 }; 
