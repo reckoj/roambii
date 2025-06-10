@@ -17,8 +17,7 @@ import {
   limit,
   writeBatch
 } from "firebase/firestore";
-import { getAuth } from "firebase/auth";
-import { firestore, COLLECTIONS } from "./firebase/firebase-config";
+import { auth, firestore, COLLECTIONS } from "./firebase/firebase-config";
 import { Client, Booking } from "./firebase/models";
 import { getUserProfile } from "./user-service";
 
@@ -58,7 +57,6 @@ export const formatDate = (date?: Date | Timestamp | any): Date | undefined => {
 export const testClientCollectionPermissions = async (): Promise<any> => {
   try {
     // Get current user from Firebase Auth directly
-    const auth = getAuth();
     const currentUser = auth.currentUser;
     
     if (!currentUser) {
@@ -165,7 +163,6 @@ export const createOrUpdateClientRelationship = async (
     }
 
     // Check current user authentication
-    const auth = getAuth();
     const currentUser = auth.currentUser;
 
     console.log("DEBUG - createOrUpdateClientRelationship - Auth state:", {
@@ -518,7 +515,6 @@ export const updateClientPreferences = async (
 ): Promise<boolean> => {
   try {
     // Get current authenticated user
-    const auth = getAuth();
     const currentUser = auth.currentUser;
     
     if (!currentUser) {
@@ -680,7 +676,6 @@ export const updateClientNotes = async (
 ): Promise<boolean> => {
   try {
     // Get current authenticated user
-    const auth = getAuth();
     const currentUser = auth.currentUser;
     
     if (!currentUser) {
@@ -842,7 +837,6 @@ export const updateClientStatus = async (
 ): Promise<boolean> => {
   try {
     // Get current authenticated user
-    const auth = getAuth();
     const currentUser = auth.currentUser;
     
     if (!currentUser) {
@@ -983,7 +977,6 @@ export const createMinimalClientRecord = async (
 ): Promise<string | null> => {
   try {
     // Check if user is authenticated using static import
-    const auth = getAuth();
     const currentUser = auth.currentUser;
 
     if (!currentUser) {

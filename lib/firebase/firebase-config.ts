@@ -1,10 +1,9 @@
 // lib/firebase/firebase-config.ts
 import { initializeApp, getApps, getApp } from "firebase/app";
-import { getAuth, initializeAuth, getReactNativePersistence } from "firebase/auth";
+import { getAuth, Auth } from "firebase/auth";
 import { getFirestore } from "firebase/firestore";
 import { getDatabase } from "firebase/database";
 import { getStorage } from "firebase/storage";
-import AsyncStorage from "@react-native-async-storage/async-storage";
 
 // Your Firebase configuration
 const firebaseConfig = {
@@ -19,23 +18,23 @@ const firebaseConfig = {
 
 // Initialize Firebase
 let app;
-try {
-  if (getApps().length === 0) {
-    app = initializeApp(firebaseConfig);
-    console.log("Firebase app initialized successfully!");
-  } else {
-    app = getApp();
-    console.log("Using existing Firebase app");
-  }
-} catch (error) {
-  console.error("Error initializing Firebase app:", error);
-  throw error;
+if (getApps().length === 0) {
+  app = initializeApp(firebaseConfig);
+  console.log("Firebase app initialized successfully!");
+} else {
+  app = getApp();
+  console.log("Using existing Firebase app");
 }
 
-// Initialize Auth with AsyncStorage persistence
-const auth = initializeAuth(app, {
-  persistence: getReactNativePersistence(AsyncStorage)
-});
+// Initialize Auth with proper initialization order
+const auth: Auth = getAuth(app);
+
+// Ensure auth is ready
+if (auth) {
+  console.log("Firebase Auth initialized successfully");
+} else {
+  console.error("Failed to initialize Firebase Auth");
+}
 
 // Initialize and export services
 const firestore = getFirestore(app);

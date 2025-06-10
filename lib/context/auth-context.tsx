@@ -42,54 +42,76 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   useEffect(() => {
     console.log('Setting up auth state listener');
-    const unsubscribe = auth.onAuthStateChanged(async (firebaseUser: FirebaseUser | null) => {
-      console.log('Auth state changed:', firebaseUser ? 'User is signed in' : 'User is signed out');
+    
+    // Add a small delay to ensure Firebase auth is fully initialized
+    const setupAuthListener = () => {
       try {
-        if (firebaseUser) {
-          console.log('Fetching user data for:', firebaseUser.uid);
-          // Get additional user data from Firestore
-          const userDoc = await getDoc(doc(firestore, 'users', firebaseUser.uid));
-          
-          if (userDoc.exists()) {
-            console.log('User document found');
-            const userData = userDoc.data() as Omit<User, 'id'>;
-            const newUser = {
-              id: firebaseUser.uid,
-              $id: firebaseUser.uid,
-              name: userData.name || firebaseUser.displayName || '',
-              email: userData.email || firebaseUser.email || '',
-              avatar: userData.avatar || firebaseUser.photoURL || undefined,
-              isAgent: userData.isAgent || false,
-              isAgentTemp: userData.isAgentTemp || false,
-              isEmailVerified: firebaseUser.emailVerified,
-              createdAt: userData.createdAt,
-              updatedAt: userData.updatedAt,
-            };
-            setUser(newUser);
-            await saveUserToStorage(newUser);
-          } else {
-            console.log('User document not found');
+        if (!auth) {
+          console.error('Auth not available, retrying...');
+          setTimeout(setupAuthListener, 100);
+          return;
+        }
+
+        const unsubscribe = auth.onAuthStateChanged(async (firebaseUser: FirebaseUser | null) => {
+          console.log('Auth state changed:', firebaseUser ? 'User is signed in' : 'User is signed out');
+          try {
+            if (firebaseUser) {
+              console.log('Fetching user data for:', firebaseUser.uid);
+              // Get additional user data from Firestore
+              const userDoc = await getDoc(doc(firestore, 'users', firebaseUser.uid));
+              
+              if (userDoc.exists()) {
+                console.log('User document found');
+                const userData = userDoc.data() as Omit<User, 'id'>;
+                const newUser = {
+                  id: firebaseUser.uid,
+                  $id: firebaseUser.uid,
+                  name: userData.name || firebaseUser.displayName || '',
+                  email: userData.email || firebaseUser.email || '',
+                  avatar: userData.avatar || firebaseUser.photoURL || undefined,
+                  isAgent: userData.isAgent || false,
+                  isAgentTemp: userData.isAgentTemp || false,
+                  isEmailVerified: firebaseUser.emailVerified,
+                  createdAt: userData.createdAt,
+                  updatedAt: userData.updatedAt,
+                };
+                setUser(newUser);
+                await saveUserToStorage(newUser);
+              } else {
+                console.log('User document not found');
+                setUser(null);
+                await clearUserStorage();
+              }
+            } else {
+              console.log('No Firebase user, setting user to null');
+              setUser(null);
+              await clearUserStorage();
+            }
+          } catch (err) {
+            console.error('Error in auth state change:', err);
+            setError(err instanceof Error ? err.message : 'An error occurred');
             setUser(null);
             await clearUserStorage();
+          } finally {
+            setLoading(false);
           }
-        } else {
-          console.log('No Firebase user, setting user to null');
-          setUser(null);
-          await clearUserStorage();
-        }
-      } catch (err) {
-        console.error('Error in auth state change:', err);
-        setError(err instanceof Error ? err.message : 'An error occurred');
-        setUser(null);
-        await clearUserStorage();
-      } finally {
+        });
+
+        return unsubscribe;
+      } catch (error) {
+        console.error('Error setting up auth listener:', error);
         setLoading(false);
+        setTimeout(setupAuthListener, 1000); // Retry after 1 second
       }
-    });
+    };
+
+    const unsubscribe = setupAuthListener();
 
     return () => {
       console.log('Cleaning up auth state listener');
-      unsubscribe();
+      if (unsubscribe) {
+        unsubscribe();
+      }
     };
   }, []);
 

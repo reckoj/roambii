@@ -13,7 +13,8 @@ import { useRoute, RouteProp } from "@react-navigation/native";
 import { resendVerificationEmail } from "@/lib/auth-service";
 import images from "@/constants/images";
 import { router } from "expo-router";
-import { getAuth, onAuthStateChanged } from "firebase/auth";
+import { onAuthStateChanged } from "firebase/auth";
+import { auth } from "@/lib/firebase/firebase-config";
 
 // Define the route params type
 type VerificationScreenParams = {
@@ -37,8 +38,6 @@ const VerificationScreen: React.FC = () => {
 
   // Check verification status on component mount and when user returns to the app
   useEffect(() => {
-    const auth = getAuth();
-
     // Function to check verification status
     const checkVerification = async () => {
       setCheckingStatus(true);
@@ -105,7 +104,6 @@ const VerificationScreen: React.FC = () => {
 
   const handleRefreshStatus = async () => {
     setCheckingStatus(true);
-    const auth = getAuth();
 
     if (auth.currentUser) {
       try {

@@ -158,6 +158,133 @@ app.post("/create-payment-intent", async (req, res) => {
   }
 });
 
+// Create a subscription
+app.post("/create-subscription", async (req, res) => {
+  console.log("💳 Subscription creation request received");
+  console.log("📋 Request body:", JSON.stringify(req.body, null, 2));
+
+  try {
+    const { userId, planId, priceId, email, name } = req.body;
+
+    console.log("🔍 Validating subscription parameters...");
+
+    // Validate required fields
+    if (!userId || !planId || !priceId || !email || !name) {
+      console.log("❌ Missing required parameters for subscription");
+      return res.status(400).json({
+        error: { message: "Missing required parameters" },
+      });
+    }
+
+    // Validate email format
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(email)) {
+      console.log("❌ Invalid email format:", email);
+      return res.status(400).json({
+        error: { message: "Invalid email format" },
+      });
+    }
+
+    console.log("✅ Subscription request validation passed");
+    console.log("💳 Creating Stripe customer and subscription...");
+
+    // Create or retrieve customer
+    let customer;
+    const customers = await stripe.customers.list({
+      email: email,
+      limit: 1,
+    });
+
+    if (customers.data.length > 0) {
+      customer = customers.data[0];
+      console.log("👤 Existing customer found:", customer.id);
+    } else {
+      customer = await stripe.customers.create({
+        email: email,
+        name: name,
+        metadata: {
+          userId: userId,
+        },
+      });
+      console.log("👤 New customer created:", customer.id);
+    }
+
+    // Create subscription
+    const subscription = await stripe.subscriptions.create({
+      customer: customer.id,
+      items: [{
+        price: priceId,
+      }],
+      payment_behavior: 'default_incomplete',
+      payment_settings: { save_default_payment_method: 'on_subscription' },
+      expand: ['latest_invoice.payment_intent'],
+      metadata: {
+        userId: userId,
+        planId: planId,
+      },
+    });
+
+    console.log("✅ Subscription created successfully:");
+    console.log("- Subscription ID:", subscription.id);
+    console.log("- Customer ID:", customer.id);
+    console.log("- Status:", subscription.status);
+
+    // Return client secret for payment confirmation
+    res.json({
+      subscriptionId: subscription.id,
+      customerId: customer.id,
+      clientSecret: subscription.latest_invoice.payment_intent.client_secret,
+      status: subscription.status,
+    });
+  } catch (error) {
+    console.error("❌ Error creating subscription:");
+    console.error("- Message:", error.message);
+    console.error("- Type:", error.type);
+    console.error("- Code:", error.code);
+
+    res.status(500).json({
+      error: { message: "Failed to create subscription" },
+    });
+  }
+});
+
+// Cancel subscription
+app.post("/cancel-subscription", async (req, res) => {
+  console.log("🚫 Subscription cancellation request received");
+  
+  try {
+    const { subscriptionId } = req.body;
+
+    if (!subscriptionId) {
+      return res.status(400).json({
+        error: { message: "Subscription ID is required" },
+      });
+    }
+
+    console.log("🚫 Cancelling subscription:", subscriptionId);
+
+    const subscription = await stripe.subscriptions.update(subscriptionId, {
+      cancel_at_period_end: true,
+    });
+
+    console.log("✅ Subscription cancelled successfully");
+
+    res.json({
+      success: true,
+      subscription: {
+        id: subscription.id,
+        cancelAtPeriodEnd: subscription.cancel_at_period_end,
+        currentPeriodEnd: subscription.current_period_end,
+      },
+    });
+  } catch (error) {
+    console.error("❌ Error cancelling subscription:", error.message);
+    res.status(500).json({
+      error: { message: "Failed to cancel subscription" },
+    });
+  }
+});
+
 // Create a webhook to handle events from Stripe
 app.post(
   "/webhook",
@@ -196,8 +323,8 @@ app.post(
         console.log("- Package ID:", paymentIntent.metadata.packageId);
         console.log("- Customer:", paymentIntent.metadata.customerName);
         // TODO: Update your database here to mark the booking as paid
-        // You can access metadata like paymentIntent.metadata.packageId
         break;
+
       case "payment_intent.payment_failed":
         const failedPayment = event.data.object;
         console.log("❌ Payment failed:", failedPayment.id);
@@ -205,6 +332,45 @@ app.post(
         console.log("- Last error:", failedPayment.last_payment_error);
         // TODO: Handle failed payment
         break;
+
+      case "customer.subscription.created":
+        const createdSubscription = event.data.object;
+        console.log("📦 Subscription created:", createdSubscription.id);
+        console.log("- Customer:", createdSubscription.customer);
+        console.log("- Status:", createdSubscription.status);
+        console.log("- User ID:", createdSubscription.metadata.userId);
+        console.log("- Plan ID:", createdSubscription.metadata.planId);
+        // TODO: Create subscription record in Firestore
+        break;
+
+      case "customer.subscription.updated":
+        const updatedSubscription = event.data.object;
+        console.log("📦 Subscription updated:", updatedSubscription.id);
+        console.log("- Status:", updatedSubscription.status);
+        console.log("- Cancel at period end:", updatedSubscription.cancel_at_period_end);
+        // TODO: Update subscription record in Firestore
+        break;
+
+      case "customer.subscription.deleted":
+        const deletedSubscription = event.data.object;
+        console.log("📦 Subscription deleted:", deletedSubscription.id);
+        // TODO: Mark subscription as cancelled in Firestore
+        break;
+
+      case "invoice.payment_succeeded":
+        const paidInvoice = event.data.object;
+        console.log("🧾 Invoice payment succeeded:", paidInvoice.id);
+        console.log("- Subscription:", paidInvoice.subscription);
+        // TODO: Update subscription status to active
+        break;
+
+      case "invoice.payment_failed":
+        const failedInvoice = event.data.object;
+        console.log("🧾 Invoice payment failed:", failedInvoice.id);
+        console.log("- Subscription:", failedInvoice.subscription);
+        // TODO: Handle failed recurring payment
+        break;
+
       default:
         console.log(`ℹ️ Unhandled event type: ${event.type}`);
     }

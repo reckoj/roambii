@@ -28,6 +28,7 @@ import {
   Edit,
   FileText,
   Users,
+  Crown,
 } from "lucide-react-native";
 import { InviteFriends } from "@/lib/invite-friends";
 import { router } from "expo-router";
@@ -350,6 +351,16 @@ const Profile: React.FC = () => {
           )}
 
           {isAgent && <AgentProfileCard />}
+
+          {isAgent && (
+            <SettingsItem
+              icon={<Crown size={20} color="#FFB100" />}
+              title="Subscription"
+              subtitle="Manage your agent subscription plan"
+              onPress={() => router.push("/subscription-plans")}
+              iconBgColor="rgba(255, 177, 0, 0.1)"
+            />
+          )}
 
           {isAgent && (
             <SettingsItem

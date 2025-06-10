@@ -13,7 +13,7 @@ import {
   addDoc,
   serverTimestamp,
 } from "firebase/firestore";
-import { getAuth } from "firebase/auth";
+import { auth } from "./firebase/firebase-config";
 import { firestore, COLLECTIONS } from "../lib/firebase/firebase-config";
 import { Booking, Package, User } from "./firebase/models";
 import { getPackageById } from "../lib/package-service";

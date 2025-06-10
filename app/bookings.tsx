@@ -24,10 +24,14 @@ import {
   ChevronRight,
   Calendar,
   UserSquare2,
+  Crown,
+  Lock,
 } from "lucide-react-native";
 import { router, useFocusEffect } from "expo-router";
 import { getAgentPackages, deletePackage } from "@/lib/agent-service";
 import { auth } from "@/lib/firebase/firebase-config";
+import { subscriptionService } from "@/lib/subscription-service";
+import { SubscriptionStatus } from "@/lib/types/subscription";
 import images from "@/constants/images";
 import { SwipeListView } from "react-native-swipe-list-view";
 import Animated, { FadeIn, FadeOut } from "react-native-reanimated";
@@ -50,25 +54,40 @@ const Bookings = () => {
   const [packages, setPackages] = useState<any[]>([]);
   const [refreshing, setRefreshing] = useState(false);
   const [initialLoading, setInitialLoading] = useState(true);
+  const [subscriptionStatus, setSubscriptionStatus] = useState<SubscriptionStatus | null>(null);
 
   // Get current user
   const user = auth.currentUser;
 
-  /** Fetch packages function that can be reused */
-  const fetchPackages = async () => {
-    if (!user?.uid) {
-      setInitialLoading(false);
-      setRefreshing(false);
-      return;
-    }
+  /** Fetch packages and subscription status */
+  const fetchData = async () => {
+    if (!user?.uid) return;
 
+    setRefreshing(true);
     try {
-      console.log("Fetching packages for user:", user.uid);
-      const data = await getAgentPackages(user.uid);
-      console.log("Packages fetched:", data.length);
-      setPackages(data);
+      console.log("Fetching packages and subscription for user:", user.uid);
+      
+      // Fetch both packages and subscription status
+      const [fetchedPackages, subStatus] = await Promise.all([
+        getAgentPackages(user.uid),
+        subscriptionService.checkSubscriptionStatus(user.uid),
+      ]);
+      
+      console.log("Fetched packages:", fetchedPackages.length);
+      console.log("Subscription status:", subStatus);
+      
+      // Filter out duplicates based on $id or id
+      const uniquePackages = fetchedPackages.filter((pkg, index, self) => {
+        const currentId = pkg.$id || pkg.id;
+        return currentId && self.findIndex(p => (p.$id || p.id) === currentId) === index;
+      });
+      
+      console.log("Unique packages after filtering:", uniquePackages.length);
+      setPackages(uniquePackages);
+      setSubscriptionStatus(subStatus);
     } catch (error) {
-      console.error("Error fetching packages:", error);
+      console.error("Error fetching data:", error);
+      Alert.alert("Error", "Failed to fetch data");
     } finally {
       setRefreshing(false);
       setInitialLoading(false);
@@ -77,14 +96,14 @@ const Bookings = () => {
 
   /** Initial fetch when screen loads */
   useEffect(() => {
-    fetchPackages();
+    fetchData();
   }, [user?.uid]);
 
   /** Refresh when screen comes into focus */
   useFocusEffect(
     useCallback(() => {
-      console.log("Screen focused, refreshing packages");
-      fetchPackages();
+      console.log("Screen focused, refreshing data");
+      fetchData();
       return () => {
         // Cleanup function when screen is unfocused
         console.log("Screen unfocused");
@@ -96,8 +115,34 @@ const Bookings = () => {
   const onRefresh = useCallback(() => {
     console.log("Pull-to-refresh triggered");
     setRefreshing(true);
-    fetchPackages();
+    fetchData();
   }, [user?.uid]);
+
+  /** Handle package creation with subscription check */
+  const handleCreatePackage = () => {
+    if (!subscriptionStatus) {
+      Alert.alert("Error", "Unable to check subscription status");
+      return;
+    }
+
+    if (!subscriptionStatus.canCreatePackage) {
+      // Show upgrade prompt
+      Alert.alert(
+        "Package Limit Reached",
+        `You've reached your ${subscriptionStatus.planId === "basic" ? "Basic Plan" : "Premium Plan"} plan limit of ${subscriptionStatus.packageLimit} packages. Upgrade to create more packages.`,
+        [
+          { text: "Cancel", style: "cancel" },
+          {
+            text: "Upgrade Plan",
+            onPress: () => router.push("/subscription-plans"),
+          },
+        ]
+      );
+      return;
+    }
+
+    router.push("/create-package");
+  };
 
   /** Handle deleting a package */
   const handleDelete = async (packageId: string) => {
@@ -123,6 +168,12 @@ const Bookings = () => {
                   const pkgId = pkg.$id || pkg.id;
                   return pkgId !== packageId;
                 }));
+                
+                // Refresh subscription status after deletion
+                if (user?.uid) {
+                  const newStatus = await subscriptionService.checkSubscriptionStatus(user.uid);
+                  setSubscriptionStatus(newStatus);
+                }
                 
                 // Show success message
                 Alert.alert("Success", "Package deleted successfully.");
@@ -152,11 +203,6 @@ const Bookings = () => {
     });
   };
 
-  /** Navigate to create package screen */
-  const handleCreatePackage = () => {
-    router.push("/create-package");
-  };
-
   /** Navigate to client relationships screen */
   const handleViewClients = () => {
     router.push("/(root)/clients");
@@ -171,6 +217,60 @@ const Bookings = () => {
       </View>
     );
   }
+
+  // Render subscription status card
+  const renderSubscriptionStatus = () => {
+    if (!subscriptionStatus) return null;
+
+    const isPremium = subscriptionStatus.planId === "premium";
+    const isNearLimit = (subscriptionStatus.currentPackageCount || 0) >= subscriptionStatus.packageLimit * 0.8;
+
+    return (
+      <View style={[styles.subscriptionCard, isPremium && styles.premiumSubscriptionCard]}>
+        <View style={styles.subscriptionHeader}>
+          <View style={styles.subscriptionTitleRow}>
+            {isPremium ? (
+              <Crown size={20} color="#1ABC9C" />
+            ) : (
+              <Lock size={20} color="#95A5A6" />
+            )}
+            <Text style={styles.subscriptionTitle}>
+              {isPremium ? "Premium Plan" : "Basic Plan"}
+            </Text>
+          </View>
+          {!isPremium && (
+            <TouchableOpacity
+              style={styles.upgradeButton}
+              onPress={() => router.push("/subscription-plans")}
+            >
+              <Text style={styles.upgradeButtonText}>Upgrade</Text>
+            </TouchableOpacity>
+          )}
+        </View>
+        
+        <View style={styles.packageLimitRow}>
+          <Text style={styles.packageLimitText}>
+            {subscriptionStatus.currentPackageCount || 0} / {subscriptionStatus.packageLimit} packages used
+          </Text>
+          <View style={[
+            styles.progressBar,
+            isNearLimit && styles.progressBarWarning,
+            !subscriptionStatus.canCreatePackage && styles.progressBarFull,
+          ]}>
+            <View 
+              style={[
+                styles.progressFill,
+                { 
+                  width: `${Math.min(((subscriptionStatus.currentPackageCount || 0) / subscriptionStatus.packageLimit) * 100, 100)}%`,
+                },
+                isPremium && styles.premiumProgressFill,
+              ]} 
+            />
+          </View>
+        </View>
+      </View>
+    );
+  };
 
   // Render hidden row item (for actions like edit/delete)
   const renderHiddenItem = (data: any) => {
@@ -200,10 +300,7 @@ const Bookings = () => {
     const packageId = pkg.$id || pkg.id;
 
     return (
-      <View
-      // entering={FadeIn.duration(400).delay(data.index * 100)}
-      // exiting={FadeOut.duration(300)}
-      >
+      <View>
         <TouchableOpacity
           style={styles.packageCard}
           activeOpacity={0.9}
@@ -302,7 +399,10 @@ const Bookings = () => {
             <Text style={styles.clientButtonText}>Clients</Text>
           </TouchableOpacity>
           <TouchableOpacity
-            style={styles.createButton}
+            style={[
+              styles.createButton,
+              !subscriptionStatus?.canCreatePackage && styles.disabledButton,
+            ]}
             onPress={handleCreatePackage}
           >
             <PlusCircle size={20} color="#FFF" />
@@ -326,10 +426,7 @@ const Bookings = () => {
         />
       }
     >
-      <View
-        style={styles.emptyContainer}
-        // entering={FadeIn.duration(400)}
-      >
+      <View style={styles.emptyContainer}>
         <Image
           source={images.blank}
           style={styles.emptyImage}
@@ -342,13 +439,28 @@ const Bookings = () => {
         </Text>
 
         <TouchableOpacity
-          style={styles.createButton}
+          style={[
+            styles.createButton,
+            !subscriptionStatus?.canCreatePackage && styles.disabledButton,
+          ]}
           onPress={handleCreatePackage}
           activeOpacity={0.8}
         >
           <PlusCircle color="white" size={20} />
           <Text style={styles.createButtonText}>Create Package</Text>
         </TouchableOpacity>
+
+        {subscriptionStatus && !subscriptionStatus.canCreatePackage && (
+          <TouchableOpacity
+            style={styles.upgradePrompt}
+            onPress={() => router.push("/subscription-plans")}
+          >
+            <Crown size={16} color="#1ABC9C" />
+            <Text style={styles.upgradePromptText}>
+              Upgrade to create more packages
+            </Text>
+          </TouchableOpacity>
+        )}
       </View>
     </ScrollView>
   );
@@ -372,13 +484,18 @@ const Bookings = () => {
             </Text>
           </View>
 
+          {renderSubscriptionStatus()}
+
           <SwipeListView
             data={packages}
             renderItem={renderItem}
             renderHiddenItem={renderHiddenItem}
             rightOpenValue={-144} // negative value to open from right side
             disableRightSwipe // disable swiping from left to right
-            keyExtractor={(item) => item.$id}
+            keyExtractor={(item, index) => {
+              const id = item.$id || item.id || `package_${index}`;
+              return `${id}_${index}`; // Add index to ensure uniqueness
+            }}
             friction={20} // controls how fast swiping up/down can disable the swipe
             tension={40} // higher = swiping items faster
             useNativeDriver={false}
@@ -400,7 +517,10 @@ const Bookings = () => {
       {/* Floating action button */}
       {packages.length > 0 && (
         <TouchableOpacity
-          style={styles.floatingButton}
+          style={[
+            styles.floatingButton,
+            !subscriptionStatus?.canCreatePackage && styles.disabledFloatingButton,
+          ]}
           onPress={handleCreatePackage}
           activeOpacity={0.8}
         >
@@ -649,6 +769,90 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     justifyContent: "space-between",
     marginTop: 12,
+  },
+  subscriptionCard: {
+    backgroundColor: "#FFFFFF",
+    marginBottom: 16,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05,
+    elevation: 2,
+  },
+  premiumSubscriptionCard: {
+    backgroundColor: "#FFF9E6",
+  },
+  subscriptionHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    padding: 12,
+  },
+  subscriptionTitleRow: {
+    flexDirection: "row",
+    alignItems: "center",
+  },
+  subscriptionTitle: {
+    fontSize: 16,
+    fontWeight: "600",
+    color: "#34495E",
+    marginLeft: 8,
+  },
+  upgradeButton: {
+    backgroundColor: "#3498DB",
+    padding: 10,
+    borderRadius: 6,
+    marginLeft: 12,
+  },
+  upgradeButtonText: {
+    color: "#FFFFFF",
+    fontWeight: "600",
+  },
+  packageLimitRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    padding: 12,
+  },
+  packageLimitText: {
+    fontSize: 14,
+    color: "#7F8C8D",
+    marginRight: 12,
+  },
+  progressBar: {
+    flex: 1,
+    height: 20,
+    backgroundColor: "#E0E0E0",
+    borderRadius: 10,
+  },
+  progressBarWarning: {
+    backgroundColor: "#FFD700",
+  },
+  progressBarFull: {
+    backgroundColor: "#E74C3C",
+  },
+  progressFill: {
+    height: "100%",
+    borderRadius: 10,
+    backgroundColor: "#1ABC9C",
+  },
+  premiumProgressFill: {
+    backgroundColor: "#FFB100",
+  },
+  disabledButton: {
+    backgroundColor: "#95A5A6",
+  },
+  disabledFloatingButton: {
+    backgroundColor: "#95A5A6",
+  },
+  upgradePrompt: {
+    flexDirection: "row",
+    alignItems: "center",
+    padding: 10,
+    borderRadius: 8,
+    marginTop: 12,
+  },
+  upgradePromptText: {
+    color: "#FFFFFF",
+    marginLeft: 6,
+    fontWeight: "600",
   },
 });
 
