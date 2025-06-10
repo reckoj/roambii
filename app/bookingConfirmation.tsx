@@ -195,15 +195,15 @@ const BookingConfirmationScreen = () => {
         booking.packageDetails.agent.id,
         booking.id
       );
-      
+
       if (result) {
         Alert.alert(
-          "Success", 
+          "Success",
           "Client relationship has been updated. The agent should now see you in their clients list."
         );
       } else {
         Alert.alert(
-          "Error", 
+          "Error",
           "Failed to update client relationship. Please try again or contact support."
         );
       }
@@ -495,23 +495,6 @@ const BookingConfirmationScreen = () => {
           >
             <Text style={styles.primaryButtonText}>Back to Home</Text>
           </TouchableOpacity>
-          
-          {/* Debug/Fix button - show it in more cases to help users who have client relationship issues */}
-          {(debug === 'true' || __DEV__ || true) && booking && booking.packageDetails?.agent?.id && (
-            <TouchableOpacity
-              style={styles.fixButton}
-              onPress={handleUpdateClientRelationship}
-              disabled={updatingClient}
-            >
-              {updatingClient ? (
-                <ActivityIndicator size="small" color="#FFF" />
-              ) : (
-                <Text style={styles.fixButtonText}>
-                  Fix Client Relationship
-                </Text>
-              )}
-            </TouchableOpacity>
-          )}
         </View>
       </ScrollView>
     </SafeAreaView>

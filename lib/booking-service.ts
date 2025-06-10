@@ -76,7 +76,7 @@ export const createBooking = async (
           contactInfo: {
             name: userProfile?.name || "",
             email: userProfile?.email || "",
-            phone: userProfile?.legalInformation?.phoneNumber || "",
+            ...(userProfile?.legalInformation?.phoneNumber ? { phone: userProfile.legalInformation.phoneNumber } : {})
           }
         },
         // Add snake_case version for web app compatibility
@@ -90,7 +90,7 @@ export const createBooking = async (
           contact_info: {
             name: userProfile?.name || "",
             email: userProfile?.email || "",
-            phone: userProfile?.legalInformation?.phoneNumber || "",
+            ...(userProfile?.legalInformation?.phoneNumber ? { phone: userProfile.legalInformation.phoneNumber } : {})
           }
         }
       };
@@ -524,7 +524,7 @@ export const updateBookingStatus = async (
           contactInfo = {
             name: userProfile.name || "",
             email: userProfile.email || "",
-            phone: userProfile.legalInformation?.phoneNumber,
+            ...(userProfile.legalInformation?.phoneNumber ? { phone: userProfile.legalInformation.phoneNumber } : {})
           };
         }
       } catch (err) {
@@ -553,7 +553,7 @@ export const updateBookingStatus = async (
         contact_info: {
           name: contactInfo.name,
           email: contactInfo.email,
-          phone: contactInfo.phone
+          ...(contactInfo.phone ? { phone: contactInfo.phone } : {})
         }
       };
     }

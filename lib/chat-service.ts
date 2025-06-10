@@ -8,7 +8,7 @@ import {
   remove,
   onValue,
   off,
-  query,
+  query as rtdbQuery,
   orderByChild,
   equalTo,
   serverTimestamp,
@@ -21,10 +21,27 @@ import {
   query as firestoreQuery,
   where,
   getDocs,
+  Query,
+  DocumentData,
 } from "firebase/firestore";
 import { COLLECTIONS } from "./firebase/firebase-config";
 
 // Export types for chat functionality
+export interface UserProfile {
+  id: string;
+  name: string;
+  email: string;
+  avatar?: string;
+  isAgent?: boolean;
+  subscription?: {
+    currentPeriodEnd: number;
+    status?: string;
+  };
+  createdAt?: number;
+  updatedAt?: number;
+  [key: string]: any;
+}
+
 export interface ChatMessage {
   id?: string;
   sender_id: string;
@@ -792,6 +809,105 @@ export async function findExistingChatRoom(
     return null;
   } catch (error) {
     console.error("Error finding existing chat room:", error);
+    return null;
+  }
+}
+
+// Helper function to convert Firestore data to a serializable format
+function convertFirestoreData(data: any): any {
+  if (!data) return null;
+  
+  const converted = { ...data };
+  
+  // Convert Timestamps to numbers
+  if (converted.subscription?.currentPeriodEnd) {
+    converted.subscription = {
+      ...converted.subscription,
+      currentPeriodEnd: converted.subscription.currentPeriodEnd.toMillis?.() || Date.now()
+    };
+  }
+  
+  // Convert other timestamps
+  if (converted.createdAt?.toMillis) {
+    converted.createdAt = converted.createdAt.toMillis();
+  }
+  if (converted.updatedAt?.toMillis) {
+    converted.updatedAt = converted.updatedAt.toMillis();
+  }
+  
+  return converted;
+}
+
+// Get user profile from Firestore
+async function getUserProfile(userId: string): Promise<UserProfile | null> {
+  try {
+    // Try direct ID lookup first
+    const userRef = doc(firestore, COLLECTIONS.USERS, userId);
+    const userDoc = await getDoc(userRef);
+
+    if (userDoc.exists()) {
+      const userData = convertFirestoreData(userDoc.data());
+      return {
+        id: userId,
+        name: userData.name || "Unknown User",
+        email: userData.email || "",
+        avatar: userData.avatar || undefined,
+        ...userData,
+      };
+    }
+
+    // Try query by userId field
+    const usersRef = collection(firestore, COLLECTIONS.USERS);
+    const q = firestoreQuery(usersRef, where("userId", "==", userId));
+    const querySnapshot = await getDocs(q);
+
+    if (!querySnapshot.empty) {
+      const userData = convertFirestoreData(querySnapshot.docs[0].data());
+      return {
+        id: userId,
+        name: userData.name || "Unknown User",
+        email: userData.email || "",
+        avatar: userData.avatar || undefined,
+        ...userData,
+      };
+    }
+
+    // Try agents collection if not found in users
+    const agentRef = doc(firestore, COLLECTIONS.AGENTS, userId);
+    const agentDoc = await getDoc(agentRef);
+
+    if (agentDoc.exists()) {
+      const agentData = convertFirestoreData(agentDoc.data());
+      return {
+        id: userId,
+        name: agentData.name || "Unknown Agent",
+        email: agentData.email || "",
+        avatar: agentData.avatar || undefined,
+        isAgent: true,
+        ...agentData,
+      };
+    }
+
+    // Try query by userId field in agents collection
+    const agentsRef = collection(firestore, COLLECTIONS.AGENTS);
+    const agentQ = firestoreQuery(agentsRef, where("userId", "==", userId));
+    const agentQuerySnapshot = await getDocs(agentQ);
+
+    if (!agentQuerySnapshot.empty) {
+      const agentData = convertFirestoreData(agentQuerySnapshot.docs[0].data());
+      return {
+        id: userId,
+        name: agentData.name || "Unknown Agent",
+        email: agentData.email || "",
+        avatar: agentData.avatar || undefined,
+        isAgent: true,
+        ...agentData,
+      };
+    }
+
+    return null;
+  } catch (error) {
+    console.error("Error getting user profile:", error);
     return null;
   }
 }

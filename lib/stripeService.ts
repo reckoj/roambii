@@ -11,7 +11,7 @@ interface PaymentOptions {
   description?: string;
 }
 
-/**
+/**192.168.4.47
  * Hook for handling Stripe payments in components
  */
 export const useStripePayment = () => {
@@ -21,7 +21,7 @@ export const useStripePayment = () => {
     try {
       // Get Payment Intent from local server
       const response = await fetch(
-        "http://192.168.4.71:4000/create-payment-intent",
+        "http://192.168.4.47:4000/create-payment-intent",
         {
           method: "POST",
           headers: {

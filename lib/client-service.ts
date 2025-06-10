@@ -243,7 +243,7 @@ export const createOrUpdateClientRelationship = async (
     const contactInfo = {
       name: userProfile.name,
       email: userProfile.email,
-      phone: userProfile.legalInformation?.phoneNumber,
+      ...(userProfile.legalInformation?.phoneNumber ? { phone: userProfile.legalInformation.phoneNumber } : {})
     };
     
     console.log("DEBUG - createOrUpdateClientRelationship - Contact info prepared:", contactInfo);
@@ -283,7 +283,7 @@ export const createOrUpdateClientRelationship = async (
           contact_info: {
             name: contactInfo.name,
             email: contactInfo.email,
-            phone: contactInfo.phone,
+            ...(contactInfo.phone ? { phone: contactInfo.phone } : {}),
           },
         };
       } else {
@@ -330,7 +330,7 @@ export const createOrUpdateClientRelationship = async (
       contact_info: {
         name: contactInfo.name,
         email: contactInfo.email,
-        phone: contactInfo.phone,
+        ...(contactInfo.phone ? { phone: contactInfo.phone } : {})
       },
     };
 
@@ -1053,7 +1053,7 @@ export const createBasicClientRelationship = async (
     const contactInfo = userProfile ? {
       name: userProfile.name,
       email: userProfile.email,
-      phone: userProfile.legalInformation?.phoneNumber,
+      ...(userProfile.legalInformation?.phoneNumber ? { phone: userProfile.legalInformation.phoneNumber } : {})
     } : {
       name: "Unknown User",
       email: "unknown@example.com"
@@ -1073,7 +1073,7 @@ export const createBasicClientRelationship = async (
       contact_info: {
         name: contactInfo.name,
         email: contactInfo.email,
-        phone: contactInfo.phone,
+        ...(contactInfo.phone ? { phone: contactInfo.phone } : {})
       },
       // Add a flag to indicate this was created in debug mode
       _debug_created: true

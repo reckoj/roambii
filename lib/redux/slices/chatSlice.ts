@@ -148,13 +148,28 @@ function convertTimestampToNumber(timestamp: any): number {
 
 // Helper function to serialize user profile data
 function serializeUserProfile(profile: any): any {
-  if (!profile) return profile;
+  if (!profile) return null;
   
-  return {
-    ...profile,
-    createdAt: convertTimestampToNumber(profile.createdAt),
-    updatedAt: convertTimestampToNumber(profile.updatedAt),
-  };
+  // Create a new object to avoid mutating the original
+  const serialized = { ...profile };
+  
+  // Convert Firestore Timestamps to numbers
+  if (serialized.subscription?.currentPeriodEnd) {
+    serialized.subscription = {
+      ...serialized.subscription,
+      currentPeriodEnd: serialized.subscription.currentPeriodEnd.toMillis?.() || Date.now()
+    };
+  }
+  
+  // Convert other timestamps
+  if (serialized.createdAt?.toMillis) {
+    serialized.createdAt = serialized.createdAt.toMillis();
+  }
+  if (serialized.updatedAt?.toMillis) {
+    serialized.updatedAt = serialized.updatedAt.toMillis();
+  }
+  
+  return serialized;
 }
 
 // Async thunks for chat
