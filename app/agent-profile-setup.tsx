@@ -483,13 +483,13 @@ const AgentProfileSetup = () => {
   // Loading state
   if (loading && !profile) {
     return (
-      <SafeAreaView style={styles.container}>
+      <View style={styles.container}>
         <StatusBar style="dark" />
         <View style={styles.loadingContainer}>
           <ActivityIndicator size="large" color="#1ABC9C" />
           <Text style={styles.loadingText}>Loading your profile...</Text>
         </View>
-      </SafeAreaView>
+      </View>
     );
   }
 
@@ -502,7 +502,7 @@ const AgentProfileSetup = () => {
   // If there's an error fetching profile
   if (error) {
     return (
-      <SafeAreaView style={styles.container}>
+      <View style={styles.container}>
         <StatusBar style="dark" />
         <View style={styles.errorContainer}>
           <X size={56} color="#EF4444" />
@@ -515,7 +515,7 @@ const AgentProfileSetup = () => {
             <Text style={styles.errorButtonText}>Return to Home</Text>
           </TouchableOpacity>
         </View>
-      </SafeAreaView>
+      </View>
     );
   }
 
@@ -525,7 +525,7 @@ const AgentProfileSetup = () => {
       behavior={Platform.OS === "ios" ? "padding" : "height"}
       keyboardVerticalOffset={Platform.OS === "ios" ? 0 : 25}
     >
-      <SafeAreaView style={styles.container}>
+      <View style={styles.container}>
         <StatusBar style="dark" />
 
         {/* Header */}
@@ -627,7 +627,7 @@ const AgentProfileSetup = () => {
             )}
           </View>
         </ScrollView>
-      </SafeAreaView>
+      </View>
     </KeyboardAvoidingView>
   );
 };

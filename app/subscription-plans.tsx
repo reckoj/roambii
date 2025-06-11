@@ -8,6 +8,7 @@ import {
   Alert,
   ScrollView,
   SafeAreaView,
+  StatusBar,
 } from "react-native";
 import { router } from "expo-router";
 import { useStripe } from "@stripe/stripe-react-native";
@@ -341,18 +342,28 @@ const SubscriptionPlansScreen = () => {
 
   if (loading) {
     return (
-      <SafeAreaView style={styles.container}>
+      <View style={styles.container}>
+        <StatusBar
+          backgroundColor="transparent"
+          translucent={true}
+          barStyle="dark-content"
+        />
         <CustomHeader title="Subscription Plans" showBackButton={true} />
         <View style={styles.loadingContainer}>
           <ActivityIndicator size="large" color="#1ABC9C" />
           <Text style={styles.loadingText}>Loading plans...</Text>
         </View>
-      </SafeAreaView>
+      </View>
     );
   }
 
   return (
     <View style={styles.container}>
+      <StatusBar
+        backgroundColor="transparent"
+        translucent={true}
+        barStyle="dark-content"
+      />
       <CustomHeader title="Subscription Plans" showBackButton={true} />
       
       <ScrollView style={styles.scrollContainer} showsVerticalScrollIndicator={false}>

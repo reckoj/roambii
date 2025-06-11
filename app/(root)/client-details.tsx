@@ -31,6 +31,7 @@ import {
 import { getUserBookings } from "../../lib/booking-service";
 import { useGlobalContext } from "../../lib/global-provider";
 import { getChatRoomId, findExistingChatRoom } from "../../lib/chat-service";
+import CustomHeader from "@/components/HeaderComponent";
 
 // Define theme colors (should match your app's theme)
 const colors = {
@@ -347,74 +348,68 @@ const ClientDetailsScreen = () => {
   }
 
   return (
-    <SafeAreaView style={styles.container}>
+    <View style={styles.container}>
       <StatusBar style="auto" />
 
       {/* Header */}
-      <View style={styles.header}>
-        <TouchableOpacity
-          onPress={() => router.back()}
-          style={styles.backButton}
-        >
-          <Ionicons name="arrow-back" size={24} color={colors.text} />
-        </TouchableOpacity>
-        <Text style={styles.headerTitle}>Client Details</Text>
-        <TouchableOpacity
-          style={styles.chatButton}
-          onPress={async () => {
-            // Only navigate if we have valid IDs
-            if (!rawUser?.id || !client?.userId) {
-              console.error("Cannot open chat: Missing user IDs", {
-                agentId: rawUser?.id,
-                clientUserId: client?.userId,
-              });
-              Alert.alert(
-                "Error",
-                "Unable to open chat. Missing user information."
-              );
-              return;
-            }
 
-            try {
-              // First check if there's an existing chat room between these users
-              const existingRoomId = await findExistingChatRoom(
-                rawUser.id,
-                client.userId
-              );
-              let roomId;
-
-              if (existingRoomId) {
-                // Use existing room
-                console.log("Using existing chat room:", existingRoomId);
-                roomId = existingRoomId;
-              } else {
-                // Create a new room
-                console.log("No existing chat found, creating new room");
-                roomId = getChatRoomId(rawUser.id, client.userId);
-              }
-
-              // Navigate to chat screen with all required parameters
-              router.push({
-                pathname: "/chatScreen",
-                params: {
-                  room_id: roomId,
-                  agentId: rawUser.id,
-                  userId: client.userId,
-                },
-              });
-            } catch (error) {
-              console.error("Error opening chat:", error);
-              Alert.alert("Error", "Unable to open chat. Please try again.");
-            }
-          }}
-        >
+      <CustomHeader
+        title="Client Details"
+        showBackButton
+        rightIcon={
           <Ionicons
             name="chatbubble-ellipses-outline"
             size={24}
             color={colors.primary}
           />
-        </TouchableOpacity>
-      </View>
+        }
+        onRightIconPress={async () => {
+          // Only navigate if we have valid IDs
+          if (!rawUser?.id || !client?.userId) {
+            console.error("Cannot open chat: Missing user IDs", {
+              agentId: rawUser?.id,
+              clientUserId: client?.userId,
+            });
+            Alert.alert(
+              "Error",
+              "Unable to open chat. Missing user information."
+            );
+            return;
+          }
+
+          try {
+            // First check if there's an existing chat room between these users
+            const existingRoomId = await findExistingChatRoom(
+              rawUser.id,
+              client.userId
+            );
+            let roomId;
+
+            if (existingRoomId) {
+              // Use existing room
+              console.log("Using existing chat room:", existingRoomId);
+              roomId = existingRoomId;
+            } else {
+              // Create a new room
+              console.log("No existing chat found, creating new room");
+              roomId = getChatRoomId(rawUser.id, client.userId);
+            }
+
+            // Navigate to chat screen with all required parameters
+            router.push({
+              pathname: "/chatScreen",
+              params: {
+                room_id: roomId,
+                agentId: rawUser.id,
+                userId: client.userId,
+              },
+            });
+          } catch (error) {
+            console.error("Error opening chat:", error);
+            Alert.alert("Error", "Unable to open chat. Please try again.");
+          }
+        }}
+      />
 
       <ScrollView
         style={styles.scrollView}
@@ -804,7 +799,7 @@ const ClientDetailsScreen = () => {
           </Dialog.Actions>
         </Dialog>
       </Portal>
-    </SafeAreaView>
+    </View>
   );
 };
 

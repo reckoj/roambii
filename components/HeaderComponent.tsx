@@ -5,6 +5,7 @@ import {
   TouchableOpacity,
   Platform,
   StatusBar,
+  StyleSheet,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { ArrowLeft } from "lucide-react-native";
@@ -23,6 +24,10 @@ interface HeaderProps {
   showBackButton?: boolean;
   /** Whether to handle safe area insets manually (default: true) */
   handleSafeArea?: boolean;
+  /** Whether this is a primary colored header (affects status bar style) */
+  isPrimaryColored?: boolean;
+  /** Optional background color for the header */
+  backgroundColor?: string;
 }
 
 /**
@@ -36,6 +41,8 @@ const CustomHeader: React.FC<HeaderProps> = ({
   onBackPress = () => router.back(),
   showBackButton = true,
   handleSafeArea = true,
+  isPrimaryColored = false,
+  backgroundColor = "#FFFFFF",
 }) => {
   // Get safe area insets
   const insets = useSafeAreaInsets();
@@ -45,49 +52,94 @@ const CustomHeader: React.FC<HeaderProps> = ({
 
   return (
     <View
-      className="bg-primary-200"
-      style={{
-        paddingTop: topPadding,
-      }}
+      style={[
+        styles.container,
+        {
+          paddingTop: topPadding,
+          backgroundColor: backgroundColor,
+        },
+      ]}
     >
-      {/* Status Bar - set to match header background */}
       <StatusBar
-        backgroundColor="#f8f9fa"
-        barStyle="dark-content"
-        translucent={handleSafeArea}
+        backgroundColor={isPrimaryColored ? "#1ABC9C" : "transparent"}
+        barStyle={isPrimaryColored ? "light-content" : "dark-content"}
+        translucent={true}
       />
 
       {/* Header content */}
-      <View className="px-2 py-2">
-        <View className="flex flex-row justify-between items-center">
+      <View style={styles.content}>
+        <View style={styles.row}>
           {showBackButton ? (
             <TouchableOpacity
               onPress={onBackPress}
-              className="rounded-full size-10 items-center justify-center"
+              style={styles.backButton}
             >
-              <ArrowLeft size={28} color="#34495E" />
+              <ArrowLeft size={28} color={isPrimaryColored ? "#FFFFFF" : "#34495E"} />
             </TouchableOpacity>
           ) : (
-            <View style={{ width: 40 }} /> // Empty placeholder with same width as button
+            <View style={styles.placeholder} />
           )}
 
-          <Text className="text-2xl font-rubik text-text">{title}</Text>
+          <Text style={[
+            styles.title,
+            { color: isPrimaryColored ? "#FFFFFF" : "#34495E" }
+          ]}>
+            {title}
+          </Text>
 
           {rightIcon ? (
             <TouchableOpacity
               onPress={onRightIconPress}
-              className="rounded-full size-10 items-center justify-center"
+              style={styles.rightButton}
               disabled={!onRightIconPress}
             >
               {rightIcon}
             </TouchableOpacity>
           ) : (
-            <View style={{ width: 40 }} /> // Empty placeholder for balance
+            <View style={styles.placeholder} />
           )}
         </View>
       </View>
     </View>
   );
 };
+
+const styles = StyleSheet.create({
+  container: {
+    width: "100%",
+    borderBottomWidth: 1,
+    borderBottomColor: "rgba(0,0,0,0.1)",
+  },
+  content: {
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+  },
+  row: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+  },
+  backButton: {
+    width: 40,
+    height: 40,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  rightButton: {
+    width: 40,
+    height: 40,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  placeholder: {
+    width: 40,
+  },
+  title: {
+    fontSize: 20,
+    fontWeight: "600",
+    flex: 1,
+    textAlign: "center",
+  },
+});
 
 export default CustomHeader;

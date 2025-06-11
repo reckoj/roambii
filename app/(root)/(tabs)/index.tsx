@@ -11,7 +11,9 @@ import {
   Dimensions,
   ActivityIndicator,
   StyleSheet,
+  Platform,
 } from "react-native";
+import { StatusBar as ExpoStatusBar } from "expo-status-bar";
 import { router } from "expo-router";
 import { SafeAreaView } from "react-native-safe-area-context";
 import images from "@/constants/images";
@@ -285,7 +287,7 @@ const HomeScreen = () => {
   if (isFirstLoad) {
     return (
       <View style={styles.initialLoadingContainer}>
-        <StatusBar backgroundColor="#FFFFFF" barStyle="dark-content" />
+        <StatusBar backgroundColor="#1ABC9C" barStyle="dark-content" />
         <Animated.View
           style={{
             opacity: initialAnimationValue,
@@ -460,12 +462,7 @@ const HomeScreen = () => {
 
   return (
     <View style={styles.container}>
-      <StatusBar
-        backgroundColor="transparent"
-        translucent
-        barStyle="light-content"
-      />
-
+      <ExpoStatusBar style="dark" />
       {/* Animated Header */}
       <Animated.View
         style={[
@@ -481,7 +478,7 @@ const HomeScreen = () => {
             { opacity: headerBackgroundOpacity },
           ]}
         />
-
+        {/* 
         <Animated.View
           style={[styles.headerImageContainer, { opacity: imageOpacity }]}
         >
@@ -490,7 +487,7 @@ const HomeScreen = () => {
             style={styles.headerImage}
             resizeMode="cover"
           />
-        </Animated.View>
+        </Animated.View> */}
 
         <SafeAreaView style={styles.headerContent}>
           <View style={styles.topNav}>
@@ -676,7 +673,7 @@ const styles = StyleSheet.create({
   headerContent: {
     flex: 1,
     paddingHorizontal: 12,
-    justifyContent: "space-between",
+    // paddingTop: Platform.OS === "ios" ? 20 : StatusBar.currentHeight || 0,
   },
   topNav: {
     flexDirection: "row",
@@ -712,7 +709,7 @@ const styles = StyleSheet.create({
   searchBar: {
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: "rgba(255,255,255,0.9)",
+    // backgroundColor: "rgba(255,255,255,0.9)",
     borderRadius: 8,
     paddingHorizontal: 5,
     paddingVertical: 10,

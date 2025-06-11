@@ -109,28 +109,12 @@ const Featured: React.FC = () => {
 
   return (
     <View style={styles.container}>
-      <StatusBar barStyle="light-content" />
-
-      {/* Gradient Header */}
-      <LinearGradient
-        colors={["#1ABC9C", "#36d6ba"]}
-        start={{ x: 0, y: 0 }}
-        end={{ x: 1, y: 0 }}
-        style={styles.header}
-      >
-        <SafeAreaView style={styles.headerContent}>
-          <TouchableOpacity
-            onPress={() => router.back()}
-            style={styles.backButton}
-          >
-            <ArrowLeft size={24} color="#fff" />
-          </TouchableOpacity>
-
-          <Text style={styles.headerTitle}>Featured Packages</Text>
-
-          <View style={{ width: 40 }} />
-        </SafeAreaView>
-      </LinearGradient>
+      <CustomHeader
+        title="Featured Packages"
+        showBackButton={true}
+        isPrimaryColored={true}
+        backgroundColor="#1ABC9C"
+      />
 
       {/* Main content */}
       <View style={styles.contentContainer}>
@@ -163,30 +147,6 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: "#F8F9FA",
-  },
-  header: {
-    paddingTop: StatusBar.currentHeight || 0,
-    paddingBottom: 15,
-  },
-  headerContent: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    paddingHorizontal: 16,
-    paddingTop: 10,
-  },
-  backButton: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: "rgba(255, 255, 255, 0.2)",
-    justifyContent: "center",
-    alignItems: "center",
-  },
-  headerTitle: {
-    fontSize: 18,
-    fontWeight: "700",
-    color: "#fff",
   },
   contentContainer: {
     flex: 1,

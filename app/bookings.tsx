@@ -11,6 +11,8 @@ import {
   Dimensions,
   StatusBar,
   ScrollView,
+  Platform,
+  SafeAreaView,
 } from "react-native";
 import {
   PlusCircle,
@@ -26,7 +28,9 @@ import {
   UserSquare2,
   Crown,
   Lock,
+  Plus,
 } from "lucide-react-native";
+import { StatusBar as ExpoStatusBar } from "expo-status-bar";
 import { router, useFocusEffect } from "expo-router";
 import { getAgentPackages, deletePackage } from "@/lib/agent-service";
 import { auth } from "@/lib/firebase/firebase-config";
@@ -54,7 +58,8 @@ const Bookings = () => {
   const [packages, setPackages] = useState<any[]>([]);
   const [refreshing, setRefreshing] = useState(false);
   const [initialLoading, setInitialLoading] = useState(true);
-  const [subscriptionStatus, setSubscriptionStatus] = useState<SubscriptionStatus | null>(null);
+  const [subscriptionStatus, setSubscriptionStatus] =
+    useState<SubscriptionStatus | null>(null);
 
   // Get current user
   const user = auth.currentUser;
@@ -66,22 +71,25 @@ const Bookings = () => {
     setRefreshing(true);
     try {
       console.log("Fetching packages and subscription for user:", user.uid);
-      
+
       // Fetch both packages and subscription status
       const [fetchedPackages, subStatus] = await Promise.all([
         getAgentPackages(user.uid),
         subscriptionService.checkSubscriptionStatus(user.uid),
       ]);
-      
+
       console.log("Fetched packages:", fetchedPackages.length);
       console.log("Subscription status:", subStatus);
-      
+
       // Filter out duplicates based on $id or id
       const uniquePackages = fetchedPackages.filter((pkg, index, self) => {
         const currentId = pkg.$id || pkg.id;
-        return currentId && self.findIndex(p => (p.$id || p.id) === currentId) === index;
+        return (
+          currentId &&
+          self.findIndex((p) => (p.$id || p.id) === currentId) === index
+        );
       });
-      
+
       console.log("Unique packages after filtering:", uniquePackages.length);
       setPackages(uniquePackages);
       setSubscriptionStatus(subStatus);
@@ -129,7 +137,11 @@ const Bookings = () => {
       // Show upgrade prompt
       Alert.alert(
         "Package Limit Reached",
-        `You've reached your ${subscriptionStatus.planId === "basic" ? "Basic Plan" : "Premium Plan"} plan limit of ${subscriptionStatus.packageLimit} packages. Upgrade to create more packages.`,
+        `You've reached your ${
+          subscriptionStatus.planId === "basic" ? "Basic Plan" : "Premium Plan"
+        } plan limit of ${
+          subscriptionStatus.packageLimit
+        } packages. Upgrade to create more packages.`,
         [
           { text: "Cancel", style: "cancel" },
           {
@@ -158,35 +170,41 @@ const Bookings = () => {
             try {
               console.log(`Attempting to delete package: ${packageId}`);
               const success = await deletePackage(packageId);
-              
+
               if (success) {
                 console.log(`Successfully deleted package: ${packageId}`);
-                
+
                 // Filter out the deleted package from the packages list
                 // Handle both $id and id formats
-                setPackages(packages.filter((pkg) => {
-                  const pkgId = pkg.$id || pkg.id;
-                  return pkgId !== packageId;
-                }));
-                
+                setPackages(
+                  packages.filter((pkg) => {
+                    const pkgId = pkg.$id || pkg.id;
+                    return pkgId !== packageId;
+                  })
+                );
+
                 // Refresh subscription status after deletion
                 if (user?.uid) {
-                  const newStatus = await subscriptionService.checkSubscriptionStatus(user.uid);
+                  const newStatus =
+                    await subscriptionService.checkSubscriptionStatus(user.uid);
                   setSubscriptionStatus(newStatus);
                 }
-                
+
                 // Show success message
                 Alert.alert("Success", "Package deleted successfully.");
               } else {
                 console.error(`Failed to delete package: ${packageId}`);
                 Alert.alert(
-                  "Delete Failed", 
+                  "Delete Failed",
                   "Failed to delete package. You may not have permission or the package doesn't exist."
                 );
               }
             } catch (error) {
               console.error("Error in package deletion:", error);
-              Alert.alert("Error", "An error occurred while deleting the package.");
+              Alert.alert(
+                "Error",
+                "An error occurred while deleting the package."
+              );
             }
           },
         },
@@ -223,10 +241,17 @@ const Bookings = () => {
     if (!subscriptionStatus) return null;
 
     const isPremium = subscriptionStatus.planId === "premium";
-    const isNearLimit = (subscriptionStatus.currentPackageCount || 0) >= subscriptionStatus.packageLimit * 0.8;
+    const isNearLimit =
+      (subscriptionStatus.currentPackageCount || 0) >=
+      subscriptionStatus.packageLimit * 0.8;
 
     return (
-      <View style={[styles.subscriptionCard, isPremium && styles.premiumSubscriptionCard]}>
+      <View
+        style={[
+          styles.subscriptionCard,
+          isPremium && styles.premiumSubscriptionCard,
+        ]}
+      >
         <View style={styles.subscriptionHeader}>
           <View style={styles.subscriptionTitleRow}>
             {isPremium ? (
@@ -247,24 +272,32 @@ const Bookings = () => {
             </TouchableOpacity>
           )}
         </View>
-        
+
         <View style={styles.packageLimitRow}>
           <Text style={styles.packageLimitText}>
-            {subscriptionStatus.currentPackageCount || 0} / {subscriptionStatus.packageLimit} packages used
+            {subscriptionStatus.currentPackageCount || 0} /{" "}
+            {subscriptionStatus.packageLimit} packages used
           </Text>
-          <View style={[
-            styles.progressBar,
-            isNearLimit && styles.progressBarWarning,
-            !subscriptionStatus.canCreatePackage && styles.progressBarFull,
-          ]}>
-            <View 
+          <View
+            style={[
+              styles.progressBar,
+              isNearLimit && styles.progressBarWarning,
+              !subscriptionStatus.canCreatePackage && styles.progressBarFull,
+            ]}
+          >
+            <View
               style={[
                 styles.progressFill,
-                { 
-                  width: `${Math.min(((subscriptionStatus.currentPackageCount || 0) / subscriptionStatus.packageLimit) * 100, 100)}%`,
+                {
+                  width: `${Math.min(
+                    ((subscriptionStatus.currentPackageCount || 0) /
+                      subscriptionStatus.packageLimit) *
+                      100,
+                    100
+                  )}%`,
                 },
                 isPremium && styles.premiumProgressFill,
-              ]} 
+              ]}
             />
           </View>
         </View>
@@ -275,7 +308,7 @@ const Bookings = () => {
   // Render hidden row item (for actions like edit/delete)
   const renderHiddenItem = (data: any) => {
     const packageId = data.item.$id || data.item.id;
-    
+
     return (
       <View style={styles.rowBack}>
         <TouchableOpacity
@@ -388,7 +421,12 @@ const Bookings = () => {
   // Render header with client relationships button
   const renderHeader = () => (
     <View>
-      <CustomHeader title="My Packages" showBackButton={false} />
+      {/* <CustomHeader
+        title="My Packages"
+        showBackButton={false}
+        isPrimaryColored={false}
+      /> */}
+      {renderSubscriptionStatus()}
       <View style={styles.headerContainer}>
         <View style={styles.headerActions}>
           <TouchableOpacity
@@ -438,7 +476,7 @@ const Bookings = () => {
           Create your first package listing to get started
         </Text>
 
-        <TouchableOpacity
+        {/* <TouchableOpacity
           style={[
             styles.createButton,
             !subscriptionStatus?.canCreatePackage && styles.disabledButton,
@@ -448,7 +486,7 @@ const Bookings = () => {
         >
           <PlusCircle color="white" size={20} />
           <Text style={styles.createButtonText}>Create Package</Text>
-        </TouchableOpacity>
+        </TouchableOpacity> */}
 
         {subscriptionStatus && !subscriptionStatus.canCreatePackage && (
           <TouchableOpacity
@@ -466,8 +504,8 @@ const Bookings = () => {
   );
 
   return (
-    <View style={styles.container}>
-      <StatusBar />
+    <SafeAreaView style={styles.container}>
+      <ExpoStatusBar backgroundColor="#fff" style="dark" />
 
       {renderHeader()}
 
@@ -483,8 +521,6 @@ const Bookings = () => {
               active {packages.length === 1 ? "package" : "packages"}
             </Text>
           </View>
-
-          {renderSubscriptionStatus()}
 
           <SwipeListView
             data={packages}
@@ -513,28 +549,15 @@ const Bookings = () => {
           />
         </View>
       )}
-
-      {/* Floating action button */}
-      {packages.length > 0 && (
-        <TouchableOpacity
-          style={[
-            styles.floatingButton,
-            !subscriptionStatus?.canCreatePackage && styles.disabledFloatingButton,
-          ]}
-          onPress={handleCreatePackage}
-          activeOpacity={0.8}
-        >
-          <PlusCircle color="white" size={26} />
-        </TouchableOpacity>
-      )}
-    </View>
+    </SafeAreaView>
   );
 };
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: "#F8F9FA",
+    backgroundColor: "#fff",
+    paddingTop: Platform.OS === "android" ? StatusBar.currentHeight : 0,
   },
   loadingContainer: {
     flex: 1,
@@ -771,7 +794,7 @@ const styles = StyleSheet.create({
     marginTop: 12,
   },
   subscriptionCard: {
-    backgroundColor: "#FFFFFF",
+    backgroundColor: "#fff",
     marginBottom: 16,
     shadowColor: "#000",
     shadowOffset: { width: 0, height: 2 },
@@ -779,7 +802,7 @@ const styles = StyleSheet.create({
     elevation: 2,
   },
   premiumSubscriptionCard: {
-    backgroundColor: "#FFF9E6",
+    backgroundColor: "#fff",
   },
   subscriptionHeader: {
     flexDirection: "row",
@@ -853,6 +876,22 @@ const styles = StyleSheet.create({
     color: "#FFFFFF",
     marginLeft: 6,
     fontWeight: "600",
+  },
+  fab: {
+    position: "absolute",
+    right: 20,
+    bottom: 20,
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    backgroundColor: "#1ABC9C",
+    justifyContent: "center",
+    alignItems: "center",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.2,
+    shadowRadius: 5,
+    elevation: 5,
   },
 });
 
