@@ -62,7 +62,13 @@ const Register = () => {
     }
 
     try {
-      const response = await register(email, password, name, isAgent, selectedNiche);
+      const response = await register(
+        email,
+        password,
+        name,
+        isAgent,
+        selectedNiche
+      );
 
       if (response.success) {
         // Registration was successful, navigate to verification screen
@@ -226,7 +232,7 @@ const Register = () => {
                 </TouchableOpacity>
 
                 <TouchableOpacity
-                  onPress={() => router.push("/login")}
+                  onPress={() => router.back()}
                   className="mt-4"
                   disabled={loading}
                 >

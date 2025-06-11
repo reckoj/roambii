@@ -20,7 +20,7 @@ console.log(
 const express = require("express");
 const cors = require("cors");
 const bodyParser = require("body-parser");
-const { networkInterfaces } = require('os');
+const { networkInterfaces } = require("os");
 
 // Validate critical environment variables
 if (!process.env.STRIPE_SECRET_KEY) {
@@ -48,7 +48,7 @@ app.use(
     origin: "*", // Allow all origins in development
     methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
     allowedHeaders: ["Content-Type", "Authorization", "Accept"],
-    credentials: true
+    credentials: true,
   })
 );
 app.use(bodyParser.json());
@@ -196,30 +196,35 @@ app.post("/create-subscription", async (req, res) => {
     });
 
     if (customers.data.length > 0) {
-      customer = customers.data[0];
-      console.log("👤 Existing customer found:", customer.id);
-    } else {
-      customer = await stripe.customers.create({
-        email: email,
-        name: name,
-        metadata: {
-          userId: userId,
-        },
-      });
-      console.log("👤 New customer created:", customer.id);
+      // Delete existing customer to avoid currency conflicts
+      console.log("👤 Existing customer found, deleting to avoid currency conflicts:", customers.data[0].id);
+      await stripe.customers.del(customers.data[0].id);
+      console.log("✅ Existing customer deleted");
     }
+
+    // Create new customer
+    customer = await stripe.customers.create({
+      email: email,
+      name: name,
+      metadata: {
+        userId: userId,
+      },
+    });
+    console.log("👤 New customer created:", customer.id);
 
     // Create subscription with payment collection using Stripe's official approach
     const subscription = await stripe.subscriptions.create({
       customer: customer.id,
-      items: [{
-        price: priceId,
-      }],
-      payment_behavior: 'default_incomplete',
-      payment_settings: { 
-        save_default_payment_method: 'on_subscription'
+      items: [
+        {
+          price: priceId,
+        },
+      ],
+      payment_behavior: "default_incomplete",
+      payment_settings: {
+        save_default_payment_method: "on_subscription",
       },
-      expand: ['latest_invoice.confirmation_secret'],
+      expand: ["latest_invoice.confirmation_secret"],
       metadata: {
         userId: userId,
         planId: planId,
@@ -231,16 +236,24 @@ app.post("/create-subscription", async (req, res) => {
     console.log("- Customer ID:", customer.id);
     console.log("- Status:", subscription.status);
     console.log("- Latest Invoice:", subscription.latest_invoice?.id);
-    console.log("- Confirmation Secret:", subscription.latest_invoice?.confirmation_secret?.client_secret ? "✅ Available" : "❌ Missing");
+    console.log(
+      "- Confirmation Secret:",
+      subscription.latest_invoice?.confirmation_secret?.client_secret
+        ? "✅ Available"
+        : "❌ Missing"
+    );
 
     // Get client secret from confirmation_secret (Stripe's official approach)
     let clientSecret = null;
     if (subscription.latest_invoice?.confirmation_secret?.client_secret) {
-      clientSecret = subscription.latest_invoice.confirmation_secret.client_secret;
+      clientSecret =
+        subscription.latest_invoice.confirmation_secret.client_secret;
       console.log("✅ Client secret retrieved from confirmation_secret");
     } else {
       console.log("⚠️ No confirmation_secret available");
-      throw new Error("Unable to get confirmation secret for subscription payment");
+      throw new Error(
+        "Unable to get confirmation secret for subscription payment"
+      );
     }
 
     // Return client secret for payment confirmation
@@ -265,7 +278,7 @@ app.post("/create-subscription", async (req, res) => {
 // Complete subscription after successful payment
 app.post("/complete-subscription", async (req, res) => {
   console.log("✅ Subscription completion request received");
-  
+
   try {
     const { subscriptionId, customerId } = req.body;
 
@@ -279,25 +292,41 @@ app.post("/complete-subscription", async (req, res) => {
 
     // Retrieve the subscription to check its current status
     const subscription = await stripe.subscriptions.retrieve(subscriptionId, {
-      expand: ['latest_invoice.payment_intent']
+      expand: ["latest_invoice.payment_intent"],
     });
 
     console.log("📋 Current subscription status:", subscription.status);
     console.log("📋 Latest invoice:", subscription.latest_invoice?.id);
-    console.log("📋 Payment intent:", subscription.latest_invoice?.payment_intent?.id);
-    console.log("📋 Payment intent status:", subscription.latest_invoice?.payment_intent?.status);
+    console.log(
+      "📋 Payment intent:",
+      subscription.latest_invoice?.payment_intent?.id
+    );
+    console.log(
+      "📋 Payment intent status:",
+      subscription.latest_invoice?.payment_intent?.status
+    );
 
     // If subscription is incomplete, try to confirm the payment intent
-    if (subscription.status === 'incomplete' && subscription.latest_invoice?.payment_intent) {
+    if (
+      subscription.status === "incomplete" &&
+      subscription.latest_invoice?.payment_intent
+    ) {
       const paymentIntent = subscription.latest_invoice.payment_intent;
-      
-      if (paymentIntent.status === 'succeeded') {
-        console.log("✅ Payment intent already succeeded, subscription should be active soon");
-        
+
+      if (paymentIntent.status === "succeeded") {
+        console.log(
+          "✅ Payment intent already succeeded, subscription should be active soon"
+        );
+
         // Force refresh the subscription to get latest status
-        const refreshedSubscription = await stripe.subscriptions.retrieve(subscriptionId);
-        console.log("🔄 Refreshed subscription status:", refreshedSubscription.status);
-        
+        const refreshedSubscription = await stripe.subscriptions.retrieve(
+          subscriptionId
+        );
+        console.log(
+          "🔄 Refreshed subscription status:",
+          refreshedSubscription.status
+        );
+
         res.json({
           success: true,
           subscription: {
@@ -307,7 +336,7 @@ app.post("/complete-subscription", async (req, res) => {
           },
         });
         return;
-      } else if (paymentIntent.status === 'requires_payment_method') {
+      } else if (paymentIntent.status === "requires_payment_method") {
         console.log("⚠️ Payment intent requires payment method");
         return res.status(400).json({
           error: { message: "Payment intent requires payment method" },
@@ -316,7 +345,10 @@ app.post("/complete-subscription", async (req, res) => {
     }
 
     // If subscription is already active, just return success
-    if (subscription.status === 'active' || subscription.status === 'trialing') {
+    if (
+      subscription.status === "active" ||
+      subscription.status === "trialing"
+    ) {
       console.log("✅ Subscription is already active");
       res.json({
         success: true,
@@ -338,17 +370,16 @@ app.post("/complete-subscription", async (req, res) => {
         customerId: subscription.customer,
       },
     });
-
   } catch (error) {
     console.error("❌ Error completing subscription:");
     console.error("- Message:", error.message);
     console.error("- Type:", error.type);
     console.error("- Code:", error.code);
-    
+
     res.status(500).json({
-      error: { 
+      error: {
         message: "Failed to complete subscription",
-        details: error.message 
+        details: error.message,
       },
     });
   }
@@ -357,7 +388,7 @@ app.post("/complete-subscription", async (req, res) => {
 // Validate subscription exists in Stripe
 app.post("/validate-subscription", async (req, res) => {
   console.log("🔍 Subscription validation request received");
-  
+
   try {
     const { subscriptionId } = req.body;
 
@@ -407,7 +438,7 @@ app.post("/validate-subscription", async (req, res) => {
 // Cleanup incomplete subscription (delete completely from Stripe)
 app.post("/cleanup-subscription", async (req, res) => {
   console.log("🧹 Subscription cleanup request received");
-  
+
   try {
     const { subscriptionId } = req.body;
 
@@ -420,11 +451,17 @@ app.post("/cleanup-subscription", async (req, res) => {
     console.log("🧹 Cleaning up incomplete subscription:", subscriptionId);
 
     // Delete the subscription completely from Stripe
-    const deletedSubscription = await stripe.subscriptions.cancel(subscriptionId, {
-      prorate: false, // Don't prorate since this is cleanup of incomplete subscription
-    });
+    const deletedSubscription = await stripe.subscriptions.cancel(
+      subscriptionId,
+      {
+        prorate: false, // Don't prorate since this is cleanup of incomplete subscription
+      }
+    );
 
-    console.log("✅ Incomplete subscription cleaned up:", deletedSubscription.id);
+    console.log(
+      "✅ Incomplete subscription cleaned up:",
+      deletedSubscription.id
+    );
     console.log("- Status after cleanup:", deletedSubscription.status);
 
     res.json({
@@ -440,14 +477,14 @@ app.post("/cleanup-subscription", async (req, res) => {
     console.error("- Type:", error.type);
     console.error("- Code:", error.code);
     console.error("- Subscription ID:", subscriptionId);
-    
+
     res.status(500).json({
-      error: { 
+      error: {
         message: "Failed to cleanup subscription",
         details: error.message,
         type: error.type,
         code: error.code,
-        subscriptionId: subscriptionId
+        subscriptionId: subscriptionId,
       },
     });
   }
@@ -456,7 +493,7 @@ app.post("/cleanup-subscription", async (req, res) => {
 // Cancel subscription
 app.post("/cancel-subscription", async (req, res) => {
   console.log("🚫 Subscription cancellation request received");
-  
+
   try {
     const { subscriptionId } = req.body;
 
@@ -488,15 +525,15 @@ app.post("/cancel-subscription", async (req, res) => {
     console.error("- Type:", error.type);
     console.error("- Code:", error.code);
     console.error("- Subscription ID:", subscriptionId);
-    
+
     // Return more detailed error information
     res.status(500).json({
-      error: { 
+      error: {
         message: "Failed to cancel subscription",
         details: error.message,
         type: error.type,
         code: error.code,
-        subscriptionId: subscriptionId
+        subscriptionId: subscriptionId,
       },
     });
   }
@@ -564,7 +601,10 @@ app.post(
         const updatedSubscription = event.data.object;
         console.log("📦 Subscription updated:", updatedSubscription.id);
         console.log("- Status:", updatedSubscription.status);
-        console.log("- Cancel at period end:", updatedSubscription.cancel_at_period_end);
+        console.log(
+          "- Cancel at period end:",
+          updatedSubscription.cancel_at_period_end
+        );
         // TODO: Update subscription record in Firestore
         break;
 
@@ -656,7 +696,7 @@ const results = {};
 for (const name of Object.keys(nets)) {
   for (const net of nets[name]) {
     // Skip over non-IPv4 and internal (i.e. 127.0.0.1) addresses
-    if (net.family === 'IPv4' && !net.internal) {
+    if (net.family === "IPv4" && !net.internal) {
       if (!results[name]) {
         results[name] = [];
       }
@@ -667,7 +707,7 @@ for (const name of Object.keys(nets)) {
 
 console.log("🎧 Starting server listener...");
 
-app.listen(port, '0.0.0.0', () => {
+app.listen(port, "0.0.0.0", () => {
   console.log("🎉 Server successfully started!");
   console.log(`🌐 Server running on port ${port}`);
   console.log("📱 Available on local network at:");

@@ -32,6 +32,7 @@ const DEFAULT_PLANS: SubscriptionPlan[] = [
     description: "Perfect for getting started",
     price: 0,
     interval: "month",
+    currency: "usd",
     stripePriceId: "free", // No Stripe price for free tier
     features: [
       "Up to 3 package listings",
@@ -48,6 +49,7 @@ const DEFAULT_PLANS: SubscriptionPlan[] = [
     description: "For professional travel agents",
     price: 19.99,
     interval: "month",
+    currency: "usd",
     stripePriceId: process.env.EXPO_PUBLIC_STRIPE_PRICE_ID || "price_premium",
     features: [
       "Up to 20 package listings",

@@ -6,6 +6,7 @@ export interface SubscriptionPlan {
   description: string;
   price: number;
   interval: "month" | "year";
+  currency: "usd";  // Only support USD for now
   stripePriceId: string;
   features: string[];
   isActive: boolean;

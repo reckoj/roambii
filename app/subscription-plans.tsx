@@ -16,19 +16,15 @@ import { SubscriptionPlan, SubscriptionStatus } from "@/lib/types/subscription";
 import { subscriptionService } from "@/lib/subscription-service";
 import { useGlobalContext } from "@/lib/global-provider";
 import CustomHeader from "@/components/HeaderComponent";
-import {
-  Check,
-  Crown,
-  Package,
-  Star,
-  ArrowRight,
-} from "lucide-react-native";
+import { Check, Crown, Package, Star, ArrowRight } from "lucide-react-native";
 
 const SubscriptionPlansScreen = () => {
   const { rawUser } = useGlobalContext();
   const { confirmPayment, initPaymentSheet, presentPaymentSheet } = useStripe();
   const [plans, setPlans] = useState<SubscriptionPlan[]>([]);
-  const [currentStatus, setCurrentStatus] = useState<SubscriptionStatus | null>(null);
+  const [currentStatus, setCurrentStatus] = useState<SubscriptionStatus | null>(
+    null
+  );
   const [loading, setLoading] = useState(true);
   const [purchasing, setPurchasing] = useState<string | null>(null);
 
@@ -41,13 +37,13 @@ const SubscriptionPlansScreen = () => {
 
     try {
       setLoading(true);
-      
+
       // Clean up any test/invalid subscriptions first
       await subscriptionService.cleanupTestSubscriptions(rawUser.id);
-      
+
       // Validate and sync subscription with Stripe
       await subscriptionService.validateAndSyncSubscription(rawUser.id);
-      
+
       const [plansData, statusData] = await Promise.all([
         subscriptionService.getSubscriptionPlans(),
         subscriptionService.checkSubscriptionStatus(rawUser.id),
@@ -87,7 +83,7 @@ const SubscriptionPlansScreen = () => {
     // Paid plan - use real Stripe subscription flow
     try {
       setPurchasing(plan.id);
-      
+
       const result = await subscriptionService.createSubscription(
         rawUser.id,
         plan.id,
@@ -118,28 +114,35 @@ const SubscriptionPlansScreen = () => {
           const { error: presentError } = await presentPaymentSheet();
 
           if (presentError) {
-            console.error("Payment sheet presentation error:", presentError);
-            
+            // console.error("Payment sheet presentation error:", presentError);
+
             // Cleanup the incomplete subscription from Stripe
             if (result.subscriptionId) {
-              console.log("Cleaning up incomplete subscription due to payment cancellation:", result.subscriptionId);
-              await subscriptionService.cleanupIncompleteSubscription(result.subscriptionId);
+              console.log(
+                "Cleaning up incomplete subscription due to payment cancellation:",
+                result.subscriptionId
+              );
+              await subscriptionService.cleanupIncompleteSubscription(
+                result.subscriptionId
+              );
             }
-            
+
             // Only show error alert if it's not a user cancellation
             if (presentError.code !== "Canceled") {
               Alert.alert("Payment Failed", presentError.message);
             } else {
-              console.log("Payment was cancelled by user, subscription cleaned up");
+              console.log(
+                "Payment was cancelled by user, subscription cleaned up"
+              );
             }
             return;
           } else {
             // Payment successful - complete the subscription
             console.log("Payment successful, completing subscription with:", {
               subscriptionId: result.subscriptionId,
-              customerId: result.customerId
+              customerId: result.customerId,
             });
-            
+
             await subscriptionService.completeSubscription(
               rawUser.id,
               plan.id,
@@ -147,40 +150,41 @@ const SubscriptionPlansScreen = () => {
               result.customerId || "stripe_customer"
             );
 
-            Alert.alert(
-              "Success", 
-              "Subscription activated successfully!",
-              [{ text: "OK", onPress: () => router.back() }]
-            );
+            Alert.alert("Success", "Subscription activated successfully!", [
+              { text: "OK", onPress: () => router.back() },
+            ]);
           }
         } else {
           // Subscription created but no client secret - this shouldn't happen for paid plans
           console.error("Subscription created without payment confirmation:", {
             subscriptionId: result.subscriptionId,
             customerId: result.customerId,
-            status: result.status
+            status: result.status,
           });
-          
+
           // Cleanup the incomplete subscription from Stripe
           if (result.subscriptionId) {
-            console.log("Cleaning up subscription without client secret:", result.subscriptionId);
-            await subscriptionService.cleanupIncompleteSubscription(result.subscriptionId);
+            console.log(
+              "Cleaning up subscription without client secret:",
+              result.subscriptionId
+            );
+            await subscriptionService.cleanupIncompleteSubscription(
+              result.subscriptionId
+            );
           }
-          
+
           // Don't complete the subscription if it requires payment but has no client_secret
           Alert.alert(
-            "Payment Required", 
+            "Payment Required",
             "This subscription requires payment confirmation. Please try again.",
             [{ text: "OK" }]
           );
         }
       } else if (result.success) {
         // Free plan success
-        Alert.alert(
-          "Success", 
-          "Subscription activated successfully!",
-          [{ text: "OK", onPress: () => router.back() }]
-        );
+        Alert.alert("Success", "Subscription activated successfully!", [
+          { text: "OK", onPress: () => router.back() },
+        ]);
       }
     } catch (error) {
       console.error("Error creating subscription:", error);
@@ -231,8 +235,8 @@ const SubscriptionPlansScreen = () => {
     const isLoading = purchasing === plan.id;
 
     return (
-      <View 
-        key={plan.id} 
+      <View
+        key={plan.id}
         style={[
           styles.planCard,
           isPremium && styles.premiumCard,
@@ -292,7 +296,12 @@ const SubscriptionPlansScreen = () => {
             <ActivityIndicator color="#FFF" />
           ) : (
             <>
-              <Text style={[styles.buttonText, isPremium && styles.premiumButtonText]}>
+              <Text
+                style={[
+                  styles.buttonText,
+                  isPremium && styles.premiumButtonText,
+                ]}
+              >
                 {isCurrentPlan ? "Current Plan" : `Get ${plan.name}`}
               </Text>
               {!isCurrentPlan && <ArrowRight size={16} color="#FFF" />}
@@ -301,25 +310,27 @@ const SubscriptionPlansScreen = () => {
         </TouchableOpacity>
 
         {/* Cancel button for current premium plan */}
-        {isCurrentPlan && isPremium && currentStatus?.isActive && !currentStatus?.isCancelled && (
-          <TouchableOpacity
-            style={styles.cancelButton}
-            onPress={handleCancel}
-            disabled={loading}
-          >
-            <Text style={styles.cancelButtonText}>Cancel Subscription</Text>
-          </TouchableOpacity>
-        )}
+        {isCurrentPlan &&
+          isPremium &&
+          currentStatus?.isActive &&
+          !currentStatus?.isCancelled && (
+            <TouchableOpacity
+              style={styles.cancelButton}
+              onPress={handleCancel}
+              disabled={loading}
+            >
+              <Text style={styles.cancelButtonText}>Cancel Subscription</Text>
+            </TouchableOpacity>
+          )}
 
         {/* Cancellation notice for cancelled premium plan */}
         {isCurrentPlan && isPremium && currentStatus?.isCancelled && (
           <View style={styles.cancelledNotice}>
             <Text style={styles.cancelledText}>
               Subscription cancelled - Access until{" "}
-              {currentStatus.periodEndDate 
+              {currentStatus.periodEndDate
                 ? currentStatus.periodEndDate.toLocaleDateString()
-                : "period end"
-              }
+                : "period end"}
             </Text>
           </View>
         )}
@@ -330,10 +341,10 @@ const SubscriptionPlansScreen = () => {
   // Filter plans based on user's current status
   const getVisiblePlans = () => {
     if (!currentStatus) return plans;
-    
+
     if (currentStatus.planId === "premium") {
       // User has premium - only show premium plan
-      return plans.filter(plan => plan.id === "premium");
+      return plans.filter((plan) => plan.id === "premium");
     } else {
       // User has basic - show both plans (basic as current, premium for upgrade)
       return plans;
@@ -365,28 +376,35 @@ const SubscriptionPlansScreen = () => {
         barStyle="dark-content"
       />
       <CustomHeader title="Subscription Plans" showBackButton={true} />
-      
-      <ScrollView style={styles.scrollContainer} showsVerticalScrollIndicator={false}>
+
+      <ScrollView
+        style={styles.scrollContainer}
+        showsVerticalScrollIndicator={false}
+      >
         <View style={styles.content}>
           <View style={styles.headerSection}>
             <Text style={styles.title}>
-              {currentStatus?.planId === "premium" ? "Your Premium Plan" : "Choose Your Plan"}
+              {currentStatus?.planId === "premium"
+                ? "Your Premium Plan"
+                : "Choose Your Plan"}
             </Text>
             <Text style={styles.subtitle}>
-              {currentStatus?.planId === "premium" 
+              {currentStatus?.planId === "premium"
                 ? "You're on the Premium plan with full access to all features"
-                : "Select the perfect plan for your travel agent business"
-              }
+                : "Select the perfect plan for your travel agent business"}
             </Text>
-            
+
             {currentStatus && (
               <View style={styles.currentStatusCard}>
                 <Star size={20} color="#1ABC9C" />
                 <View style={styles.statusInfo}>
                   <Text style={styles.statusTitle}>Current Status</Text>
                   <Text style={styles.statusText}>
-                    {currentStatus.planId === "premium" ? "Premium Plan" : "Basic Plan"} - 
-                    {" "}{currentStatus.currentPackageCount || 0}/{currentStatus.packageLimit} packages used
+                    {currentStatus.planId === "premium"
+                      ? "Premium Plan"
+                      : "Basic Plan"}{" "}
+                    - {currentStatus.currentPackageCount || 0}/
+                    {currentStatus.packageLimit} packages used
                   </Text>
                 </View>
               </View>
@@ -399,7 +417,7 @@ const SubscriptionPlansScreen = () => {
 
           <View style={styles.footerSection}>
             <Text style={styles.footerText}>
-              All plans include secure payment processing, booking management, 
+              All plans include secure payment processing, booking management,
               and customer support. Upgrade or downgrade anytime.
             </Text>
           </View>
@@ -632,4 +650,4 @@ const styles = StyleSheet.create({
   },
 });
 
-export default SubscriptionPlansScreen; 
+export default SubscriptionPlansScreen;

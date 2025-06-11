@@ -223,7 +223,7 @@ export default function Login() {
             </TouchableOpacity>
 
             {/* Social Login */}
-            <View className="mt-6 space-y-4">
+            {/* <View className="mt-6 space-y-4">
               <TouchableOpacity
                 onPress={handleLoginGoogle}
                 disabled={isLoading || localLoading}
@@ -253,7 +253,7 @@ export default function Login() {
                   </Text>
                 </View>
               </TouchableOpacity>
-            </View>
+            </View> */}
 
             {/* Sign Up Link */}
             <View className="flex-row justify-center mt-6">
