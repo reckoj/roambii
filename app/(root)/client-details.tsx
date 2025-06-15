@@ -476,7 +476,11 @@ const ClientDetailsScreen = () => {
         </View>
 
         {/* Client Preferences */}
-        <View style={styles.sectionCard}>
+        {/* 
+         
+         //TODO: implement later
+         */}
+        {/* <View style={styles.sectionCard}>
           <View style={styles.sectionHeader}>
             <Text style={styles.sectionTitle}>Travel Preferences</Text>
             <TouchableOpacity
@@ -566,10 +570,14 @@ const ClientDetailsScreen = () => {
               )}
             </View>
           </View>
-        </View>
+        </View> */}
 
         {/* Client Bookings */}
-        <View style={styles.sectionCard}>
+        {/* 
+         
+         //TODO: implement later
+         */}
+        {/* <View style={styles.sectionCard}>
           <Text style={styles.sectionTitle}>Bookings History</Text>
 
           {clientBookings.length === 0 ? (
@@ -628,7 +636,7 @@ const ClientDetailsScreen = () => {
               </View>
             ))
           )}
-        </View>
+        </View> */}
       </ScrollView>
 
       {/* Notes Dialog */}

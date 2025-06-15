@@ -167,7 +167,7 @@ const Profile: React.FC = () => {
     try {
       // No need to import dynamically anymore
       const pickerResult = await pickImageWithPermissions({ aspect: [1, 1] });
-      
+
       if (pickerResult) {
         try {
           setLoading(true);
@@ -317,7 +317,7 @@ const Profile: React.FC = () => {
       >
         <View style={styles.card}>
           {/* Agent Toggle */}
-          {isAgent && (
+          {/* {isAgent && (
             <View style={styles.agentToggleContainer}>
               <View style={styles.agentToggleContent}>
                 <Shield size={22} color={COLORS.primary} />
@@ -330,7 +330,7 @@ const Profile: React.FC = () => {
                 thumbColor={agentView ? COLORS.primary : "#F5F5F5"}
               />
             </View>
-          )}
+          )} */}
 
           <Text style={styles.sectionTitle}>Account</Text>
 
