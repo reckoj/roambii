@@ -79,13 +79,12 @@ export default function Login() {
   useEffect(() => {
     if (error) {
       console.log("Login error detected:", error);
-      Alert.alert("Login Failed", error);
+      Alert.alert("Login Failed", "Invalid credentials");
       dispatch(clearAuthError());
     }
   }, [error, dispatch]);
 
   const handleLogin = async () => {
-    console.log("Login attempt with:", { email });
     if (!email || !password) {
       Alert.alert("Error", "Please enter both email and password");
       return;
@@ -93,9 +92,7 @@ export default function Login() {
 
     try {
       setLocalLoading(true);
-      console.log("Dispatching loginUserAsync...");
       const resultAction = await dispatch(loginUserAsync({ email, password }));
-      console.log("Login result:", resultAction);
 
       // Check if we have a rejected action with verification requirement
       if (

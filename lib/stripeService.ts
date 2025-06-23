@@ -21,7 +21,7 @@ export const useStripePayment = () => {
     try {
       // Get Payment Intent from local server
       const response = await fetch(
-        "http://192.168.4.47:4000/create-payment-intent",
+        "http://192.168.4.111:4000/create-payment-intent",
         {
           method: "POST",
           headers: {

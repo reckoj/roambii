@@ -43,6 +43,14 @@
           ".write": "auth != null && root.child('chat_rooms').child($roomId).child('participants').hasChild(auth.uid)"
         }
       }
+    },
+    "user_statuses": {
+      ".read": "auth != null",
+      ".write": "auth != null",
+      "$userId": {
+        ".read": "auth != null",
+        ".write": "auth != null && auth.uid == $userId"
+      }
     }
   }
 } 

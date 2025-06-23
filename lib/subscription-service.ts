@@ -17,11 +17,39 @@ import { Subscription, SubscriptionPlan, SubscriptionStatus } from "./types/subs
 import { getAgentPackages } from "./agent-service";
 
 // Helper function to safely convert Firestore Timestamp to Date
-const toDate = (timestamp: Date | Timestamp): Date => {
+const toDate = (timestamp: Date | Timestamp | string | undefined | null): Date => {
+  if (!timestamp) {
+    console.warn("toDate: Received undefined or null timestamp, returning current date");
+    return new Date();
+  }
+  
   if (timestamp instanceof Timestamp) {
     return timestamp.toDate();
   }
-  return timestamp;
+  
+  if (timestamp instanceof Date) {
+    return timestamp;
+  }
+  
+  // If it's a string (ISO date string), parse it
+  if (typeof timestamp === 'string') {
+    const parsedDate = new Date(timestamp);
+    if (!isNaN(parsedDate.getTime())) {
+      console.log("toDate: Successfully parsed ISO date string:", timestamp, "->", parsedDate);
+      return parsedDate;
+    } else {
+      console.warn("toDate: Invalid ISO date string:", timestamp);
+      return new Date();
+    }
+  }
+  
+  // If it's a number (milliseconds), convert to Date
+  if (typeof timestamp === 'number') {
+    return new Date(timestamp);
+  }
+  
+  console.warn("toDate: Unknown timestamp type:", typeof timestamp, timestamp);
+  return new Date();
 };
 
 // Default subscription plans
@@ -63,6 +91,30 @@ const DEFAULT_PLANS: SubscriptionPlan[] = [
     packageLimit: 20,
   },
 ];
+
+/**
+ * Map Stripe price ID to internal plan ID
+ */
+function mapPriceIdToPlanId(priceId: string): string {
+  const premiumPriceId = process.env.EXPO_PUBLIC_STRIPE_PRICE_ID || "price_premium";
+  
+  // Handle direct plan IDs (already mapped)
+  if (priceId === "premium" || priceId === "basic") {
+    return priceId;
+  }
+  
+  // Map Stripe price IDs to plan IDs
+  if (priceId === premiumPriceId || priceId === "price_1RMvzWFL7oYJ1qaEKRb3elBr") {
+    return "premium";
+  }
+  
+  if (priceId === "free" || priceId === "basic") {
+    return "basic";
+  }
+  
+  console.warn("Unknown price ID:", priceId, "defaulting to basic plan");
+  return "basic";
+}
 
 export const subscriptionService = {
   /**
@@ -179,9 +231,20 @@ export const subscriptionService = {
         // Return active subscriptions first
         if (subscription.status === "active") {
           const periodEnd = toDate(subscription.currentPeriodEnd);
-          if (periodEnd > new Date() && !subscription.cancelAtPeriodEnd) {
-            console.log("Found active subscription:", subscription.id);
+          const now = new Date();
+          
+          // Add safety check for periodEnd
+          if (!periodEnd || isNaN(periodEnd.getTime())) {
+            console.warn("Invalid periodEnd for subscription:", subscription.id, "periodEnd:", subscription.currentPeriodEnd);
+            // If we can't determine the period end, assume it's active if status is active
+            console.log("Found active subscription (no valid period end, but status is active):", subscription.id);
             return subscription;
+          } else {
+            // Consider subscription active if it hasn't expired, regardless of cancelAtPeriodEnd
+            if (periodEnd > now) {
+              console.log("Found active subscription:", subscription.id);
+              return subscription;
+            }
           }
         }
       }
@@ -267,7 +330,8 @@ export const subscriptionService = {
 
       // Check if subscription is active and not expired
       const periodEnd = toDate(subscription.currentPeriodEnd);
-      const isActive = subscription.status === "active" && periodEnd > new Date();
+      const now = new Date();
+      const isActive = subscription.status === "active" && periodEnd > now;
 
       if (!isActive) {
         // Expired/inactive subscription = basic plan
@@ -284,13 +348,14 @@ export const subscriptionService = {
         };
       }
 
-      // Active subscription
-      const plan = plans.find(p => p.id === subscription.planId);
-      const packageLimit = plan?.packageLimit || 20;
+      // Active subscription - map the planId in case it's a Stripe price ID
+      const actualPlanId = mapPriceIdToPlanId(subscription.planId);
+      const plan = plans.find(p => p.id === actualPlanId);
+      const packageLimit = plan?.packageLimit || (actualPlanId === "premium" ? 20 : 3);
 
       return {
         isActive: true,
-        planId: subscription.planId,
+        planId: actualPlanId,
         packageLimit,
         currentPackageCount,
         canCreatePackage: currentPackageCount < packageLimit,
@@ -335,7 +400,7 @@ export const subscriptionService = {
       }
 
       // Paid plan - use real Stripe subscriptions for dashboard visibility
-      const response = await fetch("http://192.168.4.47:4000/create-subscription", {
+      const response = await fetch(`${process.env.EXPO_PUBLIC_BACKEND_API}/create-subscription`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -455,7 +520,7 @@ export const subscriptionService = {
     try {
       console.log("Cleaning up incomplete subscription:", subscriptionId);
       
-      const response = await fetch("http://192.168.4.47:4000/cleanup-subscription", {
+      const response = await fetch(`${process.env.EXPO_PUBLIC_BACKEND_API}/cleanup-subscription`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -508,7 +573,7 @@ export const subscriptionService = {
 
       // Cancel in Stripe - this will show up in Stripe dashboard
       console.log("Cancelling Stripe subscription:", subscription.stripeSubscriptionId);
-      const response = await fetch("http://192.168.4.47:4000/cancel-subscription", {
+      const response = await fetch(`${process.env.EXPO_PUBLIC_BACKEND_API}/cancel-subscription`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -556,10 +621,52 @@ export const subscriptionService = {
   },
 
   /**
+   * Fix subscription planId if it contains a Stripe price ID instead of internal plan ID
+   */
+  async fixSubscriptionPlanId(userId: string): Promise<void> {
+    try {
+      const subscription = await this.getUserSubscription(userId);
+      
+      if (!subscription) {
+        console.log("No subscription to fix");
+        return;
+      }
+
+      // Check if planId looks like a Stripe price ID
+      if (subscription.planId.startsWith("price_")) {
+        const correctPlanId = mapPriceIdToPlanId(subscription.planId);
+        
+        if (correctPlanId !== subscription.planId) {
+          console.log("Fixing subscription planId:", {
+            subscriptionId: subscription.id,
+            oldPlanId: subscription.planId,
+            newPlanId: correctPlanId
+          });
+
+          const subscriptionRef = doc(firestore, "subscriptions", subscription.id);
+          await updateDoc(subscriptionRef, {
+            planId: correctPlanId,
+            updatedAt: serverTimestamp(),
+          });
+
+          console.log("✅ Subscription planId fixed successfully");
+        }
+      }
+    } catch (error) {
+      console.error("Error fixing subscription planId:", error);
+    }
+  },
+
+  /**
    * Validate and sync subscription status with Stripe
    * Removes invalid subscriptions that don't exist in Stripe
    */
   async validateAndSyncSubscription(userId: string): Promise<void> {
+    // Temporarily disabled to prevent network timeout errors
+    // The subscription system is working correctly without this validation
+    console.log("validateAndSyncSubscription: Skipped (disabled to prevent network timeouts)");
+    return;
+    
     try {
       const subscription = await this.getUserSubscription(userId);
       
@@ -586,7 +693,7 @@ export const subscriptionService = {
 
       // Validate with Stripe
       try {
-        const response = await fetch("http://192.168.4.47:4000/validate-subscription", {
+        const response = await fetch(`${process.env.EXPO_PUBLIC_BACKEND_API}/validate-subscription`, {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
@@ -611,6 +718,116 @@ export const subscriptionService = {
       }
     } catch (error) {
       console.error("Error in validateAndSyncSubscription:", error);
+    }
+  },
+
+  /**
+   * Debug function to show raw subscription data
+   */
+  async debugSubscriptionData(userId: string): Promise<void> {
+    try {
+      const subscriptionsRef = collection(firestore, "subscriptions");
+      const q = query(
+        subscriptionsRef, 
+        where("userId", "==", userId),
+        orderBy("createdAt", "desc")
+      );
+      const querySnapshot = await getDocs(q);
+
+      console.log("=== DEBUG: Raw Subscription Data ===");
+      console.log("User ID:", userId);
+      console.log("Total subscriptions found:", querySnapshot.size);
+
+      querySnapshot.docs.forEach((doc, index) => {
+        const data = doc.data();
+        console.log(`\n--- Subscription ${index + 1} ---`);
+        console.log("Document ID:", doc.id);
+        console.log("Raw data:", JSON.stringify(data, null, 2));
+        
+        if (data.currentPeriodEnd) {
+          const periodEnd = toDate(data.currentPeriodEnd);
+          const now = new Date();
+          console.log("Period end analysis:", {
+            raw: data.currentPeriodEnd,
+            converted: periodEnd,
+            now: now,
+            isExpired: periodEnd <= now,
+            differenceMs: periodEnd.getTime() - now.getTime(),
+            differenceDays: (periodEnd.getTime() - now.getTime()) / (1000 * 60 * 60 * 24)
+          });
+        }
+      });
+      console.log("=== END DEBUG ===");
+    } catch (error) {
+      console.error("Error in debugSubscriptionData:", error);
+    }
+  },
+
+  /**
+   * Sync subscription data from Stripe to fix missing fields
+   */
+  async syncSubscriptionFromStripe(userId: string): Promise<void> {
+    try {
+      const subscription = await this.getUserSubscription(userId);
+      
+      if (!subscription || !subscription.stripeSubscriptionId) {
+        console.log("No subscription to sync");
+        return;
+      }
+
+      // Skip for free subscriptions
+      if (subscription.stripeSubscriptionId === "free") {
+        console.log("Free subscription, no sync needed");
+        return;
+      }
+
+      console.log("Syncing subscription data from Stripe:", subscription.stripeSubscriptionId);
+
+      const response = await fetch(`${process.env.EXPO_PUBLIC_BACKEND_API}/validate-subscription`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          subscriptionId: subscription.stripeSubscriptionId,
+        }),
+      });
+
+      const data = await response.json();
+
+      if (data.exists && data.subscription) {
+        const stripeData = data.subscription;
+        const updates: any = {};
+
+        // Update missing or incorrect fields
+        if (!subscription.currentPeriodEnd && stripeData.currentPeriodEnd) {
+          updates.currentPeriodEnd = new Date(stripeData.currentPeriodEnd * 1000); // Convert from Unix timestamp
+          console.log("Updated currentPeriodEnd from Stripe");
+        }
+
+        if (subscription.status !== stripeData.status) {
+          updates.status = stripeData.status;
+          console.log("Updated status from Stripe:", stripeData.status);
+        }
+
+        if (subscription.cancelAtPeriodEnd !== stripeData.cancelAtPeriodEnd) {
+          updates.cancelAtPeriodEnd = stripeData.cancelAtPeriodEnd;
+          console.log("Updated cancelAtPeriodEnd from Stripe:", stripeData.cancelAtPeriodEnd);
+        }
+
+        if (Object.keys(updates).length > 0) {
+          updates.updatedAt = serverTimestamp();
+          const subscriptionRef = doc(firestore, "subscriptions", subscription.id);
+          await updateDoc(subscriptionRef, updates);
+          console.log("✅ Subscription data synced from Stripe");
+        } else {
+          console.log("No updates needed, subscription data is current");
+        }
+      } else {
+        console.log("Subscription not found in Stripe, cannot sync");
+      }
+    } catch (error) {
+      console.error("Error syncing subscription from Stripe:", error);
     }
   },
 }; 

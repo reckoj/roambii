@@ -31,14 +31,13 @@ service cloud.firestore {
     
     // Users collection
     match /users/{userId} {
-      allow read: if isAuthenticated();
-      allow write: if isOwner(userId);
+      allow read, write: if request.auth != null && request.auth.uid == userId;
     }
     
     // Agents collection
     match /agents/{agentId} {
-      allow read: if true; // Public read access for agents
-      allow write: if isOwner(agentId);
+      allow read: if true;  // Anyone can read agent profiles
+      allow write: if request.auth != null && request.auth.uid == agentId;
     }
     
     // Packages collection (new rule)
@@ -57,18 +56,16 @@ service cloud.firestore {
     
     // Package info collection
     match /package_info/{packageId} {
-      allow read: if true; // Public read access for packages
-      allow create: if isAuthenticated();
-      allow update, delete: if isAuthenticated() && 
-        (resource.data.agentId == request.auth.uid || isAgent());
+      allow read: if true;  // Anyone can read packages
+      allow write: if request.auth != null && 
+                     resource.data.agent.id == request.auth.uid;
     }
     
     // Reviews collection
     match /agent_reviews/{reviewId} {
-      allow read: if true; // Public read access for reviews
-      allow create: if isAuthenticated();
-      allow update, delete: if isAuthenticated() && 
-        (resource.data.userId == request.auth.uid || isAgent());
+      allow read: if true;  // Anyone can read reviews
+      allow write: if request.auth != null && 
+                     resource.data.userId == request.auth.uid;
     }
     
     // Chat rooms collection
@@ -94,92 +91,33 @@ service cloud.firestore {
     
     // Bookings collection
     match /bookings/{bookingId} {
-      allow read: if isAuthenticated() && 
-        (resource.data.userId == request.auth.uid || 
-         resource.data.agentId == request.auth.uid);
-      allow create: if isAuthenticated();
-      allow update: if isAuthenticated() && 
-        (resource.data.userId == request.auth.uid || 
-         resource.data.agentId == request.auth.uid);
-      allow delete: if isAuthenticated() && 
-        (resource.data.userId == request.auth.uid || 
-         resource.data.agentId == request.auth.uid);
+      allow read, write: if request.auth != null && 
+                          (resource.data.userId == request.auth.uid || 
+                           resource.data.agentId == request.auth.uid);
     }
     
     // Itineraries collection
     match /itineraries/{itineraryId} {
-      // Allow read for authenticated users
-      allow read: if isAuthenticated();
-      
-      // Allow create for authenticated users
-      allow create: if isAuthenticated() && (
-        // Only allow setting price if user is in agent mode
-        !('price' in request.resource.data) || isInAgentMode()
-      );
-      
-      // Allow update with special price field validation for non-agents
-      allow update: if isAuthenticated() && (
-        // User is the owner or itinerary is shared with them
-        (resource.data.userId == request.auth.uid || 
-         request.auth.uid in (resource.data.sharedWith || [])) && 
-        (
-          // If user is an agent, they can update any field
-          isInAgentMode() ||
-          // If user is not an agent, they can only update fields other than price
-          // Check that price field is unchanged or doesn't exist in the update
-          (!('price' in request.resource.data) || 
-           !('price' in resource.data) ||
-           request.resource.data.price == resource.data.price)
-        )
-      );
-      
-      // Allow delete if user is the owner
-      allow delete: if isAuthenticated() && resource.data.userId == request.auth.uid;
+      allow read, write: if request.auth != null && 
+                          resource.data.userId == request.auth.uid;
     }
     
     // Day plans collection
-    match /dayPlans/{dayPlanId} {
-      allow read: if isAuthenticated();
-      allow create: if isAuthenticated();
-      allow update, delete: if isAuthenticated() && (
-        // Check if user owns the parent itinerary or itinerary is shared with them
-        get(/databases/$(database)/documents/itineraries/$(resource.data.itineraryId)).data.userId == request.auth.uid ||
-        request.auth.uid in (get(/databases/$(database)/documents/itineraries/$(resource.data.itineraryId)).data.sharedWith || [])
-      );
+    match /day_plans/{dayPlanId} {
+      allow read, write: if request.auth != null && 
+                          resource.data.userId == request.auth.uid;
     }
     
     // Activities collection
     match /activities/{activityId} {
-      allow read: if isAuthenticated();
-      allow create: if isAuthenticated();
-      // For update/delete, check if user has access to the parent day plan's parent itinerary
-      allow update, delete: if isAuthenticated() && (
-        exists(/databases/$(database)/documents/dayPlans/$(resource.data.dayPlanId)) && 
-        get(/databases/$(database)/documents/itineraries/$(
-          get(/databases/$(database)/documents/dayPlans/$(resource.data.dayPlanId)).data.itineraryId
-        )).data.userId == request.auth.uid ||
-        request.auth.uid in (get(/databases/$(database)/documents/itineraries/$(
-          get(/databases/$(database)/documents/dayPlans/$(resource.data.dayPlanId)).data.itineraryId
-        )).data.sharedWith || [])
-      );
+      allow read, write: if request.auth != null && 
+                          resource.data.userId == request.auth.uid;
     }
     
     // Clients collection
     match /clients/{clientId} {
-      // Allow read for authenticated users
-      allow read: if isAuthenticated();
-      
-      // Allow create for authenticated users
-      allow create: if isAuthenticated();
-      
-      // Allow update if the user is the agent for this client or in agent mode
-      allow update: if isAuthenticated() && (
-        resource.data.agentId == request.auth.uid || 
-        isInAgentMode()
-      );
-      
-      // Allow delete only if the user is the agent for this client
-      allow delete: if isAuthenticated() && resource.data.agentId == request.auth.uid;
+      allow read, write: if request.auth != null && 
+                          resource.data.agentId == request.auth.uid;
     }
   }
 } 

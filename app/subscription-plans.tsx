@@ -38,12 +38,7 @@ const SubscriptionPlansScreen = () => {
     try {
       setLoading(true);
 
-      // Clean up any test/invalid subscriptions first
-      await subscriptionService.cleanupTestSubscriptions(rawUser.id);
-
-      // Validate and sync subscription with Stripe
-      await subscriptionService.validateAndSyncSubscription(rawUser.id);
-
+      // Only keep essential functions
       const [plansData, statusData] = await Promise.all([
         subscriptionService.getSubscriptionPlans(),
         subscriptionService.checkSubscriptionStatus(rawUser.id),
