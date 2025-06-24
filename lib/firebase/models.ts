@@ -131,6 +131,7 @@ export interface Package extends FirebaseDocument {
   roomType?: string;
   amenities?: string[];
   isFeatured?: boolean;
+  stayLink?: string;
   location?: {
     address?: string;
     city?: string;

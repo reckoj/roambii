@@ -11,7 +11,7 @@ interface PaymentOptions {
   description?: string;
 }
 
-/**192.168.4.112
+/**192.168.4.47
  * Hook for handling Stripe payments in components
  */
 export const useStripePayment = () => {
@@ -27,12 +27,22 @@ export const useStripePayment = () => {
         customerName: options.customerName,
       });
 
-      console.log("Environment variable EXPO_PUBLIC_BACKEND_API:", process.env.EXPO_PUBLIC_BACKEND_API);
-      console.log("Making request to:", `${process.env.EXPO_PUBLIC_BACKEND_API}/create-payment-intent`);
+      console.log(
+        "Environment variable EXPO_PUBLIC_BACKEND_API:",
+        process.env.EXPO_PUBLIC_BACKEND_API
+      );
+      console.log(
+        "Making request to:",
+        `${process.env.EXPO_PUBLIC_BACKEND_API}/create-payment-intent`
+      );
 
       // Create a timeout promise
       const timeoutPromise = new Promise<never>((_, reject) =>
-        setTimeout(() => reject(new Error('Request timeout - server may be unreachable')), 30000)
+        setTimeout(
+          () =>
+            reject(new Error("Request timeout - server may be unreachable")),
+          30000
+        )
       );
 
       // Get Payment Intent from local server with timeout
@@ -54,7 +64,10 @@ export const useStripePayment = () => {
         }
       );
 
-      const response = await Promise.race([fetchPromise, timeoutPromise]) as Response;
+      const response = (await Promise.race([
+        fetchPromise,
+        timeoutPromise,
+      ])) as Response;
 
       console.log("Response status:", response.status);
       console.log("Response headers:", response.headers);

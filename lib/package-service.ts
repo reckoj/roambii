@@ -181,6 +181,7 @@ export const createPackage = async (
       check_out_date: safeCreateDate(packageData.checkOutDate) || now,
       check_in_time: safeCreateDate(packageData.checkInTime) || now,
       check_out_time: safeCreateDate(packageData.checkOutTime) || now,
+      stay_link: packageData.stayLink || "",
       flight_info: doc(firestore, COLLECTIONS.FLIGHT_INFO, flightInfoId),
       createdAt: serverTimestamp(),
       updatedAt: serverTimestamp(),

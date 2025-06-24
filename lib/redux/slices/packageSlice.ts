@@ -32,6 +32,7 @@ interface Package {
   checkOutDate?: string;
   checkInTime?: string;
   checkOutTime?: string;
+  stayLink?: string;
   createdAt?: string;
   updatedAt?: string;
 }
@@ -102,6 +103,7 @@ const serializePackage = (pkg: any): Package => {
       pkg.check_out_time instanceof Date
         ? pkg.check_out_time.toISOString()
         : pkg.check_out_time || "",
+    stayLink: pkg.stayLink || pkg.stay_link || "",
     createdAt:
       pkg.createdAt instanceof Date
         ? pkg.createdAt.toISOString()

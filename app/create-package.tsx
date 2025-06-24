@@ -133,6 +133,7 @@ const CreatePackageScreen = () => {
     checkOutDate: defaultCheckOutDate.toISOString(),
     checkInTime: defaultCheckInTime.toISOString(),
     checkOutTime: defaultCheckOutTime.toISOString(),
+    stayLink: "",
   });
 
   // Date picker states
@@ -451,6 +452,13 @@ const CreatePackageScreen = () => {
               onChangeText={(text) => handleChange("description", text)}
               multiline={true}
               textAlignVertical="top"
+            />
+
+            <Text style={styles.label}>Stay Link</Text>
+            <CustomInput
+              value={formData.stayLink}
+              onChangeText={(text) => handleChange("stayLink", text)}
+              placeholder="stay link"
             />
           </View>
 
