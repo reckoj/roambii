@@ -403,6 +403,8 @@ export const updatePackage = async (
       updateData.check_in_time = safeCreateDate(updates.checkInTime);
     if (updates.checkOutTime)
       updateData.check_out_time = safeCreateDate(updates.checkOutTime);
+    if (updates.stayLink !== undefined)
+      updateData.stay_link = updates.stayLink;
 
     console.log("Updating package with data:", updateData);
 

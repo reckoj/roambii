@@ -129,6 +129,7 @@ const EditPackageScreen = () => {
           checkOutTime: packageData.check_out_time
             ? new Date(packageData.check_out_time).toISOString()
             : new Date().toISOString(),
+          stayLink: packageData.stay_link || "",
 
           // Flight info
           departingFrom: packageData.flight_info?.departing_from || "",
@@ -472,6 +473,13 @@ const EditPackageScreen = () => {
             onChangeText={(text) => handleChange("description", text)}
             multiline={true}
             textAlignVertical="top"
+          />
+
+          <Text style={styles.label}>Stay Link</Text>
+          <CustomInput
+            value={formData?.stayLink || ""}
+            onChangeText={(text) => handleChange("stayLink", text)}
+            placeholder="stay link"
           />
 
           {/* Amenity Selection */}

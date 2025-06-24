@@ -45,10 +45,17 @@ import {
   SafeAreaView,
   Alert,
   ActivityIndicator,
+  Pressable,
+  Linking,
 } from "react-native";
 import { router, useLocalSearchParams } from "expo-router";
 import { useEffect, useState } from "react";
-import { ArrowLeft, MessageCircle } from "lucide-react-native";
+import {
+  ArrowLeft,
+  Earth,
+  MessageCircle,
+  WholeWord,
+} from "lucide-react-native";
 import { useSelector, useDispatch } from "react-redux";
 
 import icons from "@/constants/icons";
@@ -183,10 +190,35 @@ const Property = () => {
         </View>
 
         <View className="px-5 mt-7 flex gap-2">
-          <Text className="text-2xl font-rubik-extrabold">Package Info</Text>
-          <Text className="text-sm font-rubik-extrabold text-black-100">
-            {property.name}
-          </Text>
+          <View className="flex flex-row items-center justify-between space-x-2 pb-6">
+            <Text className="text-2xl font-rubik-extrabold">
+              {property.name}
+            </Text>
+
+            <Pressable
+              className="flex flex-row  "
+              onPress={() => {
+                Alert.alert(
+                  "You’re Leaving the App",
+                  "You’re about to open an external website. Continue?",
+                  [
+                    { text: "Cancel", style: "cancel" },
+                    {
+                      text: "Continue",
+                      onPress: () => Linking.openURL(`${property.stayLink}`),
+                      style: "destructive",
+                    },
+                  ],
+                  { cancelable: true }
+                );
+              }}
+            >
+              <Earth color={"#1ABC9C"} size={18} />
+              <Text className="text-sm font-rubik-extrabold ml-2 text-black-100">
+                {property.stayLink}
+              </Text>
+            </Pressable>
+          </View>
 
           <View className="flex flex-row items-center justify-between gap-3">
             <View className="flex flex-row items-center px-4 py-2 bg-primary-100 rounded-full">
