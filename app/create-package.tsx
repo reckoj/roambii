@@ -134,6 +134,7 @@ const CreatePackageScreen = () => {
     checkInTime: defaultCheckInTime.toISOString(),
     checkOutTime: defaultCheckOutTime.toISOString(),
     stayLink: "",
+    isFeatured: false,
   });
 
   // Date picker states
@@ -493,6 +494,14 @@ const CreatePackageScreen = () => {
           <Switch
             value={formData.allinclusive}
             onValueChange={(value) => handleChange("allinclusive", value)}
+          />
+
+          <Text style={styles.label} className="mt-4">
+            Featured Package
+          </Text>
+          <Switch
+            value={formData.isFeatured}
+            onValueChange={(value) => handleChange("isFeatured", value)}
           />
 
           <FlightInformation formData={formData} handleChange={handleChange} />

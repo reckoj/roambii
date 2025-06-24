@@ -130,6 +130,7 @@ const EditPackageScreen = () => {
             ? new Date(packageData.check_out_time).toISOString()
             : new Date().toISOString(),
           stayLink: packageData.stay_link || "",
+          isFeatured: packageData.is_featured_package || false,
 
           // Flight info
           departingFrom: packageData.flight_info?.departing_from || "",
@@ -516,6 +517,15 @@ const EditPackageScreen = () => {
           <Switch
             value={formData.allinclusive}
             onValueChange={(value) => handleChange("allinclusive", value)}
+          />
+
+          {/* Featured Package Toggle */}
+          <Text style={styles.label} className="mt-4">
+            Featured Package
+          </Text>
+          <Switch
+            value={formData.isFeatured}
+            onValueChange={(value) => handleChange("isFeatured", value)}
           />
 
           {/* Flight Information */}

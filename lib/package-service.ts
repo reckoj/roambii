@@ -172,7 +172,7 @@ export const createPackage = async (
       is_all_inclusive: packageData.allinclusive || false,
       room_type: packageData.roomType || "Standard Room",
       amenities: packageData.amenities || [],
-      is_featured_package: false,
+      is_featured_package: packageData.isFeatured || false,
       baths: Number(packageData.bathrooms) || 0,
       beds: Number(packageData.bedrooms) || 0,
       sleeps: Number(packageData.bedrooms) || 0,
@@ -405,6 +405,8 @@ export const updatePackage = async (
       updateData.check_out_time = safeCreateDate(updates.checkOutTime);
     if (updates.stayLink !== undefined)
       updateData.stay_link = updates.stayLink;
+    if (updates.isFeatured !== undefined)
+      updateData.is_featured_package = updates.isFeatured;
 
     console.log("Updating package with data:", updateData);
 

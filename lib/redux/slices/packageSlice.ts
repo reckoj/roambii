@@ -33,6 +33,7 @@ interface Package {
   checkInTime?: string;
   checkOutTime?: string;
   stayLink?: string;
+  isFeatured?: boolean;
   createdAt?: string;
   updatedAt?: string;
 }
@@ -104,6 +105,7 @@ const serializePackage = (pkg: any): Package => {
         ? pkg.check_out_time.toISOString()
         : pkg.check_out_time || "",
     stayLink: pkg.stayLink || pkg.stay_link || "",
+    isFeatured: pkg.isFeatured || pkg.is_featured_package || false,
     createdAt:
       pkg.createdAt instanceof Date
         ? pkg.createdAt.toISOString()
