@@ -6,11 +6,12 @@ export interface SubscriptionPlan {
   description: string;
   price: number;
   interval: "month" | "year";
-  currency: "usd";  // Only support USD for now
+  currency: "usd"; // Only support USD for now
   stripePriceId: string;
   features: string[];
   isActive: boolean;
   packageLimit: number; // Max packages allowed
+  featuredLimit: number; // Max packages allowed
 }
 
 export interface Subscription {
@@ -31,6 +32,7 @@ export interface SubscriptionStatus {
   isActive: boolean;
   planId: string | null;
   packageLimit: number;
+  featuredLimit: number;
   currentPackageCount?: number;
   canCreatePackage: boolean;
   isCancelled?: boolean;
