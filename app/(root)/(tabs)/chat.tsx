@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useCallback } from "react";
+import React, { useEffect, useState, useCallback, useRef } from "react";
 import {
   View,
   Text,
@@ -12,13 +12,14 @@ import {
   Pressable,
   StyleSheet,
   Dimensions,
+  Animated,
 } from "react-native";
 import { StatusBar } from "react-native";
 import { router, useFocusEffect } from "expo-router";
 import { getChatPartner, subscribeToChatRooms } from "@/lib/chat-service";
 import { useGlobalContext } from "@/lib/global-provider";
 import { LinearGradient } from "expo-linear-gradient";
-import { MessageSquare, MoreVertical } from "lucide-react-native";
+import { MessageSquare, MoreVertical, RefreshCw } from "lucide-react-native";
 import images from "@/constants/images";
 
 // Redux imports
@@ -60,6 +61,10 @@ const ChatListScreen: React.FC = () => {
   const { rawUser } = useGlobalContext();
   const dispatch = useDispatch<AppDispatch>();
 
+  // Animation values
+  const fadeAnim = useRef(new Animated.Value(0)).current;
+  const slideAnim = useRef(new Animated.Value(30)).current;
+
   // Redux state
   const {
     chatRooms,
@@ -68,22 +73,46 @@ const ChatListScreen: React.FC = () => {
     agentUserId,
     unreadCount,
     userProfiles: savedUserProfiles,
+    error: chatError,
   } = useSelector((state: RootState) => state.chat);
 
-  const [isLoading, setIsLoading] = useState<boolean>(true);
-  const [loadingProfiles, setLoadingProfiles] = useState<
-    Record<string, boolean>
-  >({});
-  const [loadingAvatars, setLoadingAvatars] = useState<Record<string, boolean>>(
-    {}
-  );
-  const [chatRoomSubscription, setChatRoomSubscription] = useState<
-    (() => void) | null
-  >(null);
+  const [isInitialLoading, setIsInitialLoading] = useState<boolean>(true);
+  const [isRefreshing, setIsRefreshing] = useState<boolean>(false);
+  const [loadingProfiles, setLoadingProfiles] = useState<Record<string, boolean>>({});
+  const [loadingAvatars, setLoadingAvatars] = useState<Record<string, boolean>>({});
+  const [chatRoomSubscription, setChatRoomSubscription] = useState<(() => void) | null>(null);
+  const [retryCount, setRetryCount] = useState(0);
+  const [showRetryButton, setShowRetryButton] = useState(false);
+
+  // Refs for cleanup
+  const mountedRef = useRef(true);
+  const timeoutRef = useRef<NodeJS.Timeout | null>(null);
+
+  // Initial load animation
+  useEffect(() => {
+    Animated.parallel([
+      Animated.timing(fadeAnim, {
+        toValue: 1,
+        duration: 300,
+        useNativeDriver: true,
+      }),
+      Animated.timing(slideAnim, {
+        toValue: 0,
+        duration: 300,
+        useNativeDriver: true,
+      }),
+    ]).start();
+
+    return () => {
+      mountedRef.current = false;
+      if (timeoutRef.current) {
+        clearTimeout(timeoutRef.current);
+      }
+    };
+  }, []);
 
   // Check if current user is an agent using Redux
   useEffect(() => {
-    // Handle both Firebase and Appwrite ID formats
     const userId = rawUser?.id || rawUser?.id;
     if (!userId) return;
 
@@ -94,97 +123,121 @@ const ChatListScreen: React.FC = () => {
       });
   }, [rawUser, dispatch]);
 
-  // Fetch chat rooms using Redux
-  useEffect(() => {
-    // Handle both Firebase and Appwrite ID formats
+  // Fetch chat rooms using Redux with better error handling
+  const fetchChatData = useCallback(async (showLoading = true) => {
     const userIdRaw = rawUser?.id || rawUser?.id;
 
     if (!userIdRaw) {
       console.log("No user ID found, cannot fetch chat rooms");
-      setIsLoading(false);
+      setIsInitialLoading(false);
       return;
     }
 
-    // Use the correct ID to fetch rooms (agent ID if an agent, user ID otherwise)
     const userId = isAgent && agentUserId ? agentUserId : userIdRaw;
     console.log("Fetching chat rooms for:", userId);
 
-    setIsLoading(true);
-    dispatch(fetchChatRoomsAsync(userId))
-      .unwrap()
-      .then(() => {
-        fetchMissingPartnerProfiles();
-      })
-      .catch((error) => {
-        console.error("Error fetching chat rooms:", error);
-      })
-      .finally(() => {
-        setIsLoading(false);
-      });
-  }, [rawUser, isAgent, agentUserId, dispatch]);
+    if (showLoading) {
+      setIsInitialLoading(true);
+    }
 
-  // Fetch missing partner profiles from Firestore
-  const fetchMissingPartnerProfiles = async () => {
+    try {
+      await dispatch(fetchChatRoomsAsync(userId)).unwrap();
+      await fetchMissingPartnerProfiles(userId);
+      setRetryCount(0);
+      setShowRetryButton(false);
+    } catch (error) {
+      console.error("Error fetching chat rooms:", error);
+      setRetryCount(prev => prev + 1);
+      
+      // Show retry button after 2 failed attempts
+      if (retryCount >= 1) {
+        setShowRetryButton(true);
+      }
+    } finally {
+      if (mountedRef.current) {
+        setIsInitialLoading(false);
+        setIsRefreshing(false);
+      }
+    }
+  }, [rawUser, isAgent, agentUserId, dispatch, retryCount]);
+
+  // Initial fetch
+  useEffect(() => {
+    if (rawUser?.id) {
+      fetchChatData(true);
+    }
+  }, [rawUser, isAgent, agentUserId]);
+
+  // Optimized profile fetching with batch processing
+  const fetchMissingPartnerProfiles = useCallback(async (userId?: string) => {
     if (!rawUser?.id || chatRooms.length === 0) return;
 
-    const userId = isAgent && agentUserId ? agentUserId : rawUser.id;
+    const currentUserId = userId || (isAgent && agentUserId ? agentUserId : rawUser.id);
     const partnerIds = chatRooms
-      .map((room) => getChatPartner(room.participants, userId))
+      .map((room) => getChatPartner(room.participants, currentUserId))
       .filter(Boolean);
 
-    // Initialize loading states for all missing partners
-    const initialLoadingState: Record<string, boolean> = {};
-    const missingPartnerIds: string[] = [];
+    // Filter out partners we already have profiles for
+    const missingPartnerIds = partnerIds.filter(id => !savedUserProfiles || !savedUserProfiles[id]);
 
-    partnerIds.forEach((id) => {
-      if (!savedUserProfiles || !savedUserProfiles[id]) {
-        initialLoadingState[id] = true;
-        missingPartnerIds.push(id);
-      } else {
-        initialLoadingState[id] = false;
-      }
-    });
-
-    setLoadingProfiles(initialLoadingState);
-    setLoadingAvatars(initialLoadingState);
-
-    // If there are no missing profiles, we're done
     if (missingPartnerIds.length === 0) {
       console.log("All partner profiles already cached");
       return;
     }
 
-    console.log(
-      `Fetching profiles for ${missingPartnerIds.length} missing partners`
-    );
+    console.log(`Batch fetching profiles for ${missingPartnerIds.length} missing partners`);
+
+    // Initialize loading states
+    const initialLoadingState: Record<string, boolean> = {};
+    missingPartnerIds.forEach((id) => {
+      initialLoadingState[id] = true;
+    });
+    setLoadingProfiles(prev => ({ ...prev, ...initialLoadingState }));
+    setLoadingAvatars(prev => ({ ...prev, ...initialLoadingState }));
+
+    // Batch fetch profiles with concurrency limit
+    const batchSize = 3; // Limit concurrent requests
     const newProfiles: Record<string, any> = { ...savedUserProfiles };
 
-    for (const partnerId of missingPartnerIds) {
-      try {
-        // Use getUserProfile from Firebase service
-        const userProfile = await dispatch(
-          fetchChatPartnerProfileAsync({
-            participants: [partnerId, userId], // userId is the current user's ID
-            currentUserId: userId,
-          })
-        ).unwrap();
+    for (let i = 0; i < missingPartnerIds.length; i += batchSize) {
+      const batch = missingPartnerIds.slice(i, i + batchSize);
+      
+      await Promise.allSettled(
+        batch.map(async (partnerId) => {
+          if (!mountedRef.current) return;
+          
+          try {
+            const userProfile = await dispatch(
+              fetchChatPartnerProfileAsync({
+                participants: [partnerId, currentUserId],
+                currentUserId: currentUserId,
+              })
+            ).unwrap();
 
-        if (userProfile) {
-          newProfiles[partnerId] = userProfile;
-        }
+            if (userProfile && mountedRef.current) {
+              newProfiles[partnerId] = userProfile;
+              setLoadingProfiles((prev) => ({ ...prev, [partnerId]: false }));
+              setLoadingAvatars((prev) => ({ ...prev, [partnerId]: false }));
+            }
+          } catch (error) {
+            console.error(`Error fetching profile for ${partnerId}:`, error);
+            if (mountedRef.current) {
+              setLoadingProfiles((prev) => ({ ...prev, [partnerId]: false }));
+              setLoadingAvatars((prev) => ({ ...prev, [partnerId]: false }));
+            }
+          }
+        })
+      );
 
-        setLoadingProfiles((prev) => ({ ...prev, [partnerId]: false }));
-        setLoadingAvatars((prev) => ({ ...prev, [partnerId]: false }));
-      } catch (error) {
-        console.error(`Error fetching profile for ${partnerId}:`, error);
-        setLoadingProfiles((prev) => ({ ...prev, [partnerId]: false }));
-        setLoadingAvatars((prev) => ({ ...prev, [partnerId]: false }));
-      }
+      // Small delay between batches to prevent overwhelming the server
+      await new Promise(resolve => setTimeout(resolve, 100));
     }
 
-    // Save the updated profiles to Redux
-    dispatch(updateUserProfiles(newProfiles));
-  };
+    // Update Redux with all new profiles at once
+    if (mountedRef.current && Object.keys(newProfiles).length > Object.keys(savedUserProfiles || {}).length) {
+      dispatch(updateUserProfiles(newProfiles));
+    }
+  }, [rawUser, isAgent, agentUserId, chatRooms, savedUserProfiles, dispatch]);
 
   // Add useFocusEffect to refresh data when screen comes into focus
   useFocusEffect(
@@ -194,65 +247,64 @@ const ChatListScreen: React.FC = () => {
       // Clear current chat when navigating to the chat list
       dispatch(clearCurrentChat());
 
-      // Refresh chat rooms
-      const userId = isAgent && agentUserId ? agentUserId : rawUser.id;
-      dispatch(fetchChatRoomsAsync(userId))
-        .unwrap()
-        .then(() => {
-          fetchMissingPartnerProfiles();
-        })
-        .catch((error) => {
-          console.error("Error refreshing chat rooms:", error);
-        });
-
-      return () => {
-        // Cleanup when screen loses focus
-      };
-    }, [rawUser, isAgent, agentUserId, dispatch])
+      // Light refresh on focus (don't show loading)
+      fetchChatData(false);
+    }, [rawUser, fetchChatData, dispatch])
   );
 
-  // Update onRefresh to trigger data refresh
-  const onRefresh = useCallback(() => {
-    if (!rawUser?.id) return;
+  // Update onRefresh with smooth animation
+  const onRefresh = useCallback(async () => {
+    if (!rawUser?.id || isRefreshing) return;
 
-    setIsLoading(true);
-    const userId = isAgent && agentUserId ? agentUserId : rawUser.id;
+    setIsRefreshing(true);
+    setShowRetryButton(false);
+    
+    // Add a minimum refresh time for smooth UX
+    const minimumRefreshTime = 1000;
+    const startTime = Date.now();
+    
+    await fetchChatData(false);
+    
+    const elapsed = Date.now() - startTime;
+    if (elapsed < minimumRefreshTime) {
+      await new Promise(resolve => setTimeout(resolve, minimumRefreshTime - elapsed));
+    }
+    
+    setIsRefreshing(false);
+  }, [rawUser, isRefreshing, fetchChatData]);
 
-    dispatch(fetchChatRoomsAsync(userId))
-      .unwrap()
-      .then(() => {
-        fetchMissingPartnerProfiles();
-      })
-      .catch((error) => {
-        console.error("Error refreshing chat rooms:", error);
-      })
-      .finally(() => {
-        setTimeout(() => {
-          setIsLoading(false);
-        }, 500);
-      });
-  }, [rawUser, isAgent, agentUserId, dispatch]);
+  // Retry function
+  const handleRetry = useCallback(async () => {
+    setShowRetryButton(false);
+    await fetchChatData(true);
+  }, [fetchChatData]);
 
-  // Add useEffect for chat room subscription
+  // Add useEffect for chat room subscription with better error handling
   useEffect(() => {
     if (!rawUser?.id) return;
 
     const userId = isAgent && agentUserId ? agentUserId : rawUser.id;
 
-    // Subscribe to chat room updates
-    const unsubscribe = subscribeToChatRooms(userId, (updatedRooms) => {
-      // Update chat rooms in Redux
-      dispatch(updateChatRooms(updatedRooms));
-    });
+    try {
+      // Subscribe to chat room updates
+      const unsubscribe = subscribeToChatRooms(userId, (updatedRooms) => {
+        if (mountedRef.current) {
+          // Update chat rooms in Redux
+          dispatch(updateChatRooms(updatedRooms));
+        }
+      });
 
-    setChatRoomSubscription(unsubscribe);
+      setChatRoomSubscription(() => unsubscribe);
 
-    // Cleanup subscription on unmount
-    return () => {
-      if (unsubscribe) {
-        unsubscribe();
-      }
-    };
+      // Cleanup subscription on unmount
+      return () => {
+        if (unsubscribe && typeof unsubscribe === 'function') {
+          unsubscribe();
+        }
+      };
+    } catch (error) {
+      console.error("Error setting up chat room subscription:", error);
+    }
   }, [rawUser, isAgent, agentUserId, dispatch]);
 
   const formatTimestamp = (timestamp: any) => {
@@ -319,7 +371,7 @@ const ChatListScreen: React.FC = () => {
 
   // Delete a chat conversation using Redux
   const deleteConversation = async (roomId: string) => {
-    setIsLoading(true);
+    setIsInitialLoading(true);
     dispatch(deleteChatAsync(roomId))
       .unwrap()
       .then(() => {
@@ -333,7 +385,7 @@ const ChatListScreen: React.FC = () => {
         );
       })
       .finally(() => {
-        setIsLoading(false);
+        setIsInitialLoading(false);
       });
   };
 
@@ -410,17 +462,26 @@ const ChatListScreen: React.FC = () => {
   };
 
   // Use both local and Redux loading states
-  const showLoading = isLoading || isLoadingRedux;
+  const showLoading = isInitialLoading || isLoadingRedux;
 
   return (
     <View style={styles.container}>
       <StatusBar barStyle="light-content" />
       <CustomHeader />
 
-      <View style={styles.chatListContainer}>
+      <Animated.View 
+        style={[
+          styles.chatListContainer,
+          {
+            opacity: fadeAnim,
+            transform: [{ translateY: slideAnim }],
+          }
+        ]}
+      >
         {showLoading && chatRooms.length === 0 ? (
           <View style={styles.loaderContent}>
             <ActivityIndicator size="large" color={COLORS.primary} />
+            <Text style={{ color: COLORS.success }}>Loading conversations...</Text>
           </View>
         ) : chatRooms.length === 0 ? (
           <EmptyState />
@@ -430,10 +491,11 @@ const ChatListScreen: React.FC = () => {
             keyExtractor={(item) => item.id || Math.random().toString()}
             refreshControl={
               <RefreshControl
-                refreshing={showLoading}
+                refreshing={isRefreshing}
                 onRefresh={onRefresh}
                 colors={[COLORS.primary]}
                 tintColor={COLORS.primary}
+                progressViewOffset={60}
               />
             }
             contentContainerStyle={styles.chatList}
@@ -469,11 +531,13 @@ const ChatListScreen: React.FC = () => {
                     {/* Avatar with shimmer loading effect */}
 
                     {isAvatarLoading ? (
-                      <ShimmerEffect
-                        width={56}
-                        height={56}
-                        style={styles.avatar}
-                      />
+                      <View style={styles.avatarShimmerContainer}>
+                        <ShimmerEffect
+                          width={56}
+                          height={56}
+                          style={styles.avatar}
+                        />
+                      </View>
                     ) : partnerProfile?.avatar ? (
                       <Image
                         source={{ uri: partnerProfile.avatar }}
@@ -560,7 +624,20 @@ const ChatListScreen: React.FC = () => {
             ItemSeparatorComponent={() => <View style={styles.separator} />}
           />
         )}
-      </View>
+
+        {/* Error message and retry button */}
+        {chatError && (
+          <View style={styles.errorContainer}>
+            <Text style={styles.errorText}>{chatError}</Text>
+            {showRetryButton && (
+              <TouchableOpacity style={styles.retryButton} onPress={handleRetry}>
+                <RefreshCw size={16} color={COLORS.white} />
+                <Text style={styles.retryButtonText}>Try Again</Text>
+              </TouchableOpacity>
+            )}
+          </View>
+        )}
+      </Animated.View>
     </View>
   );
 };
@@ -783,6 +860,45 @@ const styles = StyleSheet.create({
     color: COLORS.white,
     fontSize: 16,
     fontWeight: "600",
+  },
+  loadingText: {
+    marginTop: 16,
+    fontSize: 16,
+    color: COLORS.textLight,
+    textAlign: "center",
+  },
+  errorContainer: {
+    backgroundColor: `${COLORS.danger}15`,
+    borderRadius: 12,
+    padding: 16,
+    margin: 16,
+    alignItems: "center",
+  },
+  errorText: {
+    color: COLORS.danger,
+    fontSize: 14,
+    textAlign: "center",
+    marginBottom: 12,
+  },
+  retryButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: COLORS.danger,
+    paddingVertical: 10,
+    paddingHorizontal: 20,
+    borderRadius: 8,
+    marginBottom: 8,
+  },
+  retryButtonText: {
+    color: COLORS.white,
+    fontSize: 14,
+    fontWeight: "600",
+    marginLeft: 6,
+  },
+  avatarShimmerContainer: {
+    marginRight: 14,
+    borderRadius: 28,
+    overflow: "hidden",
   },
 });
 
