@@ -77,7 +77,7 @@ export const searchPackages = async (
         console.log(`Processing package ${index + 1}/${result.docs.length}: ${pkg.id}`);
         const data = pkg.data();
         console.log(`Package name: ${data.name}, data keys:`, Object.keys(data));
-        console.log(`Image fields in data:`, {image: data.image, imagePath: data.imagePath, imageURL: data.imageURL, imageUrl: data.imageUrl});
+        console.log(`Image fields in data:`, {image: data.image, banner_image: data.banner_image, imagePath: data.imagePath, imageURL: data.imageURL, imageUrl: data.imageUrl});
 
         // Default agent information
         const agentInfo: AgentInfo = {
@@ -110,7 +110,7 @@ export const searchPackages = async (
         }
 
         // Get image from any available field
-        const packageImage = data.image || data.imagePath || data.imageURL || data.imageUrl || null;
+        const packageImage = data.image || data.banner_image || data.imagePath || data.imageURL || data.imageUrl || null;
 
         // Create a properly typed object
         const typedPackage: PackageWithAgent = {
@@ -189,10 +189,10 @@ export const getFeaturedPackages = async (
       result.docs.map(async (pkg) => {
         const data = pkg.data();
         console.log(`Featured package: ${pkg.id}, name: ${data.name}`);
-        console.log(`Image fields:`, {image: data.image, imagePath: data.imagePath, imageURL: data.imageURL, imageUrl: data.imageUrl});
+        console.log(`Image fields:`, {image: data.image, banner_image: data.banner_image, imagePath: data.imagePath, imageURL: data.imageURL, imageUrl: data.imageUrl});
         
         // Get image from any available field
-        const packageImage = data.image || data.imagePath || data.imageURL || data.imageUrl || null;
+        const packageImage = data.image || data.banner_image || data.imagePath || data.imageURL || data.imageUrl || null;
         
         const agentInfo: AgentInfo = {
           name: "Unknown Agent",

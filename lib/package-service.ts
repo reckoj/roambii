@@ -472,13 +472,30 @@ export const getFeaturedPackages = async (
       // Get agent data
       let agentData: DocumentData | null = null;
       if (packageData.agent) {
-        const agentDoc = await getDoc(packageData.agent);
-        if (agentDoc.exists()) {
-          const agentDocData = agentDoc.data() as DocumentData;
-          agentData = {
-            id: agentDoc.id,
-            ...(agentDocData || {}),
-          };
+        try {
+          // If agent data is already in the correct format (has id, name, avatar), use it directly
+          if (typeof packageData.agent === 'object' && 
+              'id' in packageData.agent && 
+              'name' in packageData.agent) {
+            agentData = packageData.agent;
+          } else {
+            // Handle DocumentReference case
+            if (typeof packageData.agent === 'object' && 'path' in packageData.agent) {
+              const agentDoc = await getDoc(packageData.agent);
+              if (agentDoc.exists()) {
+                const agentDocData = agentDoc.data() as DocumentData;
+                agentData = {
+                  id: agentDoc.id,
+                  ...(agentDocData || {}),
+                };
+              }
+            } else {
+              console.warn('Invalid agent reference format in featured packages:', packageData.agent);
+            }
+          }
+        } catch (error) {
+          console.error("Error fetching agent data in featured packages:", error);
+          // Continue without agent data rather than failing the entire operation
         }
       }
 

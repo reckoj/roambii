@@ -186,7 +186,7 @@ const SearchScreen: React.FC = () => {
     });
 
     // Determine the image source, with fallback
-    const imageSource = item.image || item.imageUrl || null;
+    const imageSource = item?.image || item?.imageUrl || null;
     console.log("Using image source:", imageSource);
 
     // Check if this image has errored
