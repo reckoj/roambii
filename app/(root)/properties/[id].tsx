@@ -214,8 +214,15 @@ const Property = () => {
               }}
             >
               <Earth color={"#1ABC9C"} size={18} />
-              <Text className="text-sm font-rubik-extrabold ml-2 text-black-100">
-                {property.stayLink}
+              <Text
+                className="text-sm font-rubik-extrabold ml-2 text-black-100 "
+                numberOfLines={1}
+                ellipsizeMode="tail"
+              >
+                {property
+                  .stayLink!.replace(/^https?:\/\//, "")
+                  .replace(/^www\./, "")
+                  .replace(/^([^\/]+).*$/, "$1")}
               </Text>
             </Pressable>
           </View>

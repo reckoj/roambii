@@ -18,7 +18,7 @@ import { firestore, COLLECTIONS } from "../lib/firebase/firebase-config";
 import { Booking, Package, User } from "./firebase/models";
 import { getPackageById } from "../lib/package-service";
 import { getUserProfile } from "./user-service";
-import { createOrUpdateClientRelationship, createBasicClientRelationship } from "./client-service";
+import { createBasicClientRelationship, createOrUpdateClientRelationship } from "./client-service";
 
 // Define debug mode constant
 const DEBUG_MODE = true; // Set to false in production
@@ -163,7 +163,7 @@ export const createBooking = async (
 
       // CRITICAL FIX: Create a proper client relationship record in the CLIENTS collection
       try {
-        const clientRelationshipId = await createOrUpdateClientRelationship(
+        const clientRelationshipId = await createBasicClientRelationship(
           agentId,
           userId,
           bookingDoc.id,
@@ -572,7 +572,7 @@ export const updateBookingStatus = async (
           (packageDetails && packageDetails.price) || 0;
         
         const userId = bookingData.userId || bookingData.user_id;
-        const clientRelationshipId = await createOrUpdateClientRelationship(
+        const clientRelationshipId = await createBasicClientRelationship(
           agentId,
           userId,
           bookingId,

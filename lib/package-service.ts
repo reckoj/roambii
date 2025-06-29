@@ -140,6 +140,14 @@ export const createPackage = async (
   imageUri?: string
 ): Promise<string> => {
   try {
+    // Check featured package limit if trying to make this package featured
+    if (packageData.isFeatured) {
+      const canBeFeatured = await canMakePackageFeatured();
+      if (!canBeFeatured) {
+        throw new Error("Maximum of 3 featured packages allowed. Please unfeatured another package first.");
+      }
+    }
+
     // Upload image if provided
     let imageUrl = "";
     if (imageUri) {
@@ -193,6 +201,37 @@ export const createPackage = async (
   } catch (error) {
     console.error("Error creating package:", error);
     throw error;
+  }
+};
+
+/**
+ * Count current featured packages
+ */
+export const getFeaturedPackageCount = async (): Promise<number> => {
+  try {
+    const packageRef = collection(firestore, COLLECTIONS.PACKAGES);
+    const featuredQuery = query(
+      packageRef, 
+      where("is_featured_package", "==", true)
+    );
+    const snapshot = await getDocs(featuredQuery);
+    return snapshot.size;
+  } catch (error) {
+    console.error("Error counting featured packages:", error);
+    throw error;
+  }
+};
+
+/**
+ * Check if package can be featured (max 3 featured packages)
+ */
+export const canMakePackageFeatured = async (): Promise<boolean> => {
+  try {
+    const count = await getFeaturedPackageCount();
+    return count < 3;
+  } catch (error) {
+    console.error("Error checking featured package limit:", error);
+    return false;
   }
 };
 
@@ -311,6 +350,14 @@ export const updatePackage = async (
     }
 
     const packageData = packageDoc.data() as DocumentData;
+
+    // Check featured package limit if trying to make this package featured
+    if (updates.isFeatured === true && !packageData.is_featured_package) {
+      const canBeFeatured = await canMakePackageFeatured();
+      if (!canBeFeatured) {
+        throw new Error("Maximum of 3 featured packages allowed. Please unfeatured another package first.");
+      }
+    }
 
     // Upload image if provided
     let imageUrl = packageData.banner_image;

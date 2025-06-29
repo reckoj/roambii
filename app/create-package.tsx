@@ -134,7 +134,6 @@ const CreatePackageScreen = () => {
     checkInTime: defaultCheckInTime.toISOString(),
     checkOutTime: defaultCheckOutTime.toISOString(),
     stayLink: "",
-    isFeatured: false,
   });
 
   // Date picker states
@@ -150,9 +149,11 @@ const CreatePackageScreen = () => {
   const pickImage = async () => {
     try {
       // Use the helper function that handles permissions automatically
-      const { pickImageWithPermissions } = await import('@/lib/utils/imagePermissions');
+      const { pickImageWithPermissions } = await import(
+        "@/lib/utils/imagePermissions"
+      );
       const result = await pickImageWithPermissions();
-      
+
       if (result) {
         setFormData((prev) => ({ ...prev, image: result.assets[0].uri }));
       }
@@ -494,14 +495,6 @@ const CreatePackageScreen = () => {
           <Switch
             value={formData.allinclusive}
             onValueChange={(value) => handleChange("allinclusive", value)}
-          />
-
-          <Text style={styles.label} className="mt-4">
-            Featured Package
-          </Text>
-          <Switch
-            value={formData.isFeatured}
-            onValueChange={(value) => handleChange("isFeatured", value)}
           />
 
           <FlightInformation formData={formData} handleChange={handleChange} />

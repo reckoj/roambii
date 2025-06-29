@@ -106,7 +106,16 @@ const BookingScreen = () => {
         const packageSnap = await getDoc(packageRef);
         
         if (packageSnap.exists()) {
-          const data = { id: packageSnap.id, ...packageSnap.data() };
+          const data = { id: packageSnap.id, ...packageSnap.data() } as any;
+          console.log("Package data loaded for booking:", {
+            id: data.id,
+            name: data.name,
+            image: data.image,
+            banner_image: data.banner_image,
+            mainImage: data.mainImage,
+            thumbnail: data.thumbnail,
+            hasImage: !!(data.image || data.banner_image || data.mainImage || data.thumbnail)
+          });
           setPackageData(data);
         } else {
           Alert.alert("Error", "Package not found");
@@ -125,8 +134,9 @@ const BookingScreen = () => {
 
   // Calculate taxes and totals based on package data
   const subtotal = packageData?.price || 0;
-  const estimatedTax = Math.round(subtotal * 0.15 * 100) / 100;
-  const total = subtotal + estimatedTax;
+  const estimatedTax = Math.round(subtotal * 0.1 * 100) / 100; // General tax
+  const platformFee = Math.round(subtotal * 0.05 * 100) / 100; // Platform service fee
+  const total = subtotal + estimatedTax + platformFee;
 
   const openPaymentModal = () => {
     // Check if user is logged in
@@ -158,6 +168,9 @@ const BookingScreen = () => {
       // Convert amount to cents for Stripe
       const amountInCents = Math.round(total * 100);
 
+      // Generate a temporary booking ID for tracking
+      const tempBookingId = `booking_${rawUser?.id}_${Date.now()}`;
+      
       const result = await handlePayment({
         amount: amountInCents,
         currency: "usd",
@@ -165,6 +178,9 @@ const BookingScreen = () => {
         customerEmail: rawUser?.email!,
         customerName: rawUser?.name!,
         description: `Payment for ${packageData?.name}`,
+        agentId: packageData?.agent?.id || packageData?.agentId || packageData?.createdBy || "default-agent",
+        bookingId: tempBookingId,
+        hasActiveSubscription: false, // Default to false for now
       });
 
       if (result.success) {
@@ -259,12 +275,42 @@ const BookingScreen = () => {
       <ScrollView style={styles.content}>
         {/* Package Summary */}
         <View style={styles.packageSummary}>
-          <Image
-            source={{ uri: packageData?.image }}
-            style={styles.packageImage}
-            resizeMode="cover"
-            defaultSource={images.noResult}
-          />
+          {(() => {
+            const imageUri = packageData?.image || 
+                           packageData?.banner_image || 
+                           packageData?.mainImage ||
+                           packageData?.thumbnail;
+            
+            if (!imageUri) {
+              console.log("No package image found, using fallback");
+              return (
+                <Image
+                  source={images.noResult}
+                  style={styles.packageImage}
+                  resizeMode="cover"
+                />
+              );
+            }
+            
+            return (
+              <Image
+                source={{ uri: imageUri }}
+                style={styles.packageImage}
+                resizeMode="cover"
+                defaultSource={images.noResult}
+                onError={(error) => {
+                  console.log("Package image load error:", error.nativeEvent.error);
+                  console.log("Failed image URI:", imageUri);
+                  console.log("Package data:", {
+                    image: packageData?.image,
+                    banner_image: packageData?.banner_image,
+                    mainImage: packageData?.mainImage,
+                    name: packageData?.name
+                  });
+                }}
+              />
+            );
+          })()}
 
           <View style={styles.packageDetails}>
             <Text style={styles.packageName}>{packageData?.name}</Text>
@@ -317,7 +363,7 @@ const BookingScreen = () => {
 
           <View style={styles.detailRow}>
             <View style={styles.taxRow}>
-              <Text style={styles.detailLabel}>Taxes & Fees</Text>
+              <Text style={styles.detailLabel}>Taxes</Text>
               <TouchableOpacity
                 onPress={() =>
                   Alert.alert(
@@ -331,6 +377,24 @@ const BookingScreen = () => {
               </TouchableOpacity>
             </View>
             <Text style={styles.detailValue}>${estimatedTax}</Text>
+          </View>
+
+          <View style={styles.detailRow}>
+            <View style={styles.taxRow}>
+              <Text style={styles.detailLabel}>Platform Fee</Text>
+              <TouchableOpacity
+                onPress={() =>
+                  Alert.alert(
+                    "Platform Service Fee",
+                    "This fee helps us maintain and improve our platform services, including secure payments, customer support, and booking management. The fee varies based on the agent's subscription status."
+                  )
+                }
+                style={styles.helpButton}
+              >
+                <HelpCircle size={16} color="#95A5A6" />
+              </TouchableOpacity>
+            </View>
+            <Text style={styles.detailValue}>${platformFee}</Text>
           </View>
 
           <View style={styles.totalRow}>
@@ -464,6 +528,26 @@ const BookingScreen = () => {
                   </View>
                   <Text style={styles.summaryItemPrice}>
                     ${estimatedTax.toFixed(2)}
+                  </Text>
+                </View>
+
+                <View style={styles.summaryItem}>
+                  <View style={styles.taxRow}>
+                    <Text style={styles.summaryItemName}>Platform Fee</Text>
+                    <TouchableOpacity
+                      onPress={() =>
+                        Alert.alert(
+                          "Platform Service Fee",
+                          "This fee helps us maintain and improve our platform services, including secure payments, customer support, and booking management. The fee varies based on the agent's subscription status."
+                        )
+                      }
+                      style={styles.helpButton}
+                    >
+                      <HelpCircle size={16} color="#95A5A6" />
+                    </TouchableOpacity>
+                  </View>
+                  <Text style={styles.summaryItemPrice}>
+                    ${platformFee.toFixed(2)}
                   </Text>
                 </View>
 

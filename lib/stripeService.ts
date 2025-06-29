@@ -9,6 +9,9 @@ interface PaymentOptions {
   customerEmail: string;
   customerName: string;
   description?: string;
+  agentId?: string; // ID of the agent/package owner
+  bookingId?: string; // Generated booking ID
+  hasActiveSubscription?: boolean; // Whether agent has active subscription
 }
 
 /**192.168.4.47
@@ -60,6 +63,9 @@ export const useStripePayment = () => {
             email: options.customerEmail,
             name: options.customerName,
             description: options.description,
+            agentId: options.agentId,
+            bookingId: options.bookingId,
+            hasActiveSubscription: options.hasActiveSubscription || false,
           }),
         }
       );

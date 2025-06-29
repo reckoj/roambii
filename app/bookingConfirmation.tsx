@@ -21,6 +21,7 @@ import {
   forceClientRelationshipUpdate,
 } from "@/lib/client-service";
 import { useGlobalContext } from "../lib/global-provider";
+import images from "@/constants/images";
 
 // Format date/time helper function
 const formatDateTime = (
@@ -386,8 +387,23 @@ const BookingConfirmationScreen = () => {
           roomType: booking.packageDetails.type,
           price: booking.packageDetails.price,
           guestCount: booking.guestCount,
+          ...booking.packageDetails, // Include all fields from packageDetails
         }
       : {});
+
+  // Debug logging for image data
+  console.log("Booking confirmation display package:", {
+    packageData: packageData ? "Available" : "Not available",
+    bookingPackageDetails: booking?.packageDetails ? "Available" : "Not available",
+    displayPackage: {
+      name: displayPackage.name,
+      image: displayPackage.image,
+      banner_image: displayPackage.banner_image,
+      mainImage: displayPackage.mainImage,
+      thumbnail: displayPackage.thumbnail,
+      packageImage: displayPackage.packageImage,
+    }
+  });
 
   return (
     <SafeAreaView style={styles.container}>
@@ -413,16 +429,45 @@ const BookingConfirmationScreen = () => {
             <View style={styles.divider} />
 
             <View style={styles.packageInfo}>
-              <Image
-                source={{
-                  uri: displayPackage.banner_image || displayPackage.image,
-                }}
-                style={styles.packageImage}
-                resizeMode="cover"
-                defaultSource={{
-                  uri: "https://via.placeholder.com/100x100?text=Package",
-                }}
-              />
+              {(() => {
+                const imageUri = displayPackage.banner_image || 
+                               displayPackage.image || 
+                               displayPackage.mainImage ||
+                               displayPackage.thumbnail ||
+                               displayPackage.packageImage;
+                
+                if (!imageUri) {
+                  console.log("No booking confirmation image found, using fallback image");
+                  return (
+                    <Image
+                      source={images.noResult}
+                      style={styles.packageImage}
+                      resizeMode="cover"
+                    />
+                  );
+                }
+                
+                return (
+                  <Image
+                    source={{ uri: imageUri }}
+                    style={styles.packageImage}
+                    resizeMode="cover"
+                    defaultSource={images.noResult}
+                    onError={(error) => {
+                      console.log("Booking confirmation image load error:", error.nativeEvent.error);
+                      console.log("Failed image URI:", imageUri);
+                      console.log("Display package data:", {
+                        banner_image: displayPackage.banner_image,
+                        image: displayPackage.image,
+                        mainImage: displayPackage.mainImage,
+                        thumbnail: displayPackage.thumbnail,
+                        packageImage: displayPackage.packageImage,
+                        name: displayPackage.name
+                      });
+                    }}
+                  />
+                );
+              })()}
 
               <View style={styles.packageDetails}>
                 <Text style={styles.packageName}>
@@ -481,6 +526,51 @@ const BookingConfirmationScreen = () => {
                 {displayData.paymentStatus || "Paid"}
               </Text>
             </View>
+          </View>
+
+          <View style={styles.paymentBreakdown}>
+            <Text style={styles.paymentTitle}>Payment Breakdown</Text>
+            {(() => {
+              const packagePrice = displayPackage?.price || 0;
+              const totalAmount =
+                displayData.amount || Math.round(packagePrice * 1.15);
+              const estimatedTax = Math.round(packagePrice * 0.1 * 100) / 100;
+              const platformFee = Math.round(packagePrice * 0.05 * 100) / 100;
+
+              return (
+                <>
+                  <View style={styles.paymentRow}>
+                    <Text style={styles.paymentLabel}>Package Price</Text>
+                    <Text style={styles.paymentValue}>
+                      ${packagePrice.toFixed(2)}
+                    </Text>
+                  </View>
+                  <View style={styles.paymentRow}>
+                    <Text style={styles.paymentLabel}>Estimated Tax</Text>
+                    <Text style={styles.paymentValue}>
+                      ${estimatedTax.toFixed(2)}
+                    </Text>
+                  </View>
+                  <View style={styles.paymentRow}>
+                    <Text style={styles.paymentLabel}>
+                      Platform Service Fee
+                    </Text>
+                    <Text style={styles.paymentValue}>
+                      ${platformFee.toFixed(2)}
+                    </Text>
+                  </View>
+                  <View style={styles.divider} />
+                  <View style={styles.paymentRow}>
+                    <Text style={[styles.paymentLabel, styles.totalLabel]}>
+                      Total
+                    </Text>
+                    <Text style={[styles.paymentValue, styles.totalValue]}>
+                      ${totalAmount.toFixed(2)}
+                    </Text>
+                  </View>
+                </>
+              );
+            })()}
           </View>
 
           <Text style={styles.infoNote}>
@@ -638,6 +728,12 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     marginBottom: 16,
   },
+  paymentBreakdown: {
+    backgroundColor: "#F7FAFC",
+    padding: 16,
+    borderRadius: 8,
+    marginBottom: 16,
+  },
   paymentTitle: {
     fontSize: 16,
     fontWeight: "bold",
@@ -657,6 +753,16 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: "500",
     color: "#34495E",
+  },
+  totalLabel: {
+    fontSize: 16,
+    fontWeight: "bold",
+    color: "#34495E",
+  },
+  totalValue: {
+    fontSize: 16,
+    fontWeight: "bold",
+    color: "#1ABC9C",
   },
   successStatus: {
     color: "#1ABC9C",

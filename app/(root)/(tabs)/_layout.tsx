@@ -7,6 +7,7 @@ import {
   PlusCircle,
   User,
   Map,
+  Calendar,
 } from "lucide-react-native";
 import { useGlobalContext } from "@/lib/global-provider";
 import { useEffect, useState } from "react";
@@ -189,13 +190,28 @@ const TabsLayout = () => {
           }}
         />
 
+        {/* Itinerary tab - only visible for agents */}
         <Tabs.Screen
           name="itinerary"
           options={{
             title: "Itinerary",
             headerShown: false,
+            href: isAgent ? "/itinerary" : null,
             tabBarIcon: ({ focused }) => (
               <LucideTabIcon focused={focused} Icon={Map} title="Itinerary" />
+            ),
+          }}
+        />
+
+        {/* Bookings tab - only visible for regular users */}
+        <Tabs.Screen
+          name="bookings"
+          options={{
+            title: "Bookings",
+            headerShown: false,
+            href: !isAgent ? "/bookings" : null,
+            tabBarIcon: ({ focused }) => (
+              <LucideTabIcon focused={focused} Icon={Calendar} title="Bookings" />
             ),
           }}
         />

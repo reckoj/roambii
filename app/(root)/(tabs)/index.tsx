@@ -553,14 +553,16 @@ const HomeScreen = () => {
         }
         ListHeaderComponent={() => (
           <View style={styles.listHeader}>
-            {/* Quick Actions */}
-            <View style={styles.quickActionsContainer}>
-              {renderQuickAction({
-                icon: <Calendar size={18} color="#1ABC9C" />,
-                title: "My Bookings",
-                onPress: () => router.push("/userBookings"),
-              })}
-            </View>
+            {/* Quick Actions - Only show for agents */}
+            {isAgent && (
+              <View style={styles.quickActionsContainer}>
+                {renderQuickAction({
+                  icon: <Calendar size={18} color="#1ABC9C" />,
+                  title: "My Bookings",
+                  onPress: () => router.push("/userBookings"),
+                })}
+              </View>
+            )}
 
             {/* Featured Section */}
             {renderSectionHeader({
