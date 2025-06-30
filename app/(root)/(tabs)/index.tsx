@@ -33,19 +33,13 @@ import {
   setQuery,
 } from "@/lib/redux/slices/packageSlice";
 import { RootState, AppDispatch } from "@/lib/redux/store/store";
+import { getGreeting, getInitials } from "@/lib/utils/userInitialsCreate";
 
 const { width } = Dimensions.get("window");
 
 const HEADER_MAX_HEIGHT = 140;
 const HEADER_MIN_HEIGHT = 120;
 const HEADER_SCROLL_DISTANCE = HEADER_MAX_HEIGHT - HEADER_MIN_HEIGHT;
-
-const getGreeting = () => {
-  const currentHour = new Date().getHours();
-  if (currentHour < 12) return "Good Morning";
-  else if (currentHour >= 12 && currentHour < 18) return "Good Afternoon";
-  return "Good Evening";
-};
 
 // Define theme colors
 const COLORS = {
@@ -139,7 +133,7 @@ const HomeScreen = () => {
   const [isFirstLoad, setIsFirstLoad] = useState(true);
   const [initialAnimationValue] = useState(new Animated.Value(0));
   const { rawUser, isAgent, loading: userLoading } = useGlobalContext();
-  const greeting = getGreeting();
+  const greeting = getGreeting(); // Using the imported function
   const dispatch = useDispatch<AppDispatch>();
 
   // Define state and refs
@@ -492,12 +486,21 @@ const HomeScreen = () => {
         <SafeAreaView style={styles.headerContent}>
           <View style={styles.topNav}>
             <View style={styles.userContainer}>
-              <Image
-                source={{
-                  uri: rawUser?.avatar || "https://via.placeholder.com/40",
-                }}
-                style={styles.userAvatar}
-              />
+              {/* Show avatar if available, otherwise show initials */}
+              {rawUser?.avatar ? (
+                <Image
+                  source={{
+                    uri: rawUser.avatar,
+                  }}
+                  style={styles.userAvatar}
+                />
+              ) : (
+                <View style={[styles.userAvatar, styles.avatarFallback]}>
+                  <Text style={styles.avatarInitials}>
+                    {getInitials(rawUser?.name)}
+                  </Text>
+                </View>
+              )}
               <Animated.View
                 style={{
                   opacity: headerContentOpacity,
@@ -694,6 +697,17 @@ const styles = StyleSheet.create({
     marginRight: 12,
     borderWidth: 2,
     borderColor: "rgba(255,255,255,0.7)",
+  },
+  avatarFallback: {
+    backgroundColor: "#1ABC9C",
+    justifyContent: "center",
+    alignItems: "center",
+    borderColor: "#1ABC9C",
+  },
+  avatarInitials: {
+    color: "#FFFFFF",
+    fontSize: 18,
+    fontWeight: "600",
   },
   greeting: {
     fontSize: 10,

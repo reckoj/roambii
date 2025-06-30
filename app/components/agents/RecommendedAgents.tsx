@@ -12,6 +12,7 @@ import {
 import { agentService } from "@/lib/services";
 import { useAuth } from "@/lib/context/auth-context";
 import { User2 } from "lucide-react-native";
+import { getInitials } from "@/lib/utils/userInitialsCreate";
 
 const RecommendedAgents = () => {
   const [agents, setAgents] = useState<any[]>([]);
@@ -68,17 +69,6 @@ const RecommendedAgents = () => {
     return { isImage: false };
   };
 
-  // Helper function to get initials for fallback display
-  const getInitials = (name?: string): string => {
-    if (!name) return "A";
-    return name
-      .split(" ")
-      .map((n) => n[0])
-      .join("")
-      .toUpperCase()
-      .substring(0, 2);
-  };
-
   if (loading) {
     return (
       <View style={styles.loadingContainer}>
@@ -115,7 +105,7 @@ const RecommendedAgents = () => {
             />
           ) : (
             <View style={styles.iconContainer}>
-              <User2 size={30} color="#95A5A6" />
+              <Text className="text-2xl">{getInitials(agent?.name)}</Text>
             </View>
           )}
           <Text style={styles.agentName} numberOfLines={1}>
@@ -138,48 +128,48 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
   },
   loadingContainer: {
-    alignItems: "center", 
-    justifyContent: "center", 
-    paddingVertical: 16
+    alignItems: "center",
+    justifyContent: "center",
+    paddingVertical: 16,
   },
   emptyContainer: {
-    paddingVertical: 16
+    paddingVertical: 16,
   },
   emptyText: {
     textAlign: "center",
-    color: "#95A5A6"
+    color: "#95A5A6",
   },
   agentCard: {
     marginRight: 16,
     alignItems: "center",
-    width: 100
+    width: 100,
   },
   iconContainer: {
-    width: 100,
-    height: 100,
+    width: 50,
+    height: 50,
     borderRadius: 50,
-    backgroundColor: "#f1f1f1",
+    backgroundColor: "#1ABC9C",
     justifyContent: "center",
     alignItems: "center",
-    marginBottom: 8
+    marginBottom: 8,
   },
   profileImage: {
-    width: 100,
-    height: 100,
+    width: 50,
+    height: 50,
     borderRadius: 50,
-    marginBottom: 8
+    marginBottom: 8,
   },
   agentName: {
     fontSize: 14,
     fontWeight: "600",
     color: "#34495E",
-    textAlign: "center"
+    textAlign: "center",
   },
   agentNiche: {
     fontSize: 12,
     color: "#95A5A6",
-    textAlign: "center"
-  }
+    textAlign: "center",
+  },
 });
 
 export default RecommendedAgents;

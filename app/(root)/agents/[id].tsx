@@ -33,6 +33,7 @@ import { agentService } from "@/lib/services";
 import { Agent } from "@/lib/firebase/models";
 import ReviewsList from "@/components/ReviewsList";
 import { Fragment } from "react";
+import { getInitials } from "@/lib/utils/userInitialsCreate";
 
 // Define theme colors
 const COLORS = {
@@ -109,20 +110,22 @@ const AgentProfile = () => {
         try {
           setLoadingPackages(true);
           const agentPackages = await agentService.getAgentPackages(agentId);
-          
+
           // Filter out duplicates using a Map to track unique IDs
           const uniquePackagesMap = new Map();
-          agentPackages.forEach(pkg => {
+          agentPackages.forEach((pkg) => {
             const id = pkg.$id || pkg.id;
             if (id && !uniquePackagesMap.has(id)) {
               uniquePackagesMap.set(id, pkg);
             }
           });
-          
+
           // Convert back to array
           const uniquePackages = Array.from(uniquePackagesMap.values());
-          
-          console.log(`Found ${agentPackages.length} packages, ${uniquePackages.length} after filtering duplicates`);
+
+          console.log(
+            `Found ${agentPackages.length} packages, ${uniquePackages.length} after filtering duplicates`
+          );
           setPackages(uniquePackages);
         } catch (error) {
           console.error("Error fetching agent's packages:", error);
@@ -233,15 +236,16 @@ const AgentProfile = () => {
   };
 
   const getAvatarUri = () => {
-    if (!agent.avatar) {
-      return images.avatar;
+    if (
+      agent?.avatar &&
+      typeof agent.avatar === "string" &&
+      agent.avatar.startsWith("http")
+    ) {
+      return { isImage: true, uri: agent.avatar };
     }
 
-    if (typeof agent.avatar === "string" && agent.avatar.startsWith("http")) {
-      return { uri: agent.avatar };
-    }
-
-    return images.avatar;
+    const initials = getInitials(agent?.name);
+    return { isImage: false, initials };
   };
 
   const getAgentExperience = () => {
@@ -415,7 +419,9 @@ const AgentProfile = () => {
                   />
                 </View>
               )}
-              keyExtractor={(item, index) => `package-${item.$id || item.id}-${index}`}
+              keyExtractor={(item, index) =>
+                `package-${item.$id || item.id}-${index}`
+              }
               showsHorizontalScrollIndicator={false}
               contentContainerStyle={styles.packagesList}
             />
