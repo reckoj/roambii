@@ -205,20 +205,53 @@ export const createPackage = async (
 };
 
 /**
- * Count current featured packages
+ * Count current featured packages for the current agent
  */
 export const getFeaturedPackageCount = async (): Promise<number> => {
   try {
-    const packageRef = collection(firestore, COLLECTIONS.PACKAGES);
-    const featuredQuery = query(
-      packageRef, 
-      where("is_featured_package", "==", true)
-    );
-    const snapshot = await getDocs(featuredQuery);
-    return snapshot.size;
+    const user = auth.currentUser;
+    if (!user) {
+      console.log("No authenticated user for featured package count");
+      return 0;
+    }
+
+    let totalFeaturedCount = 0;
+
+    // Check packages collection
+    try {
+      const packagesRef = collection(firestore, "packages");
+      const packagesQuery = query(
+        packagesRef, 
+        where("agentId", "==", user.uid),
+        where("is_featured_package", "==", true)
+      );
+      const packagesSnapshot = await getDocs(packagesQuery);
+      totalFeaturedCount += packagesSnapshot.size;
+      console.log(`Found ${packagesSnapshot.size} featured packages in 'packages' collection`);
+    } catch (error) {
+      console.log("Error checking packages collection:", error);
+    }
+
+    // Check package_info collection
+    try {
+      const packageInfoRef = collection(firestore, COLLECTIONS.PACKAGES);
+      const packageInfoQuery = query(
+        packageInfoRef, 
+        where("agentId", "==", user.uid),
+        where("is_featured_package", "==", true)
+      );
+      const packageInfoSnapshot = await getDocs(packageInfoQuery);
+      totalFeaturedCount += packageInfoSnapshot.size;
+      console.log(`Found ${packageInfoSnapshot.size} featured packages in 'package_info' collection`);
+    } catch (error) {
+      console.log("Error checking package_info collection:", error);
+    }
+
+    console.log(`Total featured packages for agent ${user.uid}: ${totalFeaturedCount}`);
+    return totalFeaturedCount;
   } catch (error) {
     console.error("Error counting featured packages:", error);
-    throw error;
+    return 0;
   }
 };
 
@@ -293,15 +326,19 @@ export const getPackageById = async (
       }
     }
 
-    // Get agent data
+    // Get agent data for display (but preserve the original DocumentReference)
     let agentData: DocumentData | null = null;
     if (packageData.agent) {
       try {
         if (typeof packageData.agent === 'object' && 'path' in packageData.agent) {
-          // It's a DocumentReference
+          // It's a DocumentReference - fetch the data for display
           const agentDoc = await getDoc(packageData.agent);
           if (agentDoc.exists()) {
-            agentData = agentDoc.data() as DocumentData;
+            const agentDocData = agentDoc.data() as DocumentData;
+            agentData = {
+              id: agentDoc.id,
+              ...agentDocData,
+            };
           }
         } else {
           // It's a plain object
@@ -312,7 +349,7 @@ export const getPackageById = async (
       }
     }
 
-    // Return the package data with resolved references
+    // Return the package data with resolved references for display
     return {
       id: packageDoc.id,
       ...packageData,
@@ -341,15 +378,50 @@ export const updatePackage = async (
   imageUri?: string
 ): Promise<boolean> => {
   try {
-    // Get the existing package
-    const packageRef = doc(firestore, COLLECTIONS.PACKAGES, packageId);
-    const packageDoc = await getDoc(packageRef);
+    // Try multiple collections since packages might be in different places
+    let packageRef: any;
+    let packageDoc: any;
+    let collectionUsed = "";
 
-    if (!packageDoc.exists()) {
-      throw new Error("Package not found");
+    // First try the main packages collection
+    try {
+      packageRef = doc(firestore, "packages", packageId);
+      packageDoc = await getDoc(packageRef);
+      if (packageDoc.exists()) {
+        collectionUsed = "packages";
+        console.log("Found package in 'packages' collection");
+      }
+    } catch (error) {
+      console.log("Error checking 'packages' collection:", error);
     }
 
+    // If not found, try package_info collection
+    if (!packageDoc?.exists()) {
+      try {
+        packageRef = doc(firestore, COLLECTIONS.PACKAGES, packageId); // This is "package_info"
+        packageDoc = await getDoc(packageRef);
+        if (packageDoc.exists()) {
+          collectionUsed = "package_info";
+          console.log("Found package in 'package_info' collection");
+        }
+      } catch (error) {
+        console.log("Error checking 'package_info' collection:", error);
+      }
+    }
+
+    if (!packageDoc?.exists()) {
+      throw new Error("Package not found in either collection");
+    }
+
+    // Get the raw package data directly from Firestore (not processed)
     const packageData = packageDoc.data() as DocumentData;
+    console.log(`Using collection: ${collectionUsed}`);
+    console.log("Raw package data from Firestore:", {
+      hasAgent: !!packageData.agent,
+      agentType: packageData.agent ? typeof packageData.agent : "undefined",
+      agentPath: packageData.agent?.path || "no path property",
+      collectionUsed
+    });
 
     // Check featured package limit if trying to make this package featured
     if (updates.isFeatured === true && !packageData.is_featured_package) {
@@ -362,24 +434,81 @@ export const updatePackage = async (
     // Upload image if provided
     let imageUrl = packageData.banner_image;
     if (imageUri && !imageUri.startsWith("http")) {
-      // Get agent ID from agent reference
-      const agentRef = packageData.agent;
-      const agentDoc = await getDoc(agentRef);
-      if (!agentDoc.exists()) {
-        throw new Error("Agent not found");
+      // Get agent ID from the raw agent reference from Firestore
+      const agentRef = packageData.agent; // Use raw data directly from Firestore
+      let agentId = null;
+      
+      if (typeof agentRef === 'object' && 'path' in agentRef) {
+        // It's a DocumentReference
+        const agentDoc = await getDoc(agentRef);
+        if (!agentDoc.exists()) {
+          throw new Error("Agent not found");
+        }
+        agentId = agentDoc.id;
+      } else if (typeof agentRef === 'object' && 'id' in agentRef) {
+        // It's a plain object with id
+        agentId = agentRef.id;
+      } else {
+        throw new Error("Invalid agent reference format");
       }
 
-      imageUrl = await uploadPackageImage(imageUri, agentDoc.id);
+      imageUrl = await uploadPackageImage(imageUri, agentId);
     }
 
-    // Update flight info if it exists
+    // Prepare update data
+    const updateData: Record<string, any> = {
+      updatedAt: serverTimestamp(),
+    };
+
+    // Update flight info if it exists and we're actually updating flight info
     if (packageData.flight_info && updates.departingFrom) {
       const flightInfoRef = packageData.flight_info;
-      const flightInfoDoc = await getDoc(flightInfoRef);
-
-      if (flightInfoDoc.exists()) {
-        const flightData = flightInfoDoc.data() as DocumentData;
-        await updateDoc(flightInfoRef, {
+      
+      // Check if flight_info is a DocumentReference or a plain object
+      if (typeof flightInfoRef === 'object' && 'path' in flightInfoRef) {
+        // It's a DocumentReference - handle it the old way
+        const flightInfoDoc = await getDoc(flightInfoRef);
+        if (flightInfoDoc.exists()) {
+          const flightData = flightInfoDoc.data() as DocumentData;
+          await updateDoc(flightInfoRef, {
+            departing_from:
+              updates.departingFrom || flightData.departing_from || "",
+            arriving_to: updates.arrivingTo || flightData.arriving_to || "",
+            returning_from:
+              updates.returningFrom || flightData.returning_from || "",
+            returning_to: updates.returningTo || flightData.returning_to || "",
+            departing_time:
+              safeCreateDate(updates.departingTime) ||
+              flightData.departing_time ||
+              null,
+            arriving_to_time:
+              safeCreateDate(updates.arrivingToTime) ||
+              flightData.arriving_to_time ||
+              null,
+            returning_from_time:
+              safeCreateDate(updates.returningFromTime) ||
+              flightData.returning_from_time ||
+              null,
+            returning_to_time:
+              safeCreateDate(updates.returningToTime) ||
+              flightData.returning_to_time ||
+              null,
+            departure_date:
+              safeCreateDate(updates.departureDate) ||
+              flightData.departure_date ||
+              null,
+            return_date:
+              safeCreateDate(updates.returnDate) ||
+              flightData.return_date ||
+              null,
+            updatedAt: serverTimestamp(),
+          });
+        }
+      } else {
+        // It's a plain object - update it directly in the main update
+        const flightData = flightInfoRef;
+        updateData.flight_info = {
+          ...flightData,
           departing_from:
             updates.departingFrom || flightData.departing_from || "",
           arriving_to: updates.arrivingTo || flightData.arriving_to || "",
@@ -410,15 +539,10 @@ export const updatePackage = async (
             safeCreateDate(updates.returnDate) ||
             flightData.return_date ||
             null,
-          updatedAt: serverTimestamp(),
-        });
+        };
+        console.log("Updated flight_info as nested object");
       }
     }
-
-    // Prepare update data
-    const updateData: Record<string, any> = {
-      updatedAt: serverTimestamp(),
-    };
 
     if (updates.name !== undefined) updateData.name = updates.name;
     if (updates.description !== undefined)
@@ -455,13 +579,63 @@ export const updatePackage = async (
     if (updates.isFeatured !== undefined)
       updateData.is_featured_package = updates.isFeatured;
 
-    console.log("Updating package with data:", updateData);
+    // CRITICAL FIX: Only include agent field in update if we're specifically updating the agent
+    // For other updates (like featured status), we should NOT touch the agent field
+    if (updates.agentId !== undefined) {
+      // Only update agent if explicitly requested
+      if (updates.agentId) {
+        const agentDocRef = doc(firestore, COLLECTIONS.AGENTS, updates.agentId);
+        updateData.agent = agentDocRef;
+        console.log("Updating agent field to new DocumentReference:", updates.agentId);
+      }
+    } else {
+      // DO NOT include agent field in update - leave it as is in Firestore
+      console.log("Not updating agent field - leaving it unchanged in Firestore");
+    }
 
-    // Update in Firestore
-    await updateDoc(packageRef, updateData);
-    console.log(`Package ${packageId} updated successfully`);
+    console.log("Updating package with data keys:", Object.keys(updateData));
+    console.log("Agent field preserved as:", updateData.agent ? (updateData.agent.path ? "DocumentReference" : "Object") : "undefined");
 
-    return true;
+    // Debug: Check all fields for potential DocumentReference issues
+    console.log("=== DEBUG UPDATE DATA ===");
+    for (const [key, value] of Object.entries(updateData)) {
+      if (value && typeof value === 'object') {
+        console.log(`Field '${key}':`, {
+          type: typeof value,
+          hasPath: 'path' in value,
+          isTimestamp: value.constructor?.name === 'Timestamp',
+          isServerTimestamp: value.constructor?.name === 'ServerTimestamp',
+          keys: Object.keys(value)
+        });
+      }
+    }
+    console.log("=== END DEBUG ===");
+
+    try {
+      // Update in Firestore
+      await updateDoc(packageRef, updateData);
+      console.log(`Package ${packageId} updated successfully`);
+      return true;
+    } catch (firestoreError: any) {
+      console.error("Firestore update error:", firestoreError);
+      console.error("Update data that caused error:", updateData);
+      
+      // If it's still a DocumentReference error, log more details
+      if (firestoreError.message?.includes("DocumentReference")) {
+        console.error("DocumentReference error details:");
+        for (const [key, value] of Object.entries(updateData)) {
+          if (value && typeof value === 'object') {
+            console.error(`- Field '${key}':`, {
+              type: typeof value,
+              hasPath: 'path' in value,
+              value: value
+            });
+          }
+        }
+      }
+      
+      throw firestoreError;
+    }
   } catch (error) {
     console.error("Error updating package:", error);
     throw error;

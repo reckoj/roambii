@@ -51,6 +51,19 @@ const Register = () => {
       return;
     }
 
+    // Validate name contains both first and last name separated by space
+    const nameParts = name.trim().split(/\s+/); // Split by one or more spaces
+    if (nameParts.length < 2) {
+      Alert.alert("Error", "Please enter both first and last name separated by a space");
+      return;
+    }
+
+    // Check that both first and last names are not empty
+    if (nameParts[0].length === 0 || nameParts[1].length === 0) {
+      Alert.alert("Error", "Please enter both first and last name separated by a space");
+      return;
+    }
+
     if (password !== confirmPassword) {
       Alert.alert("Error", "Passwords do not match");
       return;

@@ -378,42 +378,44 @@ export const getAgentPackages = async (
       if (querySnapshot.size > 0) {
         for (const doc of querySnapshot.docs) {
           const packageData = doc.data();
-
-          // Format data to match the expected format in the UI
-          packages.push({
-            $id: doc.id,
-            name: packageData.name || "Untitled Package",
-            type: packageData.type || "Accommodation",
-            price: packageData.price || 0,
-            image: packageData.banner_image || packageData.image,
-            rating: packageData.rating || 0,
-            bedrooms: packageData.beds || packageData.bedrooms || 0,
-            bathrooms: packageData.baths || packageData.bathrooms || 0,
-            guestAmount: packageData.guest_amount || packageData.guestAmount || 0,
-            checkInDate:
-              packageData.check_in_date?.toDate?.() || packageData.checkInDate,
-            checkOutDate:
-              packageData.check_out_date?.toDate?.() || packageData.checkOutDate,
-            is_all_inclusive:
-              packageData.is_all_inclusive || packageData.allinclusive || false,
-            description: packageData.description || "",
-            room_type: packageData.room_type || packageData.roomType || "",
-            amenities: packageData.amenities || [],
-          });
+          // Check if we already added this package (to avoid duplicates)
+          if (!packages.some(p => p.$id === doc.id)) {
+            // Format data to match the expected format in the UI
+            packages.push({
+              $id: doc.id,
+              name: packageData.name || "Untitled Package",
+              type: packageData.type || "Accommodation",
+              price: packageData.price || 0,
+              image: packageData.banner_image || packageData.image,
+              rating: packageData.rating || 0,
+              bedrooms: packageData.beds || packageData.bedrooms || 0,
+              bathrooms: packageData.baths || packageData.bathrooms || 0,
+              guestAmount: packageData.guest_amount || packageData.guestAmount || 0,
+              checkInDate:
+                packageData.check_in_date?.toDate?.() || packageData.checkInDate,
+              checkOutDate:
+                packageData.check_out_date?.toDate?.() || packageData.checkOutDate,
+              is_all_inclusive:
+                packageData.is_all_inclusive || packageData.allinclusive || false,
+              description: packageData.description || "",
+              room_type: packageData.room_type || packageData.roomType || "",
+              amenities: packageData.amenities || [],
+            });
+          }
         }
       }
 
-      // Try with agentId field in the same collection
-      if (querySnapshot.size === 0) {
-        console.log("Trying 'packages' collection with agentId field...");
-        const secondQuery = query(packagesRef, where("agentId", "==", agentId));
-        const secondSnapshot = await getDocs(secondQuery);
+      // Always try with agentId field (not just when first query is empty)
+      console.log("Trying 'packages' collection with agentId field...");
+      const secondQuery = query(packagesRef, where("agentId", "==", agentId));
+      const secondSnapshot = await getDocs(secondQuery);
 
-        console.log(`Found ${secondSnapshot.size} packages with agentId field in 'packages'`);
+      console.log(`Found ${secondSnapshot.size} packages with agentId field in 'packages'`);
 
-        for (const doc of secondSnapshot.docs) {
-          const packageData = doc.data();
-
+      for (const doc of secondSnapshot.docs) {
+        const packageData = doc.data();
+        // Check if we already added this package (to avoid duplicates)
+        if (!packages.some(p => p.$id === doc.id)) {
           packages.push({
             $id: doc.id,
             name: packageData.name || "Untitled Package",
@@ -456,23 +458,26 @@ export const getAgentPackages = async (
       // Process results from agent.id query
       for (const doc of packageInfoSnapshot1.docs) {
         const packageData = doc.data();
-        packages.push({
-          $id: doc.id,
-          name: packageData.name || "Untitled Package",
-          type: packageData.type || "Accommodation",
-          price: packageData.price || 0,
-          image: packageData.banner_image || packageData.image,
-          rating: packageData.rating || 0,
-          bedrooms: packageData.beds || packageData.bedrooms || 0,
-          bathrooms: packageData.baths || packageData.bathrooms || 0,
-          guestAmount: packageData.guest_amount || packageData.guestAmount || 0,
-          checkInDate: packageData.check_in_date?.toDate?.() || packageData.checkInDate,
-          checkOutDate: packageData.check_out_date?.toDate?.() || packageData.checkOutDate,
-          is_all_inclusive: packageData.is_all_inclusive || packageData.allinclusive || false,
-          description: packageData.description || "",
-          room_type: packageData.room_type || packageData.roomType || "",
-          amenities: packageData.amenities || [],
-        });
+        // Check if we already added this package from any collection (to avoid duplicates)
+        if (!packages.some(p => p.$id === doc.id)) {
+          packages.push({
+            $id: doc.id,
+            name: packageData.name || "Untitled Package",
+            type: packageData.type || "Accommodation",
+            price: packageData.price || 0,
+            image: packageData.banner_image || packageData.image,
+            rating: packageData.rating || 0,
+            bedrooms: packageData.beds || packageData.bedrooms || 0,
+            bathrooms: packageData.baths || packageData.bathrooms || 0,
+            guestAmount: packageData.guest_amount || packageData.guestAmount || 0,
+            checkInDate: packageData.check_in_date?.toDate?.() || packageData.checkInDate,
+            checkOutDate: packageData.check_out_date?.toDate?.() || packageData.checkOutDate,
+            is_all_inclusive: packageData.is_all_inclusive || packageData.allinclusive || false,
+            description: packageData.description || "",
+            room_type: packageData.room_type || packageData.roomType || "",
+            amenities: packageData.amenities || [],
+          });
+        }
       }
       
       // Try with agentId field
@@ -484,7 +489,7 @@ export const getAgentPackages = async (
       // Process results from agentId query
       for (const doc of packageInfoSnapshot2.docs) {
         const packageData = doc.data();
-        // Check if we already added this package (to avoid duplicates)
+        // Check if we already added this package from any collection (to avoid duplicates)
         if (!packages.some(p => p.$id === doc.id)) {
           packages.push({
             $id: doc.id,
@@ -509,8 +514,14 @@ export const getAgentPackages = async (
       console.error("Error querying 'package_info' collection:", error);
     }
 
+    // Final deduplication and logging
+    const uniquePackages = packages.filter((pkg, index, self) => 
+      index === self.findIndex(p => p.$id === pkg.$id)
+    );
+    
     console.log(`Total packages found across all collections: ${packages.length}`);
-    return packages;
+    console.log(`Unique packages after filtering: ${uniquePackages.length}`);
+    return uniquePackages;
   } catch (error) {
     console.error("Error fetching agent packages:", error);
     return [];

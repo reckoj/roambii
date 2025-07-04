@@ -21,6 +21,7 @@ import {
   clearPasswordResetState,
 } from "@/lib/redux/slices/authSlice";
 import images from "@/constants/images";
+import CustomHeader from "@/components/HeaderComponent";
 
 // Define theme colors
 const COLORS = {
@@ -90,16 +91,9 @@ const ForgotPasswordScreen = () => {
   };
 
   return (
-    <SafeAreaView style={styles.container}>
+    <View style={styles.container}>
       <StatusBar style="dark" />
-
-      {/* Header with back button */}
-      <View style={styles.header}>
-        <TouchableOpacity onPress={handleGoBack} style={styles.backButton}>
-          <ChevronLeft size={24} color={COLORS.text} />
-        </TouchableOpacity>
-        <Text style={styles.headerTitle}>Forgot Password</Text>
-      </View>
+      <CustomHeader title="Forgot Password" />
 
       <KeyboardAvoidingView
         behavior={Platform.OS === "ios" ? "padding" : "height"}
@@ -155,20 +149,20 @@ const ForgotPasswordScreen = () => {
           <Text style={styles.linkText}>Back to Login</Text>
         </TouchableOpacity>
       </KeyboardAvoidingView>
-    </SafeAreaView>
+    </View>
   );
 };
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: COLORS.background,
+    backgroundColor: COLORS.white,
   },
   header: {
     flexDirection: "row",
     alignItems: "center",
     paddingHorizontal: 20,
-    paddingVertical: 15,
+
     backgroundColor: COLORS.white,
     borderBottomWidth: 1,
     borderBottomColor: "rgba(0,0,0,0.05)",
@@ -182,7 +176,6 @@ const styles = StyleSheet.create({
     color: COLORS.text,
   },
   formContainer: {
-    flex: 1,
     padding: 24,
     justifyContent: "center",
   },

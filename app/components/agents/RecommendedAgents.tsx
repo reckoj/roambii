@@ -105,7 +105,9 @@ const RecommendedAgents = () => {
             />
           ) : (
             <View style={styles.iconContainer}>
-              <Text className="text-2xl">{getInitials(agent?.name)}</Text>
+              <Text style={styles.avatarInitials}>
+                {getInitials(agent?.name)}
+              </Text>
             </View>
           )}
           <Text style={styles.agentName} numberOfLines={1}>
@@ -140,7 +142,7 @@ const styles = StyleSheet.create({
     color: "#95A5A6",
   },
   agentCard: {
-    marginRight: 16,
+    marginRight: 10,
     alignItems: "center",
     width: 100,
   },
@@ -169,6 +171,11 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: "#95A5A6",
     textAlign: "center",
+  },
+  avatarInitials: {
+    color: "#FFFFFF",
+    fontSize: 18,
+    fontWeight: "600",
   },
 });
 
