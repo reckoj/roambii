@@ -1,5 +1,6 @@
 import { Tabs } from "expo-router";
-import { Text, View } from "react-native";
+import { Text, View, TouchableOpacity, StyleSheet } from "react-native";
+
 import {
   CalendarDaysIcon,
   Home,
@@ -15,6 +16,7 @@ import { ref, onValue } from "firebase/database";
 import { checkIsAgent } from "@/lib/auth-service";
 import { firebaseDb } from "@/lib/firebase/firebase-config";
 import React from "react";
+import { useRouter, usePathname } from "expo-router";
 
 // New TabIcon for Lucide icons with badge support
 const LucideTabIcon = ({
@@ -52,6 +54,83 @@ const LucideTabIcon = ({
     </Text>
   </View>
 );
+
+// Custom Tab Bar Component
+const CustomTabBar = ({ unreadMessageCount }: { unreadMessageCount: number }) => {
+  const { isAgent } = useGlobalContext();
+  const router = useRouter();
+  const pathname = usePathname();
+
+  // Define tab configurations based on user type
+  const tabs = [
+    {
+      name: "index",
+      path: "/(root)/(tabs)/",
+      icon: Home,
+      title: "Home",
+      show: true,
+    },
+    {
+      name: "chat",
+      path: "/(root)/(tabs)/chat",
+      icon: MessageCircleIcon,
+      title: "Messages",
+      show: true,
+      badge: unreadMessageCount > 0,
+      badgeCount: unreadMessageCount,
+    },
+    {
+      name: "itinerary",
+      path: "/(root)/(tabs)/itinerary",
+      icon: Map,
+      title: "Itinerary",
+      show: isAgent,
+    },
+    {
+      name: "bookings",
+      path: "/(root)/(tabs)/bookings",
+      icon: Calendar,
+      title: "Bookings",
+      show: !isAgent,
+    },
+    {
+      name: "profile",
+      path: "/(root)/(tabs)/profile",
+      icon: User,
+      title: "Profile",
+      show: true,
+    },
+  ].filter(tab => tab.show);
+
+  const handleTabPress = (path: string) => {
+    router.push(path as any);
+  };
+
+  return (
+    <View style={styles.tabBar}>
+      {tabs.map((tab, index) => {
+        const isFocused = pathname === tab.path || (tab.name === "index" && pathname === "/(root)/(tabs)");
+        
+        return (
+          <TouchableOpacity
+            key={tab.name}
+            style={styles.tabItem}
+            onPress={() => handleTabPress(tab.path)}
+            activeOpacity={0.7}
+          >
+            <LucideTabIcon
+              focused={isFocused}
+              Icon={tab.icon}
+              title={tab.title}
+              showBadge={tab.badge || false}
+              badgeCount={tab.badgeCount || 0}
+            />
+          </TouchableOpacity>
+        );
+      })}
+    </View>
+  );
+};
 
 // UnreadMessageTracker component to count unread messages
 const UnreadMessageTracker = ({
@@ -143,7 +222,6 @@ const UnreadMessageTracker = ({
 
 const TabsLayout = () => {
   const [unreadMessageCount, setUnreadMessageCount] = useState(0);
-  const { isAgent } = useGlobalContext();
 
   return (
     <>
@@ -153,82 +231,38 @@ const TabsLayout = () => {
       <Tabs
         screenOptions={{
           tabBarShowLabel: false,
-          tabBarStyle: {
-            backgroundColor: "white",
-            position: "absolute",
-            borderTopColor: "#0061FF1A",
-            borderTopWidth: 1,
-            minHeight: 70,
-          },
+          headerShown: false,
         }}
+        tabBar={() => <CustomTabBar unreadMessageCount={unreadMessageCount} />}
       >
-        <Tabs.Screen
-          name={"index"}
-          options={{
-            title: "Home",
-            headerShown: false,
-            tabBarIcon: ({ focused }) => (
-              <LucideTabIcon focused={focused} Icon={Home} title="Home" />
-            ),
-          }}
-        />
-
-        <Tabs.Screen
-          name="chat"
-          options={{
-            title: "Messages",
-            headerShown: false,
-            tabBarIcon: ({ focused }) => (
-              <LucideTabIcon
-                focused={focused}
-                Icon={MessageCircleIcon}
-                title="Messages"
-                showBadge={unreadMessageCount > 0}
-                badgeCount={unreadMessageCount}
-              />
-            ),
-          }}
-        />
-
-        {/* Itinerary tab - only visible for agents */}
-        <Tabs.Screen
-          name="itinerary"
-          options={{
-            title: "Itinerary",
-            headerShown: false,
-            href: isAgent ? "/itinerary" : null,
-            tabBarIcon: ({ focused }) => (
-              <LucideTabIcon focused={focused} Icon={Map} title="Itinerary" />
-            ),
-          }}
-        />
-
-        {/* Bookings tab - only visible for regular users */}
-        <Tabs.Screen
-          name="bookings"
-          options={{
-            title: "Bookings",
-            headerShown: false,
-            href: !isAgent ? "/bookings" : null,
-            tabBarIcon: ({ focused }) => (
-              <LucideTabIcon focused={focused} Icon={Calendar} title="Bookings" />
-            ),
-          }}
-        />
-
-        <Tabs.Screen
-          name="profile"
-          options={{
-            title: "Profile",
-            headerShown: false,
-            tabBarIcon: ({ focused }) => (
-              <LucideTabIcon focused={focused} Icon={User} title="Profile" />
-            ),
-          }}
-        />
+        <Tabs.Screen name={"index"} />
+        <Tabs.Screen name="chat" />
+        <Tabs.Screen name="itinerary" />
+        <Tabs.Screen name="bookings" />
+        <Tabs.Screen name="profile" />
       </Tabs>
     </>
   );
 };
+
+const styles = StyleSheet.create({
+  tabBar: {
+    flexDirection: 'row',
+    backgroundColor: 'white',
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    borderTopColor: '#0061FF1A',
+    borderTopWidth: 1,
+    minHeight: 70,
+    paddingBottom: 20,
+  },
+  tabItem: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+});
 
 export default TabsLayout;

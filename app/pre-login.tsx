@@ -10,10 +10,10 @@ import {
   ActivityIndicator,
 } from "react-native";
 import { useRouter } from "expo-router";
-import { useAuth } from "@/lib/context/auth-context";
-import { useAuthOperations } from "@/lib/use-auth-operations";
-import icons from "@/constants/icons";
-import images from "@/constants/images";
+import { useAuth } from "../lib/context/auth-context";
+import { useAuthOperations } from "../lib/use-auth-operations";
+import icons from "../constants/icons";
+import images from "../constants/images";
 
 const PreAuth = () => {
   const router = useRouter();

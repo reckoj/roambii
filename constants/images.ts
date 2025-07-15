@@ -16,22 +16,23 @@ import pudgy from "@/assets/jif/pudgy.gif";
 
 export default {
   avatar,
-
   cardGradient,
-
   whiteGradient,
   noResult,
   roambiiLogo,
-
   nomessages,
   pudgy,
   forgot,
   blank,
-
   fail,
   email,
   chatbg,
   chatbg2,
   homeImage,
   homeImage2,
+  
+  // Missing images - using placeholders until actual images are provided
+  onboarding: homeImage, // TODO: Replace with actual onboarding image
+  newYork: homeImage2,   // TODO: Replace with actual New York image
+  japan: homeImage,      // TODO: Replace with actual Japan image
 };

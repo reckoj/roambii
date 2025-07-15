@@ -9,11 +9,11 @@ import {
   sendResetPasswordEmail,
   updateUser,
   updatePassword,
-} from "@/lib/auth-service";
-import { User as FirebaseUser } from "@/lib/firebase/models"; // Import the Firebase User type
-import { uploadProfileImage } from "@/lib/storage-service";
+} from "../../auth-service";
+import { User as FirebaseUser } from "../../firebase/models"; // Import the Firebase User type
+import { uploadProfileImage } from "../../storage-service";
 import { createSlice, createAsyncThunk } from "@reduxjs/toolkit";
-import { clearAllChatState } from "../slices/chatSlice";
+import { clearAllChatState } from "./chatSlice";
 
 // Define interfaces for Redux state
 // Make sure it's compatible with Firebase User model

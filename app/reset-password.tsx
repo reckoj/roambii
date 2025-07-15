@@ -15,12 +15,13 @@ import {
 import { StatusBar } from "expo-status-bar";
 import { router, useLocalSearchParams } from "expo-router";
 import { Eye, EyeOff, ChevronLeft } from "lucide-react-native";
-import { useAppDispatch, useAppSelector } from "@/lib/redux/hooks";
+import { useDispatch, useSelector } from "react-redux";
 import {
   confirmPasswordResetAsync,
   clearPasswordResetState,
-} from "@/lib/redux/slices/authSlice";
-import images from "@/constants/images";
+} from "../lib/redux/slices/authSlice";
+import { RootState, AppDispatch } from "../lib/redux/store/store";
+import images from "../constants/images";
 
 // Define theme colors
 const COLORS = {
@@ -45,11 +46,11 @@ const ResetPasswordScreen = () => {
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
 
-  const dispatch = useAppDispatch();
+  const dispatch = useDispatch<AppDispatch>();
 
   // Get password reset state from Redux
   const { passwordResetLoading, passwordResetSuccess, passwordResetError } =
-    useAppSelector((state) => state.auth);
+    useSelector((state: RootState) => state.auth);
 
   // Clear password reset state when component unmounts
   useEffect(() => {
@@ -367,4 +368,4 @@ const styles = StyleSheet.create({
   },
 });
 
-export default ResetPasswordScreen;
+export default ResetPasswordScreen; 

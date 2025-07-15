@@ -1,10 +1,10 @@
 // lib/firebase/firebase-config.ts
 import { initializeApp, getApps, getApp } from "firebase/app";
-import { 
-  getAuth, 
+import {
+  getAuth,
   Auth,
   initializeAuth,
-  getReactNativePersistence
+  getReactNativePersistence,
 } from "firebase/auth";
 import { getFirestore } from "firebase/firestore";
 import { getDatabase } from "firebase/database";
@@ -23,7 +23,7 @@ const firebaseConfig = {
 };
 
 // Initialize Firebase
-let app;
+let app: any;
 if (getApps().length === 0) {
   app = initializeApp(firebaseConfig);
   console.log("Firebase app initialized successfully!");
@@ -37,7 +37,7 @@ let auth: Auth;
 try {
   // Try to initialize auth with persistence first
   auth = initializeAuth(app, {
-    persistence: getReactNativePersistence(AsyncStorage)
+    persistence: getReactNativePersistence(AsyncStorage),
   });
   console.log("Firebase Auth initialized with AsyncStorage persistence");
 } catch (error) {

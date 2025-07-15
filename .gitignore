@@ -42,3 +42,6 @@ roambii-firebase-adminsdk-fbsvc-f24d84b7cc.json
 *.tsbuildinfo
 
 app-example
+
+# Temporary Firebase config - DO NOT COMMIT
+lib/firebase/firebase-config-temp.ts

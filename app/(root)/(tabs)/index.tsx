@@ -174,41 +174,29 @@ const HomeScreen = () => {
 
   // Initial data fetch
   useEffect(() => {
-    // Only run this effect once
+    if (typeof isAgent === "undefined") return;
+
     if (!dataFetchedRef.current && !isAgent) {
       dataFetchedRef.current = true;
-
-      // Start fetching data immediately
       const fetchData = async () => {
         try {
-          // Fetch both in parallel
           await Promise.all([
             dispatch(fetchPackagesAsync({ limit: 6, offset: 0, reset: true })),
             dispatch(fetchFeaturedPackagesAsync()),
           ]);
-
-          // Short delay before showing content to avoid flicker
-          setTimeout(() => {
-            setIsFirstLoad(false);
-          }, 300);
+          setTimeout(() => setIsFirstLoad(false), 300);
         } catch (error) {
           console.error("Error fetching initial data:", error);
           setIsFirstLoad(false);
         }
       };
-
       fetchData();
     }
 
-    // If user is agent, just stop showing the loader
-    if (isAgent) {
-      setIsFirstLoad(false);
-    }
+    if (isAgent) setIsFirstLoad(false);
 
     return () => {
-      if (scrollTimeout.current) {
-        clearTimeout(scrollTimeout.current);
-      }
+      if (scrollTimeout.current) clearTimeout(scrollTimeout.current);
     };
   }, [dispatch, isAgent]);
 
